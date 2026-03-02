@@ -1,8 +1,13 @@
-const required = [
+// Core vars required for the server to boot
+const core = [
   "DATABASE_URL",
   "JWT_SECRET",
   "WEBAUTHN_RP_ID",
   "WEBAUTHN_ORIGIN",
+] as const;
+
+// Sync-source vars — only required when running sync jobs
+const sync = [
   "JIRA_BASE_URL",
   "JIRA_API_TOKEN",
   "JIRA_EMAIL",
@@ -18,29 +23,32 @@ const required = [
   "SLACK_BOT_TOKEN",
 ] as const;
 
-type EnvKey = (typeof required)[number];
+const all = [...core, ...sync] as const;
+
+type EnvKey = (typeof all)[number];
 type Env = Record<EnvKey, string>;
 
-function validateEnv(): Env {
-  const missing: string[] = [];
-  const env: Record<string, string> = {};
-
-  for (const key of required) {
-    const value = process.env[key];
-    if (!value) {
-      missing.push(key);
-    } else {
-      env[key] = value;
-    }
-  }
-
+function validate(keys: readonly string[]): void {
+  const missing = keys.filter((k) => !process.env[k]);
   if (missing.length > 0) {
     throw new Error(
       `Missing required environment variables:\n  ${missing.join("\n  ")}`
     );
   }
-
-  return env as Env;
 }
 
-export const env = validateEnv();
+// Validate core vars immediately — server won't start without them
+validate(core);
+
+// Proxy that reads from process.env, so sync vars are available
+// when set but don't need to be present at boot time.
+export const env = new Proxy({} as Env, {
+  get(_, key: string) {
+    return process.env[key] ?? "";
+  },
+});
+
+/** Call before running sync jobs to ensure all sync vars are set. */
+export function validateSyncEnv(): void {
+  validate(sync);
+}
