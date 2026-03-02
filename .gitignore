@@ -8,5 +8,6 @@ dist/
 # Drizzle
 server/drizzle/meta/
 
-# Vite
+# Build output
 web/.vite/
+*.tsbuildinfo
