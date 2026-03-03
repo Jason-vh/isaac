@@ -1,0 +1,3 @@
+[deploy]
+startCommand = "bun run server/src/sync/run.ts"
+cronSchedule = "0 8 * * *"

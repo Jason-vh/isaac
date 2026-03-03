@@ -1,0 +1,7 @@
+[build]
+buildCommand = "bun run --filter web build"
+
+[deploy]
+startCommand = "bun run server/src/index.ts"
+healthcheckPath = "/api/health"
+preDeployCommand = "bun run --filter server db:migrate"
