@@ -1,5 +1,12 @@
 const BASE_URL = "/api";
 
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("Unauthorized");
+    this.name = "UnauthorizedError";
+  }
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit
@@ -18,6 +25,11 @@ async function request<T>(
     ...options,
     headers: { ...headers, ...options?.headers },
   });
+
+  if (response.status === 401) {
+    localStorage.removeItem("token");
+    throw new UnauthorizedError();
+  }
 
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);

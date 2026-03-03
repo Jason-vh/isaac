@@ -147,7 +147,60 @@ export interface PasskeyCredential {
   publicKey: Uint8Array;
   counter: number;
   label: string;
+  transports: string | null;
   createdAt: string;
+}
+
+// Dashboard
+export interface DayActivity {
+  date: string;
+  ticketsClosed: number;
+  ticketEvents: number;
+  mrsMerged: number;
+  mrsOpened: number;
+  mrComments: number;
+  confluencePublished: number;
+  meetingMinutes: number;
+  meetingCount: number;
+  winsLogged: number;
+}
+
+export interface WeekStats {
+  ticketsClosed: number;
+  storyPointsClosed: number;
+  mrsMerged: number;
+  linesChanged: number;
+  meetingHours: number;
+  meetingCount: number;
+  confluenceDocuments: number;
+  winsLogged: number;
+}
+
+export type FeedItemType =
+  | "ticket_closed"
+  | "ticket_status_changed"
+  | "mr_merged"
+  | "mr_opened"
+  | "mr_commented"
+  | "confluence_published"
+  | "meeting"
+  | "win";
+
+export interface FeedItem {
+  id: string;
+  type: FeedItemType;
+  title: string;
+  subtitle: string | null;
+  occurredAt: string;
+  externalUrl: string | null;
+}
+
+export interface WeekData {
+  weekStart: string;
+  weekEnd: string;
+  days: DayActivity[];
+  stats: WeekStats;
+  feed: FeedItem[];
 }
 
 // Sync

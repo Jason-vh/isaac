@@ -10,9 +10,15 @@ import {
 } from "drizzle-orm/pg-core";
 
 // Custom type for bytea columns
-const bytea = customType<{ data: Uint8Array }>({
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
   dataType() {
     return "bytea";
+  },
+  fromDriver(value: Buffer) {
+    return new Uint8Array(value);
+  },
+  toDriver(value: Uint8Array) {
+    return Buffer.from(value);
   },
 });
 
@@ -178,6 +184,7 @@ export const passkeyCredentials = pgTable("passkey_credentials", {
   publicKey: bytea("public_key").notNull(),
   counter: integer("counter").notNull(),
   label: text("label").notNull(),
+  transports: text("transports"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 

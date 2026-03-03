@@ -1,9 +1,17 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { isAuthenticated } from "../composables/useAuth";
 import DashboardView from "../views/DashboardView.vue";
+import LoginView from "../views/LoginView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: "/login",
+      name: "login",
+      component: LoginView,
+      meta: { public: true },
+    },
     {
       path: "/",
       name: "dashboard",
@@ -20,4 +28,10 @@ export const router = createRouter({
       component: () => import("../views/ObjectivesView.vue"),
     },
   ],
+});
+
+router.beforeEach((to) => {
+  if (!to.meta.public && !isAuthenticated.value) {
+    return { name: "login" };
+  }
 });

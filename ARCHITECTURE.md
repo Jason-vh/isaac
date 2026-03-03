@@ -28,8 +28,13 @@ isaac/
 │   │   ├── db/
 │   │   │   ├── schema.ts       # Drizzle schema (all tables)
 │   │   │   └── index.ts        # DB connection
+│   │   ├── auth/
+│   │   │   ├── challenges.ts   # In-memory challenge store (5-min TTL)
+│   │   │   ├── jwt.ts          # JWT sign/verify with jose
+│   │   │   └── middleware.ts   # Elysia beforeHandle guard
 │   │   ├── routes/
-│   │   │   ├── auth.ts
+│   │   │   ├── auth.ts         # WebAuthn register/authenticate endpoints
+│   │   │   ├── dashboard.ts    # GET /dashboard/week/:date
 │   │   │   ├── tickets.ts
 │   │   │   ├── merge-requests.ts
 │   │   │   ├── confluence-documents.ts
@@ -60,9 +65,15 @@ isaac/
 │       ├── App.vue
 │       ├── router/
 │       │   └── index.ts
-│       ├── stores/
 │       ├── composables/
+│       │   ├── useAuth.ts      # Auth state + passkey ceremonies
+│       │   └── useDashboard.ts # Dashboard data fetching
 │       ├── components/
+│       │   └── dashboard/
+│       │       ├── WeekPicker.vue
+│       │       ├── StatsCards.vue
+│       │       ├── WeekGrid.vue
+│       │       └── ActivityFeed.vue
 │       ├── views/
 │       └── api/
 │           └── client.ts       # Typed API client
@@ -241,6 +252,7 @@ For WebAuthn passkey auth.
 | public_key | bytea | |
 | counter | int | Signature counter |
 | label | text | e.g. "MacBook Touch ID" |
+| transports | text | Nullable, JSON-serialized AuthenticatorTransport[] |
 | created_at | timestamptz | |
 
 ### sync_log
@@ -265,7 +277,7 @@ WBSO estimates are computed on the fly from activity data (tickets, MRs, meeting
 
 All routes under `/api`, JWT-protected except auth and Slack endpoints.
 
-- **Auth:** POST `/auth/register`, POST `/auth/authenticate`, POST `/auth/refresh`
+- **Auth:** GET `/auth/status`, POST `/auth/register/options`, POST `/auth/register/verify`, POST `/auth/authenticate/options`, POST `/auth/authenticate/verify`, POST `/auth/refresh`
 - **Tickets:** GET `/tickets`, GET `/tickets/:key`, PATCH `/tickets/:key`
 - **MRs:** GET `/merge-requests`, GET `/merge-requests/:id`, PATCH `/merge-requests/:id`
 - **Confluence docs:** GET `/confluence-documents`, GET `/confluence-documents/:id`, PATCH `/confluence-documents/:id`
@@ -291,14 +303,42 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 
 Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars.
 
+## Hosting — Railway
+
+**Project:** isaac
+**Repo:** git@github.com:Jason-vh/isaac.git (auto-deploys on push to `main`)
+
+### Services
+
+| Service | Purpose | Start command |
+|---|---|---|
+| **isaac-web** | Elysia API server + Vue SPA static files | `bun run server/src/index.ts` (from root `package.json` `start` script) |
+| **isaac-cron** | Sync cron job | `bun run server/src/sync/run.ts` (via `RAILWAY_START_COMMAND`) |
+| **isaac-db** | PostgreSQL database | Managed by Railway |
+
+### Deployment pipeline (isaac-web)
+
+1. **Build:** `bun run --filter web build` (via `RAILWAY_BUILD_COMMAND`) — builds Vue SPA to `web/dist/`
+2. **Pre-deploy:** `bun run --filter server db:migrate` (via `RAILWAY_PRE_DEPLOY_COMMAND`) — runs Drizzle migrations
+3. **Start:** `bun run server/src/index.ts` — Elysia serves API routes at `/api/*` and static files from `web/dist/` with SPA fallback
+
+### Architecture note
+
+The `isaac-web` service is a single process: Elysia handles both API requests and static file serving. In dev, Vite runs separately (port 5173) and proxies `/api` to the server (port 3000). In production, Elysia serves everything on a single port.
+
 ## Env Vars
 
-Validated at startup via `server/src/env.ts`. App fails fast if any required var is missing.
+Validated at startup via `server/src/env.ts`. Core vars are required at boot — the server fails fast if any are missing. Sync vars are validated lazily (only when sync runs), so the server can start without them.
 
-- `DATABASE_URL` — Postgres connection string
+### Core (required at boot)
+
+- `DATABASE_URL` — Postgres connection string (references `isaac-db` on Railway)
 - `JWT_SECRET` — For signing JWTs
 - `WEBAUTHN_RP_ID` — Relying party ID (e.g. "isaac.vhtm.eu")
 - `WEBAUTHN_ORIGIN` — Origin URL (e.g. "https://isaac.vhtm.eu")
+
+### Sync (required when sync runs)
+
 - `JIRA_BASE_URL` — Jira instance URL
 - `JIRA_API_TOKEN` — Personal access token
 - `JIRA_EMAIL` — Account email for basic auth
