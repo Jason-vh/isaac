@@ -19,11 +19,12 @@ const sync = [
   "CONFLUENCE_EMAIL",
   "CALENDAR_SCRIPT_URL",
   "CALENDAR_SCRIPT_SECRET",
-  "SLACK_SIGNING_SECRET",
-  "SLACK_BOT_TOKEN",
 ] as const;
 
-const all = [...core, ...sync] as const;
+// Slack vars — only needed by the web server for webhook handling
+const slack = ["SLACK_SIGNING_SECRET", "SLACK_BOT_TOKEN"] as const;
+
+const all = [...core, ...sync, ...slack] as const;
 
 type EnvKey = (typeof all)[number];
 type Env = Record<EnvKey, string>;
