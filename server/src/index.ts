@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
-import "./env"; // validate core env vars on startup
+import { validateCoreEnv } from "./env";
+validateCoreEnv();
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { resolve } from "path";

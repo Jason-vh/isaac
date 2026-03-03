@@ -37,8 +37,10 @@ function validate(keys: readonly string[]): void {
   }
 }
 
-// Validate core vars immediately — server won't start without them
-validate(core);
+/** Call at server boot to ensure all core vars are set. */
+export function validateCoreEnv(): void {
+  validate(core);
+}
 
 // Proxy that reads from process.env, so sync vars are available
 // when set but don't need to be present at boot time.
