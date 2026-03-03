@@ -6,7 +6,7 @@ dist/
 *.log
 .DS_Store
 # Drizzle
-server/drizzle/meta/
+# meta/ must be tracked — drizzle needs _journal.json to run migrations
 
 # Build output
 web/.vite/
