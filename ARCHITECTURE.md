@@ -34,7 +34,8 @@ isaac/
 │   │   │   └── middleware.ts   # Elysia beforeHandle guard
 │   │   ├── routes/
 │   │   │   ├── auth.ts         # WebAuthn register/authenticate endpoints
-│   │   │   ├── dashboard.ts    # GET /dashboard/week/:date
+│   │   │   ├── dashboard.ts    # GET /dashboard/week/:date, GET /dashboard/velocity
+│   │   │   ├── sync.ts         # POST /sync/trigger (backfill support)
 │   │   │   ├── tickets.ts
 │   │   │   ├── merge-requests.ts
 │   │   │   ├── confluence-documents.ts
@@ -73,7 +74,13 @@ isaac/
 │       │       ├── WeekPicker.vue
 │       │       ├── StatsCards.vue
 │       │       ├── WeekGrid.vue
-│       │       └── ActivityFeed.vue
+│       │       ├── DayTimeline.vue    # Compact day summary (meetings + grouped activity)
+│       │       ├── ActivityFeed.vue   # Day-grouped activity feed with expand/collapse
+│       │       ├── FeedRow.vue        # Single feed item row
+│       │       ├── VelocityChart.vue  # SP/ticket velocity bar chart (12 weeks)
+│       │       ├── ProjectsPanel.vue  # Tickets worked on this week
+│       │       ├── QuickLinks.vue     # Links to Jira, GitLab, Confluence, etc.
+│       │       └── WeekDistribution.vue # Work distribution breakdown + daily volume
 │       ├── views/
 │       └── api/
 │           └── client.ts       # Typed API client
@@ -286,8 +293,8 @@ All routes under `/api`, JWT-protected except auth and Slack endpoints.
 - **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`
 - **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning)
-- **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/stats`
-- **Sync:** POST `/sync/trigger`, GET `/sync/status`, GET `/sync/log`
+- **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
+- **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills), GET `/sync/status`, GET `/sync/log`
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
 ## Sync Architecture
@@ -297,11 +304,26 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 1. Checks `sync_log` for any `running` status with `started_at > now() - 10 min` → aborts if found (concurrent-sync guard)
 2. Imports DB and sync modules directly (same codebase, no HTTP)
 3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar)
-4. All sync functions accept a `since` parameter for backfill support
+4. All sync functions accept an optional `sinceOverride` parameter for backfill support
 5. Runs the linker to infer relationships (branch name → ticket, etc.), skipping rows where `*_inferred = false`
 6. Logs results to `sync_log`
 
 Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars.
+
+### Manual sync trigger
+
+`POST /api/sync/trigger` allows on-demand syncs with source filtering and date override. Useful when fixing field mappings or backfilling data. Example:
+
+```bash
+curl -X POST https://isaac.vhtm.eu/api/sync/trigger \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"sources": ["jira"], "since": "2025-09-01"}'
+```
+
+### Jira field mapping
+
+Story points use `customfield_10502` (FareHarbor's Jira instance). This was discovered via `acli jira workitem view DESK-XXXX --fields '*all' --json`.
 
 ## Hosting — Railway
 
@@ -314,6 +336,8 @@ Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources
 |---|---|---|
 | **isaac-web** | Elysia API server + Vue SPA static files | `bun run server/src/index.ts` (from root `package.json` `start` script) |
 | **isaac-cron** | Sync cron job | `bun run server/src/sync/run.ts` (via `RAILWAY_START_COMMAND`) |
+
+Both `isaac-web` and `isaac-cron` have sync env vars so the web service can trigger syncs via the API.
 | **isaac-db** | PostgreSQL database | Managed by Railway |
 
 ### Deployment pipeline (isaac-web)

@@ -79,7 +79,11 @@ At submission time, hours are grouped by epic (WBSO project) to produce a weekly
 
 ### Daily
 - Isaac syncs data hourly from all sources
-- I check the dashboard throughout the day (calendar week view with activity, stats cards, possibly OKR progress)
+- I check the dashboard throughout the day — two-column layout with:
+  - Stats cards (tickets closed, MRs merged, meetings, docs published)
+  - Week grid with compact day summaries (meeting chips + grouped activity counts)
+  - Activity feed grouped by day with expand/collapse
+  - Sidebar: sprint velocity chart (12-week SP history), quick links, projects worked on, work distribution
 - I log wins via Slack when something notable happens (`/isaac win Shipped the new booking flow`)
 
 ### Weekly
