@@ -1,5 +1,4 @@
 import { Elysia } from "elysia";
-import { validateSyncEnv } from "../env";
 import { isSyncRunning } from "../sync/util";
 import { syncJira } from "../sync/jira";
 import { syncGitLab } from "../sync/gitlab";
@@ -41,9 +40,6 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" }).post(
         return { error: "Invalid since date" };
       }
     }
-
-    // Validate sync env vars
-    validateSyncEnv();
 
     // Guard against concurrent syncs
     if (await isSyncRunning()) {
