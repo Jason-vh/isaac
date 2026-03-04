@@ -1,33 +1,25 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <nav v-if="isAuthenticated" class="border-b border-gray-200 bg-white">
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+  <div class="min-h-screen bg-surface-1">
+    <nav v-if="isAuthenticated" class="sticky top-0 z-30 border-b border-border bg-surface-0/80 backdrop-blur-md">
+      <div class="mx-auto max-w-[1400px] px-6">
         <div class="flex h-14 items-center justify-between">
-          <router-link to="/" class="text-lg font-semibold text-gray-900">
+          <router-link to="/" class="text-lg font-bold tracking-tight text-ink">
             Isaac
           </router-link>
-          <div class="flex items-center gap-6">
+          <div class="flex items-center gap-1">
             <router-link
-              to="/"
-              class="text-sm text-gray-600 hover:text-gray-900"
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
+              class="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              active-class="!bg-surface-2 !text-ink"
             >
-              Dashboard
+              {{ link.label }}
             </router-link>
-            <router-link
-              to="/wbso"
-              class="text-sm text-gray-600 hover:text-gray-900"
-            >
-              WBSO
-            </router-link>
-            <router-link
-              to="/objectives"
-              class="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Objectives
-            </router-link>
+            <div class="ml-3 h-5 w-px bg-border" />
             <button
               @click="logout"
-              class="text-sm text-gray-400 hover:text-gray-600"
+              class="ml-2 rounded-lg px-3 py-1.5 text-sm text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink-muted"
             >
               Logout
             </button>
@@ -35,7 +27,7 @@
         </div>
       </div>
     </nav>
-    <main :class="isAuthenticated ? 'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8' : ''">
+    <main :class="isAuthenticated ? 'mx-auto max-w-[1400px] px-6 py-8' : ''">
       <router-view />
     </main>
   </div>
@@ -47,6 +39,12 @@ import { useAuth } from "./composables/useAuth";
 
 const router = useRouter();
 const { isAuthenticated, logout: doLogout } = useAuth();
+
+const navLinks = [
+  { to: "/", label: "Dashboard" },
+  { to: "/wbso", label: "WBSO" },
+  { to: "/objectives", label: "Objectives" },
+];
 
 function logout() {
   doLogout();

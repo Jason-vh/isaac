@@ -24,7 +24,7 @@ interface CalendarResponse {
 // Calendar sync
 // ---------------------------------------------------------------------------
 
-export async function syncCalendar(): Promise<void> {
+export async function syncCalendar(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("calendar", async (since) => {
     // Lazy env access
     const scriptUrl = env.CALENDAR_SCRIPT_URL;
@@ -74,5 +74,5 @@ export async function syncCalendar(): Promise<void> {
     }
 
     return events.length;
-  });
+  }, sinceOverride);
 }

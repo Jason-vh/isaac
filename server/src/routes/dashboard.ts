@@ -17,6 +17,7 @@ import type {
   FeedItem,
   FeedItemType,
   WeekData,
+  VelocityWeek,
 } from "@isaac/shared";
 
 function getMonday(dateStr: string): Date {
@@ -115,6 +116,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: `${row.ticketKey} ${row.ticketTitle}`,
         subtitle,
         occurredAt: row.occurredAt.toISOString(),
+        endsAt: null,
         externalUrl: null,
       });
     }
@@ -140,6 +142,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: `${t.key} ${t.title}`,
         subtitle: t.storyPoints ? `${t.storyPoints} SP` : null,
         occurredAt: t.closedAt!.toISOString(),
+        endsAt: null,
         externalUrl: null,
       });
     }
@@ -183,6 +186,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: `!${row.mrId} ${row.mrTitle}`,
         subtitle: row.projectPath,
         occurredAt: row.occurredAt.toISOString(),
+        endsAt: null,
         externalUrl: row.externalUrl,
       });
     }
@@ -211,6 +215,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: `!${mr.gitlabIid} ${mr.title}`,
         subtitle: `+${mr.additions} -${mr.deletions}`,
         occurredAt: mr.mergedAt!.toISOString(),
+        endsAt: null,
         externalUrl: null,
       });
     }
@@ -250,6 +255,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: row.docTitle,
         subtitle: null,
         occurredAt: row.occurredAt.toISOString(),
+        endsAt: null,
         externalUrl: row.externalUrl,
       });
     }
@@ -289,6 +295,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: m.title,
         subtitle: durationStr,
         occurredAt: m.startsAt.toISOString(),
+        endsAt: m.endsAt.toISOString(),
         externalUrl: null,
       });
     }
@@ -313,6 +320,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         title: w.title,
         subtitle: w.description,
         occurredAt: w.createdAt.toISOString(),
+        endsAt: null,
         externalUrl: null,
       });
     }
@@ -337,4 +345,36 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
     const result: WeekData = { weekStart, weekEnd, days, stats, feed };
     return result;
   }
-);
+).get("/velocity", async ({ query }) => {
+  const weeks = Math.min(Number(query?.weeks) || 12, 26);
+  const now = new Date();
+  const currentMonday = getMonday(formatDate(now));
+
+  const result: VelocityWeek[] = [];
+
+  for (let i = weeks - 1; i >= 0; i--) {
+    const monday = new Date(currentMonday);
+    monday.setUTCDate(currentMonday.getUTCDate() - i * 7);
+    const nextMonday = new Date(monday);
+    nextMonday.setUTCDate(monday.getUTCDate() + 7);
+
+    const closedTickets = await db
+      .select({
+        count: sql<number>`count(*)::int`,
+        points: sql<number>`coalesce(sum(${tickets.storyPoints}), 0)::float`,
+      })
+      .from(tickets)
+      .where(
+        and(gte(tickets.closedAt, monday), lt(tickets.closedAt, nextMonday))
+      );
+
+    const row = closedTickets[0];
+    result.push({
+      weekStart: formatDate(monday),
+      storyPointsClosed: Math.round((row?.points ?? 0) * 10) / 10,
+      ticketsClosed: row?.count ?? 0,
+    });
+  }
+
+  return result;
+});

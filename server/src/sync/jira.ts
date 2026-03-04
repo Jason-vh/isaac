@@ -19,8 +19,7 @@ interface JiraIssue {
     summary: string;
     issuetype: { name: string };
     status: { name: string; statusCategory: { key: string } };
-    customfield_10016?: number | null;
-    customfield_10028?: number | null;
+    customfield_10502?: number | null;
     parent?: { key: string };
     created: string;
     updated: string;
@@ -43,10 +42,11 @@ interface JiraIssue {
 // Jira sync
 // ---------------------------------------------------------------------------
 
-export async function syncJira(): Promise<void> {
+export async function syncJira(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("jira", async (since) => {
     // Lazy env access — strip trailing /jira if present (API root is the Atlassian domain)
     const baseUrl = env.JIRA_BASE_URL.replace(/\/jira\/?$/, "");
+
     const email = env.JIRA_EMAIL;
     const token = env.JIRA_API_TOKEN;
     const auth = basicAuthHeader(email, token);
@@ -58,8 +58,7 @@ export async function syncJira(): Promise<void> {
       "summary",
       "issuetype",
       "status",
-      "customfield_10016",
-      "customfield_10028",
+      "customfield_10502",
       "parent",
       "created",
       "updated",
@@ -98,10 +97,7 @@ export async function syncJira(): Promise<void> {
 
     // --- First pass: upsert all tickets with epicKey = null ---
     for (const issue of allIssues) {
-      const sp =
-        issue.fields.customfield_10016 ??
-        issue.fields.customfield_10028 ??
-        null;
+      const sp = issue.fields.customfield_10502 ?? null;
 
       const createdByMe =
         issue.fields.reporter?.emailAddress === email;
@@ -262,5 +258,5 @@ export async function syncJira(): Promise<void> {
     }
 
     return allIssues.length;
-  });
+  }, sinceOverride);
 }

@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { resolve } from "path";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
+import { syncRoutes } from "./routes/sync";
 import { verifyJwt } from "./auth/middleware";
 
 const STATIC_DIR = resolve(import.meta.dir, "../../web/dist");
@@ -17,7 +18,7 @@ const app = new Elysia()
   })
   .use(authRoutes)
   .guard({ beforeHandle: verifyJwt }, (app) =>
-    app.use(dashboardRoutes)
+    app.use(dashboardRoutes).use(syncRoutes)
   )
   // Static file serving + SPA fallback (after all API routes)
   .onRequest(async ({ request, set }) => {

@@ -1,24 +1,26 @@
 <template>
-  <div class="flex items-center gap-3">
-    <button
-      @click="$emit('prev')"
-      class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-    >
-      <ChevronLeftIcon class="h-5 w-5" />
-    </button>
-    <h2 class="text-lg font-semibold text-gray-900">
-      Week of {{ formattedDate }}
-    </h2>
-    <button
-      @click="$emit('next')"
-      class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-    >
-      <ChevronRightIcon class="h-5 w-5" />
-    </button>
+  <div class="flex items-center gap-2">
+    <h1 class="text-2xl font-bold tracking-tight text-ink">
+      {{ formattedDate }}
+    </h1>
+    <div class="ml-2 flex items-center gap-0.5">
+      <button
+        @click="$emit('prev')"
+        class="rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink-muted"
+      >
+        <ChevronLeftIcon class="h-5 w-5" />
+      </button>
+      <button
+        @click="$emit('next')"
+        class="rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink-muted"
+      >
+        <ChevronRightIcon class="h-5 w-5" />
+      </button>
+    </div>
     <button
       v-if="!isCurrentWeek"
       @click="$emit('today')"
-      class="ml-2 rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50"
+      class="ml-1 rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
     >
       Today
     </button>

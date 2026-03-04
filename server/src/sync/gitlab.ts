@@ -68,7 +68,7 @@ async function paginateGitLab<T>(
 // GitLab sync
 // ---------------------------------------------------------------------------
 
-export async function syncGitLab(): Promise<void> {
+export async function syncGitLab(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("gitlab", async (since) => {
     // Lazy env access
     const baseUrl = env.GITLAB_BASE_URL;
@@ -228,5 +228,5 @@ export async function syncGitLab(): Promise<void> {
     }
 
     return allMRs.length;
-  });
+  }, sinceOverride);
 }

@@ -3,11 +3,21 @@
     <div
       v-for="stat in cards"
       :key="stat.label"
-      class="rounded-lg border border-gray-200 bg-white p-4"
+      class="card group relative overflow-hidden p-4"
     >
-      <p class="text-sm text-gray-500">{{ stat.label }}</p>
-      <p class="mt-1 text-2xl font-semibold text-gray-900">{{ stat.value }}</p>
-      <p v-if="stat.detail" class="mt-0.5 text-xs text-gray-400">
+      <div
+        class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg"
+        :class="stat.iconBg"
+      >
+        <component :is="stat.icon" class="h-4 w-4" :class="stat.iconColor" />
+      </div>
+      <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
+        {{ stat.label }}
+      </p>
+      <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">
+        {{ stat.value }}
+      </p>
+      <p v-if="stat.detail" class="mt-1 text-sm text-ink-muted">
         {{ stat.detail }}
       </p>
     </div>
@@ -17,6 +27,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { WeekStats } from "@isaac/shared";
+import {
+  TicketIcon,
+  CodeBracketIcon,
+  CalendarIcon,
+  DocumentTextIcon,
+} from "@heroicons/vue/20/solid";
 
 const props = defineProps<{ stats: WeekStats }>();
 
@@ -27,18 +43,27 @@ const cards = computed(() => [
     detail: props.stats.storyPointsClosed
       ? `${props.stats.storyPointsClosed} story points`
       : null,
+    icon: TicketIcon,
+    iconBg: "bg-emerald-50",
+    iconColor: "text-activity-ticket",
   },
   {
     label: "MRs Merged",
     value: props.stats.mrsMerged,
     detail: props.stats.linesChanged
-      ? `${props.stats.linesChanged.toLocaleString()} lines changed`
+      ? `${props.stats.linesChanged.toLocaleString()} lines`
       : null,
+    icon: CodeBracketIcon,
+    iconBg: "bg-violet-50",
+    iconColor: "text-activity-mr",
   },
   {
     label: "Meetings",
     value: props.stats.meetingCount,
     detail: `${props.stats.meetingHours}h total`,
+    icon: CalendarIcon,
+    iconBg: "bg-sky-50",
+    iconColor: "text-activity-meeting",
   },
   {
     label: "Docs Published",
@@ -46,6 +71,9 @@ const cards = computed(() => [
     detail: props.stats.winsLogged
       ? `${props.stats.winsLogged} wins logged`
       : null,
+    icon: DocumentTextIcon,
+    iconBg: "bg-orange-50",
+    iconColor: "text-activity-doc",
   },
 ]);
 </script>

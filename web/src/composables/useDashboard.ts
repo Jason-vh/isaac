@@ -1,5 +1,5 @@
 import { ref, watch } from "vue";
-import type { WeekData } from "@isaac/shared";
+import type { WeekData, VelocityWeek } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 import { useRouter } from "vue-router";
 
@@ -7,6 +7,7 @@ export function useDashboard() {
   const router = useRouter();
   const date = ref(todayStr());
   const data = ref<WeekData | null>(null);
+  const velocity = ref<VelocityWeek[]>([]);
   const loading = ref(false);
   const error = ref("");
 
@@ -19,9 +20,12 @@ export function useDashboard() {
     loading.value = true;
     error.value = "";
     try {
-      data.value = await api.get<WeekData>(
-        `/dashboard/week/${date.value}`
-      );
+      const [weekData, velocityData] = await Promise.all([
+        api.get<WeekData>(`/dashboard/week/${date.value}`),
+        api.get<VelocityWeek[]>(`/dashboard/velocity?weeks=12`),
+      ]);
+      data.value = weekData;
+      velocity.value = velocityData;
     } catch (e: any) {
       if (e instanceof UnauthorizedError) {
         router.push("/login");
@@ -51,5 +55,5 @@ export function useDashboard() {
     date.value = todayStr();
   }
 
-  return { date, data, loading, error, prevWeek, nextWeek, goToday };
+  return { date, data, velocity, loading, error, prevWeek, nextWeek, goToday };
 }

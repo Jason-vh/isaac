@@ -125,9 +125,10 @@ export async function failSyncLogEntry(
 
 export async function runSyncWithLog(
   source: string,
-  fn: (since: Date) => Promise<number>
+  fn: (since: Date) => Promise<number>,
+  sinceOverride?: Date
 ): Promise<void> {
-  const since = await getSyncSince(source);
+  const since = sinceOverride ?? (await getSyncSince(source));
   const logId = await createSyncLogEntry(source);
   try {
     const count = await fn(since);

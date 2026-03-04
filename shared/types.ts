@@ -192,6 +192,7 @@ export interface FeedItem {
   title: string;
   subtitle: string | null;
   occurredAt: string;
+  endsAt: string | null;
   externalUrl: string | null;
 }
 
@@ -201,6 +202,13 @@ export interface WeekData {
   days: DayActivity[];
   stats: WeekStats;
   feed: FeedItem[];
+}
+
+// Velocity
+export interface VelocityWeek {
+  weekStart: string;
+  storyPointsClosed: number;
+  ticketsClosed: number;
 }
 
 // Sync

@@ -49,7 +49,7 @@ interface ConfluenceComment {
 // Confluence sync
 // ---------------------------------------------------------------------------
 
-export async function syncConfluence(): Promise<void> {
+export async function syncConfluence(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("confluence", async (since) => {
     // Lazy env access
     const baseUrl = env.CONFLUENCE_BASE_URL;
@@ -202,5 +202,5 @@ export async function syncConfluence(): Promise<void> {
     }
 
     return allPages.length;
-  });
+  }, sinceOverride);
 }

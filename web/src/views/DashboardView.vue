@@ -1,12 +1,13 @@
 <template>
   <div>
-    <div v-if="loading && !data" class="py-12 text-center text-gray-400">
+    <div v-if="loading && !data" class="py-20 text-center text-ink-faint">
       Loading...
     </div>
-    <div v-else-if="error" class="py-12 text-center text-red-500">
+    <div v-else-if="error" class="py-20 text-center text-red-500">
       {{ error }}
     </div>
     <template v-else-if="data">
+      <!-- Header -->
       <div class="flex items-center justify-between">
         <WeekPicker
           :week-start="data.weekStart"
@@ -14,12 +15,29 @@
           @next="nextWeek"
           @today="goToday"
         />
-        <div v-if="loading" class="text-sm text-gray-400">Updating...</div>
+        <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
       </div>
-      <div class="mt-6 space-y-6">
+
+      <!-- Stats -->
+      <div class="mt-6">
         <StatsCards :stats="data.stats" />
-        <WeekGrid :days="data.days" />
-        <ActivityFeed :feed="data.feed" />
+      </div>
+
+      <!-- Main content: two columns -->
+      <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+        <!-- Left column -->
+        <div class="space-y-6">
+          <WeekGrid :days="data.days" :feed="data.feed" />
+          <ActivityFeed :feed="data.feed" :days="data.days" />
+        </div>
+
+        <!-- Right sidebar -->
+        <div class="space-y-6">
+          <VelocityChart :weeks="velocity" :active-week="data.weekStart" />
+          <QuickLinks />
+          <ProjectsPanel :feed="data.feed" />
+          <WeekDistribution :days="data.days" />
+        </div>
       </div>
     </template>
   </div>
@@ -31,6 +49,10 @@ import WeekPicker from "../components/dashboard/WeekPicker.vue";
 import StatsCards from "../components/dashboard/StatsCards.vue";
 import WeekGrid from "../components/dashboard/WeekGrid.vue";
 import ActivityFeed from "../components/dashboard/ActivityFeed.vue";
+import QuickLinks from "../components/dashboard/QuickLinks.vue";
+import ProjectsPanel from "../components/dashboard/ProjectsPanel.vue";
+import WeekDistribution from "../components/dashboard/WeekDistribution.vue";
+import VelocityChart from "../components/dashboard/VelocityChart.vue";
 
-const { data, loading, error, prevWeek, nextWeek, goToday } = useDashboard();
+const { data, velocity, loading, error, prevWeek, nextWeek, goToday } = useDashboard();
 </script>

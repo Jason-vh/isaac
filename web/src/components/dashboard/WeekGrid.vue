@@ -1,52 +1,60 @@
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white">
-    <div class="grid grid-cols-7 divide-x divide-gray-100">
+  <div class="card overflow-hidden">
+    <div class="grid grid-cols-7 divide-x divide-border">
       <div
         v-for="day in days"
         :key="day.date"
-        class="p-3"
-        :class="{ 'bg-blue-50/50': isToday(day.date) }"
+        class="flex flex-col"
+        :class="{
+          'bg-accent-light/40': isToday(day.date),
+          'opacity-40': isWeekend(day.date) && !hasActivity(day),
+        }"
       >
-        <div class="mb-2 text-center">
-          <p class="text-xs font-medium text-gray-500">
+        <!-- Day header -->
+        <div class="border-b border-border px-2 py-2.5 text-center">
+          <p class="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
             {{ dayLabel(day.date) }}
           </p>
           <p
-            class="text-sm font-semibold"
-            :class="isToday(day.date) ? 'text-blue-600' : 'text-gray-900'"
+            class="mt-0.5 text-lg font-semibold tabular-nums"
+            :class="isToday(day.date) ? 'text-accent' : 'text-ink'"
           >
             {{ dayNum(day.date) }}
           </p>
-        </div>
-        <div class="space-y-1 text-xs text-gray-600">
-          <p v-if="day.ticketsClosed">
-            {{ day.ticketsClosed }} ticket{{ day.ticketsClosed > 1 ? "s" : "" }} closed
-          </p>
-          <p v-if="day.mrsMerged">
-            {{ day.mrsMerged }} MR{{ day.mrsMerged > 1 ? "s" : "" }} merged
-          </p>
-          <p v-if="day.mrsOpened">
-            {{ day.mrsOpened }} MR{{ day.mrsOpened > 1 ? "s" : "" }} opened
-          </p>
-          <p v-if="day.mrComments">
-            {{ day.mrComments }} MR comment{{ day.mrComments > 1 ? "s" : "" }}
-          </p>
-          <p v-if="day.confluencePublished">
-            {{ day.confluencePublished }} doc{{ day.confluencePublished > 1 ? "s" : "" }}
-          </p>
-          <p v-if="day.meetingCount">
-            {{ day.meetingCount }} meeting{{ day.meetingCount > 1 ? "s" : "" }}
-            <span class="text-gray-400">({{ formatMin(day.meetingMinutes) }})</span>
-          </p>
-          <p v-if="day.winsLogged">
-            {{ day.winsLogged }} win{{ day.winsLogged > 1 ? "s" : "" }}
-          </p>
-          <p
-            v-if="isEmpty(day)"
-            class="text-gray-300"
+          <!-- Mini activity bar -->
+          <div
+            v-if="hasActivity(day)"
+            class="mx-auto mt-1.5 flex h-1 max-w-[48px] gap-px overflow-hidden rounded-full"
           >
-            &mdash;
-          </p>
+            <div
+              v-if="day.ticketsClosed + day.ticketEvents > 0"
+              class="bg-activity-ticket"
+              :style="{ flex: day.ticketsClosed + day.ticketEvents }"
+            />
+            <div
+              v-if="day.mrsMerged + day.mrsOpened + day.mrComments > 0"
+              class="bg-activity-mr"
+              :style="{ flex: day.mrsMerged + day.mrsOpened + day.mrComments }"
+            />
+            <div
+              v-if="day.meetingCount > 0"
+              class="bg-activity-meeting"
+              :style="{ flex: day.meetingCount }"
+            />
+            <div
+              v-if="day.confluencePublished > 0"
+              class="bg-activity-doc"
+              :style="{ flex: day.confluencePublished }"
+            />
+          </div>
+        </div>
+
+        <!-- Compact activity summary -->
+        <div class="flex-1 p-2">
+          <DayTimeline
+            :items="feedByDay[day.date] || []"
+            :date="day.date"
+          />
         </div>
       </div>
     </div>
@@ -54,9 +62,14 @@
 </template>
 
 <script setup lang="ts">
-import type { DayActivity } from "@isaac/shared";
+import { computed } from "vue";
+import type { DayActivity, FeedItem } from "@isaac/shared";
+import DayTimeline from "./DayTimeline.vue";
 
-defineProps<{ days: DayActivity[] }>();
+const props = defineProps<{
+  days: DayActivity[];
+  feed: FeedItem[];
+}>();
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -74,23 +87,34 @@ function isToday(dateStr: string): boolean {
   return dateStr === new Date().toISOString().split("T")[0];
 }
 
-function formatMin(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h > 0) return `${h}h${m > 0 ? `${m}m` : ""}`;
-  return `${m}m`;
+function isWeekend(dateStr: string): boolean {
+  const d = new Date(dateStr + "T00:00:00");
+  const dow = d.getDay();
+  return dow === 0 || dow === 6;
 }
 
-function isEmpty(day: DayActivity): boolean {
+function hasActivity(day: DayActivity): boolean {
   return (
-    day.ticketsClosed === 0 &&
-    day.ticketEvents === 0 &&
-    day.mrsMerged === 0 &&
-    day.mrsOpened === 0 &&
-    day.mrComments === 0 &&
-    day.confluencePublished === 0 &&
-    day.meetingCount === 0 &&
-    day.winsLogged === 0
+    day.ticketsClosed +
+      day.ticketEvents +
+      day.mrsMerged +
+      day.mrsOpened +
+      day.mrComments +
+      day.confluencePublished +
+      day.meetingCount +
+      day.winsLogged >
+    0
   );
 }
+
+const feedByDay = computed(() => {
+  const map: Record<string, FeedItem[]> = {};
+  for (const item of props.feed) {
+    const d = new Date(item.occurredAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (!map[key]) map[key] = [];
+    map[key].push(item);
+  }
+  return map;
+});
 </script>
