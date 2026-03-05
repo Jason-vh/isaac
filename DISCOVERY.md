@@ -12,7 +12,7 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 - **Store facts, derive meaning.** Isaac records raw events ("commented on MR !432", "attended meeting X"). Interpretations like "reviewed" or WBSO categories are derived at report time, not at ingestion.
 - **Infer links, allow manual override.** Automate linking where possible (e.g. MR branch name → ticket), but always allow manual correction.
 - **Propose, then automate.** WBSO estimates start as suggestions I review and adjust. Over time, Isaac fills them in autonomously.
-- **Single user, simple auth.** No multi-tenancy. Everything is behind a login, just for me.
+- **Single user, shareable.** No multi-tenancy. Everything is behind a passkey login, just for me. Read-only views can be shared via expiring links (24h JWT).
 
 ## Data Sources
 
@@ -20,6 +20,7 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 |---|---|---|
 | **Jira** | Tickets created, tickets closed/transitioned, story points, epics | Periodic (hourly) via API |
 | **GitLab** | MRs authored, MRs merged, MRs commented on | Periodic (hourly) via API |
+| **GitLab Pipelines** | Pipeline durations, per-job timing, retry/flaky rates (all pipelines, not just mine) | Periodic (hourly) via API |
 | **Confluence** | Documents published, documents commented on (stretch) | Periodic (hourly) via API |
 | **Google Calendar** | Meetings attended, holidays/OOO | Periodic (hourly) via API |
 | **Slack bot** | Wins logged manually (shorthand, enriched later on web) | Real-time via Slack app |
@@ -49,7 +50,7 @@ Google Calendar event. Categorised as dev or non-dev. Linked to epics where poss
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
 
 **Objective**
-Annual objective with Key Results (half-yearly reviews). Key Results are evidenced by tickets, wins, and other activity.
+Annual objective with Key Results (half-yearly reviews). Key Results are evidenced by tickets, wins, and other activity. KRs can optionally have a `data_source` that auto-updates their `current_value` from live data after each sync (e.g. `pipeline:max_duration` computes the current max pipeline duration in minutes from synced pipeline data).
 
 ### Relationships
 
@@ -93,7 +94,8 @@ At submission time, hours are grouped by epic (WBSO project) to produce a weekly
 - Eventually: Isaac exports a data format I can feed to a VPN-side script for automated submission
 
 ### Periodically
-- Review OKR progress, evidenced by linked activity
+- Review OKR progress on the Objectives page — expand objectives to see linked evidence (epics auto-resolve child tickets, MRs, and docs)
+- Track CI/CD health on the Pipelines page — weekly duration trends, slowest jobs, flakiest jobs
 - Use accumulated data for performance reviews, brag documents, retrospectives
 
 ## Technical Decisions

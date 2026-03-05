@@ -3,9 +3,11 @@ import { startRegistration, startAuthentication } from "@simplewebauthn/browser"
 import { api } from "../api/client";
 
 const token = ref<string | null>(localStorage.getItem("token"));
+const shareToken = ref<string | null>(localStorage.getItem("share_token"));
 const needsSetup = ref(false);
 
-export const isAuthenticated = computed(() => !!token.value);
+export const isShareMode = computed(() => !!shareToken.value && !token.value);
+export const isAuthenticated = computed(() => !!token.value || !!shareToken.value);
 
 export function useAuth() {
   async function checkStatus(): Promise<void> {
@@ -39,12 +41,16 @@ export function useAuth() {
 
   function logout(): void {
     token.value = null;
+    shareToken.value = null;
     localStorage.removeItem("token");
+    localStorage.removeItem("share_token");
   }
 
   return {
     token,
+    shareToken,
     isAuthenticated,
+    isShareMode,
     needsSetup,
     checkStatus,
     register,

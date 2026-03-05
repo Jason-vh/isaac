@@ -16,7 +16,7 @@ async function request<T>(
     "Content-Type": "application/json",
   };
 
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token") || localStorage.getItem("share_token");
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -28,6 +28,7 @@ async function request<T>(
 
   if (response.status === 401) {
     localStorage.removeItem("token");
+    localStorage.removeItem("share_token");
     throw new UnauthorizedError();
   }
 

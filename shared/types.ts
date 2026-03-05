@@ -136,8 +136,43 @@ export interface KeyResult {
   targetValue: number | null;
   currentValue: number | null;
   unit: string | null;
+  dataSource: string | null;
   status: KeyResultStatus;
   createdAt: string;
+}
+
+export interface EvidenceItem {
+  linkId: number;
+  type: EntityLinkTargetType;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  source: "direct" | "via_epic";
+  epicKey: string | null;
+}
+
+export interface EvidenceSummary {
+  epics: number;
+  tickets: number;
+  mergeRequests: number;
+  documents: number;
+  total: number;
+}
+
+export interface KeyResultWithEvidence extends KeyResult {
+  evidence: EvidenceItem[];
+}
+
+export interface KeyResultWithSummary extends KeyResult {
+  evidenceSummary: EvidenceSummary;
+}
+
+export interface ObjectiveWithKeyResults extends Objective {
+  keyResults: KeyResultWithEvidence[];
+}
+
+export interface ObjectiveWithSummary extends Objective {
+  keyResults: KeyResultWithSummary[];
 }
 
 // Auth
@@ -211,10 +246,40 @@ export interface VelocityWeek {
   ticketsClosed: number;
 }
 
+// Pipelines
+export interface WeeklyPipelineStats {
+  weekStart: string;
+  total: number;
+  successCount: number;
+  failedCount: number;
+  p50Duration: number | null;
+  p90Duration: number | null;
+  maxDuration: number | null;
+  avgQueueTime: number | null;
+  retryRate: number;
+}
+
+export interface SlowestJob {
+  name: string;
+  stage: string;
+  runCount: number;
+  avgDuration: number;
+  p90Duration: number | null;
+}
+
+export interface FlakyJob {
+  name: string;
+  stage: string;
+  totalRuns: number;
+  retryCount: number;
+  retryRate: number;
+}
+
 // Sync
 export type SyncSource =
   | "jira"
   | "gitlab"
+  | "gitlab-pipelines"
   | "confluence"
   | "calendar"
   | "slack";

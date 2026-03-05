@@ -7,18 +7,31 @@ import { resolve } from "path";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { syncRoutes } from "./routes/sync";
-import { verifyJwt } from "./auth/middleware";
+import { objectiveRoutes } from "./routes/objectives";
+import { pipelineRoutes } from "./routes/pipelines";
+import { shareRoutes } from "./routes/share";
+import { verifyJwt, requireOwner } from "./auth/middleware";
 
 const STATIC_DIR = resolve(import.meta.dir, "../../web/dist");
 
 const app = new Elysia()
+  .onError(({ code, error, path }) => {
+    console.error(`[${code}] ${path}:`, error);
+  })
+  .state("isOwner", false)
   .get("/api/health", async () => {
     await db.execute(sql`SELECT 1`);
     return { status: "ok", timestamp: new Date().toISOString() };
   })
   .use(authRoutes)
   .guard({ beforeHandle: verifyJwt }, (app) =>
-    app.use(dashboardRoutes).use(syncRoutes)
+    app
+      .use(dashboardRoutes)
+      .use(objectiveRoutes)
+      .use(pipelineRoutes)
+      .guard({ beforeHandle: requireOwner }, (app) =>
+        app.use(syncRoutes).use(shareRoutes)
+      )
   )
   // Static file serving + SPA fallback (after all API routes)
   .onRequest(async ({ request, set }) => {

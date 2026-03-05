@@ -7,7 +7,9 @@ import { syncJira } from "./jira";
 import { syncGitLab } from "./gitlab";
 import { syncConfluence } from "./confluence";
 import { syncCalendar } from "./calendar";
+import { syncGitLabPipelines } from "./gitlab-pipelines";
 import { runLinker } from "./linker";
+import { updateKeyResults } from "./kr-updater";
 
 async function main() {
   console.log(`[sync] Starting sync run at ${new Date().toISOString()}`);
@@ -27,6 +29,7 @@ async function main() {
     { name: "GitLab", fn: syncGitLab },
     { name: "Confluence", fn: syncConfluence },
     { name: "Calendar", fn: syncCalendar },
+    { name: "GitLab Pipelines", fn: syncGitLabPipelines },
   ];
 
   for (const { name, fn } of syncs) {
@@ -43,6 +46,13 @@ async function main() {
     await runLinker();
   } catch (err) {
     console.error("[sync] Linker failed:", err);
+  }
+
+  // Step 5: Auto-update KRs with data sources
+  try {
+    await updateKeyResults();
+  } catch (err) {
+    console.error("[sync] KR updater failed:", err);
   }
 
   console.log(`[sync] Sync run complete at ${new Date().toISOString()}`);

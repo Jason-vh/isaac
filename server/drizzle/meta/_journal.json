@@ -15,6 +15,20 @@
       "when": 1772486246306,
       "tag": "0001_happy_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772741009530,
+      "tag": "0002_dry_slyde",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772742310660,
+      "tag": "0003_bumpy_mystique",
+      "breakpoints": true
     }
   ]
 }

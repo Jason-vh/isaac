@@ -2,7 +2,7 @@ import { db } from "../db";
 import { mergeRequests, mergeRequestEvents } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { env } from "../env";
-import { apiFetch, runSyncWithLog, dedup } from "./util";
+import { apiFetch, paginateGitLab, runSyncWithLog, dedup } from "./util";
 
 // ---------------------------------------------------------------------------
 // Types for GitLab API responses
@@ -33,35 +33,6 @@ interface GitLabNote {
   created_at: string;
   author: { id: number };
   system: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// GitLab pagination helper
-// ---------------------------------------------------------------------------
-
-async function paginateGitLab<T>(
-  url: string,
-  headers: Record<string, string>
-): Promise<T[]> {
-  const all: T[] = [];
-  let page = 1;
-
-  while (true) {
-    const separator = url.includes("?") ? "&" : "?";
-    const pagedUrl = `${url}${separator}per_page=100&page=${page}`;
-
-    const { data, headers: resHeaders } = await apiFetch<T[]>(pagedUrl, {
-      headers,
-    });
-
-    all.push(...data);
-
-    const nextPage = resHeaders.get("x-next-page");
-    if (!nextPage || nextPage === "") break;
-    page = Number(nextPage);
-  }
-
-  return all;
 }
 
 // ---------------------------------------------------------------------------

@@ -42,14 +42,18 @@ isaac/
 │   │   │   ├── meetings.ts
 │   │   │   ├── wins.ts
 │   │   │   ├── objectives.ts
+│   │   │   ├── pipelines.ts    # Pipeline metrics (weekly stats, slowest/flaky jobs)
+│   │   │   ├── share.ts        # POST /share (generate share URL)
 │   │   │   └── wbso.ts
 │   │   ├── sync/
 │   │   │   ├── run.ts          # Cron entry point (with concurrent-sync guard)
 │   │   │   ├── jira.ts
 │   │   │   ├── gitlab.ts
+│   │   │   ├── gitlab-pipelines.ts  # Pipeline + job sync (all pipelines, not just mine)
 │   │   │   ├── confluence.ts
 │   │   │   ├── calendar.ts     # Calls Apps Script endpoint
-│   │   │   └── linker.ts       # Infers links between entities
+│   │   │   ├── linker.ts       # Infers links between entities
+│   │   │   └── kr-updater.ts   # Auto-updates KRs with data_source from live data
 │   │   ├── slack/
 │   │   │   └── handler.ts
 │   │   └── wbso/
@@ -68,9 +72,11 @@ isaac/
 │       │   └── index.ts
 │       ├── composables/
 │       │   ├── useAuth.ts      # Auth state + passkey ceremonies
-│       │   └── useDashboard.ts # Dashboard data fetching
+│       │   ├── useDashboard.ts  # Dashboard data fetching
+│       │   ├── useObjectives.ts # OKR CRUD + evidence management
+│       │   └── usePipelines.ts  # Pipeline metrics fetching
 │       ├── components/
-│       │   └── dashboard/
+│       │   ├── dashboard/
 │       │       ├── WeekPicker.vue
 │       │       ├── StatsCards.vue
 │       │       ├── WeekGrid.vue
@@ -81,7 +87,23 @@ isaac/
 │       │       ├── ProjectsPanel.vue  # Tickets worked on this week
 │       │       ├── QuickLinks.vue     # Links to Jira, GitLab, Confluence, etc.
 │       │       └── WeekDistribution.vue # Work distribution breakdown + daily volume
+│       │   ├── objectives/
+│       │       ├── ObjectiveCard.vue        # Expandable objective with KR list
+│       │       ├── KeyResultRow.vue         # Single KR with status badge + progress
+│       │       ├── StatusBadge.vue          # on_track/at_risk/behind/completed pill
+│       │       ├── EvidencePanel.vue        # Linked evidence items (epics, tickets, MRs, docs)
+│       │       └── EvidencePicker.vue       # Search + add epic evidence to a KR
+│       │   └── pipelines/
+│       │       ├── PipelineStatsCards.vue   # Max/P90 duration + success rate
+│       │       ├── DurationTrendChart.vue   # Grouped bar chart with 15m target line
+│       │       ├── SlowestJobsList.vue      # Top 10 slowest jobs by avg duration
+│       │       └── FlakyJobsList.vue        # Top 10 flakiest jobs by retry count
 │       ├── views/
+│       │   ├── DashboardView.vue
+│       │   ├── ObjectivesView.vue
+│       │   ├── PipelinesView.vue
+│       │   ├── WbsoView.vue
+│       │   └── LoginView.vue
 │       └── api/
 │           └── client.ts       # Typed API client
 └── shared/
@@ -245,8 +267,47 @@ Generic linking table for wins and KR evidence. No FK constraints (polymorphic t
 | target_value | decimal | Nullable |
 | current_value | decimal | Nullable |
 | unit | text | Nullable, e.g. "tickets", "percent", "hours" |
+| data_source | text | Nullable, auto-update source identifier (e.g. "pipeline:max_duration") |
 | status | text | on_track, at_risk, behind, completed |
 | created_at | timestamptz | |
+
+### pipelines
+
+GitLab CI/CD pipelines for the project. Tracks all finished pipelines (not just mine) to measure KR "reduce max pipeline duration to below 15 minutes". Uses GitLab pipeline ID as PK.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | integer PK | GitLab pipeline ID |
+| ref | text | Branch/MR ref |
+| status | text | success, failed, canceled |
+| source | text | merge_request_event, push, web, schedule |
+| duration_seconds | integer | Nullable |
+| queued_duration_seconds | integer | Nullable |
+| coverage | decimal | Nullable |
+| web_url | text | |
+| gitlab_created_at | timestamptz | |
+| started_at | timestamptz | Nullable |
+| finished_at | timestamptz | Nullable |
+| synced_at | timestamptz | |
+
+### pipeline_jobs
+
+Individual jobs within a pipeline. Uses GitLab job ID as PK.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | integer PK | GitLab job ID |
+| pipeline_id | integer FK → pipelines | |
+| name | text | e.g. "playwright_e2e_print_voucher" |
+| stage | text | e.g. "test", "lint" |
+| status | text | success, failed, canceled, manual, skipped |
+| duration_seconds | decimal | Nullable (float seconds) |
+| queued_duration_seconds | decimal | Nullable |
+| allow_failure | boolean | |
+| retried | boolean | Superseded runs marked `retried: true` |
+| web_url | text | |
+| started_at | timestamptz | Nullable |
+| finished_at | timestamptz | Nullable |
 
 ### passkey_credentials
 
@@ -269,7 +330,7 @@ Track sync job runs.
 | Column | Type | Notes |
 |---|---|---|
 | id | serial PK | |
-| source | text | jira, gitlab, confluence, calendar, slack |
+| source | text | jira, gitlab, gitlab-pipelines, confluence, calendar, slack |
 | status | text | running, success, error |
 | started_at | timestamptz | |
 | finished_at | timestamptz | Nullable |
@@ -282,7 +343,14 @@ WBSO estimates are computed on the fly from activity data (tickets, MRs, meeting
 
 ## API Design
 
-All routes under `/api`, JWT-protected except auth and Slack endpoints.
+All routes under `/api`, JWT-protected except auth and Slack endpoints. Two JWT token types:
+
+- **Owner token** (subject: `isaac-owner`, 7d expiry) — full read/write access, issued via passkey login
+- **Share token** (subject: `isaac-share`, 24h expiry) — read-only access, issued via `POST /api/share`
+
+Write endpoints (POST/PATCH/DELETE on objectives, key results, evidence, sync, share) require an owner token (403 for share tokens). The frontend hides write controls in share mode.
+
+Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` route stores the token in localStorage and redirects to dashboard.
 
 - **Auth:** GET `/auth/status`, POST `/auth/register/options`, POST `/auth/register/verify`, POST `/auth/authenticate/options`, POST `/auth/authenticate/verify`, POST `/auth/refresh`
 - **Tickets:** GET `/tickets`, GET `/tickets/:key`, PATCH `/tickets/:key`
@@ -290,11 +358,13 @@ All routes under `/api`, JWT-protected except auth and Slack endpoints.
 - **Confluence docs:** GET `/confluence-documents`, GET `/confluence-documents/:id`, PATCH `/confluence-documents/:id`
 - **Meetings:** GET `/meetings`, GET `/meetings/:id`, PATCH `/meetings/:id`
 - **Wins:** GET/POST `/wins`, GET/PATCH/DELETE `/wins/:id`, POST `/wins/:id/links`, DELETE `/wins/:id/links/:linkId`
-- **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`
+- **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`, GET `/objectives/epics?q=`, POST `/objectives/seed` (owner-only, idempotent seeder for 2026 OKRs)
 - **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
+- **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills), GET `/sync/status`, GET `/sync/log`
+- **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
 ## Sync Architecture
@@ -303,10 +373,11 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 
 1. Checks `sync_log` for any `running` status with `started_at > now() - 10 min` → aborts if found (concurrent-sync guard)
 2. Imports DB and sync modules directly (same codebase, no HTTP)
-3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar)
+3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar → GitLab Pipelines)
 4. All sync functions accept an optional `sinceOverride` parameter for backfill support
 5. Runs the linker to infer relationships (branch name → ticket, etc.), skipping rows where `*_inferred = false`
-6. Logs results to `sync_log`
+6. Runs the KR updater to auto-update key results that have a `data_source` set
+7. Logs results to `sync_log`
 
 Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars.
 

@@ -4,6 +4,7 @@ import {
   serial,
   boolean,
   integer,
+  bigint,
   decimal,
   timestamp,
   customType,
@@ -172,8 +173,45 @@ export const keyResults = pgTable("key_results", {
   targetValue: decimal("target_value"),
   currentValue: decimal("current_value"),
   unit: text("unit"),
+  dataSource: text("data_source"),
   status: text("status").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+// --- pipelines ---
+
+export const pipelines = pgTable("pipelines", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  ref: text("ref"),
+  status: text("status").notNull(),
+  source: text("source"),
+  durationSeconds: integer("duration_seconds"),
+  queuedDurationSeconds: integer("queued_duration_seconds"),
+  coverage: decimal("coverage"),
+  webUrl: text("web_url").notNull(),
+  gitlabCreatedAt: timestamp("gitlab_created_at", {
+    withTimezone: true,
+  }).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+});
+
+export const pipelineJobs = pgTable("pipeline_jobs", {
+  id: bigint("id", { mode: "number" }).primaryKey(),
+  pipelineId: bigint("pipeline_id", { mode: "number" })
+    .notNull()
+    .references(() => pipelines.id),
+  name: text("name").notNull(),
+  stage: text("stage").notNull(),
+  status: text("status").notNull(),
+  durationSeconds: decimal("duration_seconds"),
+  queuedDurationSeconds: decimal("queued_duration_seconds"),
+  allowFailure: boolean("allow_failure").notNull(),
+  retried: boolean("retried").notNull(),
+  webUrl: text("web_url").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
 });
 
 // --- passkey_credentials ---

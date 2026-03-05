@@ -1,7 +1,8 @@
-import { verifyToken } from "./jwt";
+import { verifyToken, verifyShareToken } from "./jwt";
 
 // Elysia beforeHandle function for use with .guard()
-export async function verifyJwt({ request }: { request: Request }) {
+// Tries owner token first, falls back to share token
+export async function verifyJwt({ request, store }: { request: Request; store: { isOwner: boolean } }) {
   const header = request.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -11,10 +12,28 @@ export async function verifyJwt({ request }: { request: Request }) {
   }
 
   const token = header.slice(7);
-  const valid = await verifyToken(token);
-  if (!valid) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
+
+  if (await verifyToken(token)) {
+    store.isOwner = true;
+    return;
+  }
+
+  if (await verifyShareToken(token)) {
+    store.isOwner = false;
+    return;
+  }
+
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// Guard that requires owner token — returns 403 for share viewers
+export async function requireOwner({ store }: { store: { isOwner: boolean } }) {
+  if (!store.isOwner) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
       headers: { "content-type": "application/json" },
     });
   }

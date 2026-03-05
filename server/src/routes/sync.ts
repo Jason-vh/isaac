@@ -4,6 +4,7 @@ import { syncJira } from "../sync/jira";
 import { syncGitLab } from "../sync/gitlab";
 import { syncConfluence } from "../sync/confluence";
 import { syncCalendar } from "../sync/calendar";
+import { syncGitLabPipelines } from "../sync/gitlab-pipelines";
 import { runLinker } from "../sync/linker";
 
 const SYNC_FNS: Record<string, (since?: Date) => Promise<void>> = {
@@ -11,6 +12,7 @@ const SYNC_FNS: Record<string, (since?: Date) => Promise<void>> = {
   gitlab: syncGitLab,
   confluence: syncConfluence,
   calendar: syncCalendar,
+  "gitlab-pipelines": syncGitLabPipelines,
 };
 
 const VALID_SOURCES = Object.keys(SYNC_FNS);
