@@ -303,6 +303,7 @@ GitLab CI/CD pipelines for the project. Tracks all finished pipelines (not just 
 |---|---|---|
 | id | integer PK | GitLab pipeline ID |
 | iid | integer | Nullable, project-scoped pipeline number (needed for GraphQL queries) |
+| merge_request_id | int FK → merge_requests | Nullable, resolved during sync from `refs/merge-requests/<iid>/` ref pattern |
 | ref | text | Branch/MR ref |
 | status | text | success, failed, canceled |
 | source | text | merge_request_event, push, web, schedule |

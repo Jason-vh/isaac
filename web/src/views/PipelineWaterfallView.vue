@@ -98,6 +98,10 @@ import type { PipelineListItem } from "@isaac/shared";
 import { ArrowLeftIcon, ChevronRightIcon } from "@heroicons/vue/20/solid";
 import PipelineWaterfallCard from "../components/pipelines/PipelineWaterfallCard.vue";
 import { usePipelineWaterfall } from "../composables/usePipelineWaterfall";
+import { useRouter, useRoute } from "vue-router";
+
+const router = useRouter();
+const route = useRoute();
 
 const {
   pipelinesList,
@@ -115,7 +119,10 @@ const tabs = [
 ] as const;
 
 type TabKey = (typeof tabs)[number]["key"];
-const activeTab = ref<TabKey>("pipeline");
+const initialTab = tabs.some((t) => t.key === route.params.tab)
+  ? (route.params.tab as TabKey)
+  : "pipeline";
+const activeTab = ref<TabKey>(initialTab);
 
 const expandedMrs = reactive(new Set<number>());
 const mrPipelinesMap = reactive(new Map<number, PipelineListItem[]>());
@@ -123,6 +130,7 @@ const mrPipelinesLoading = reactive(new Set<number>());
 
 function switchTab(tab: TabKey) {
   activeTab.value = tab;
+  router.replace({ params: { tab } });
   if (tab === "pipeline" && pipelinesList.value.length === 0) {
     fetchPipelines(50);
   } else if (tab === "mr" && mergeRequests.value.length === 0) {
@@ -153,5 +161,11 @@ function mrStatusDot(status: string): string {
   }
 }
 
-onMounted(() => fetchPipelines(50));
+onMounted(() => {
+  if (activeTab.value === "mr") {
+    fetchMergeRequests(30);
+  } else {
+    fetchPipelines(50);
+  }
+});
 </script>

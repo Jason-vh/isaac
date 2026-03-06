@@ -29,9 +29,9 @@ interface GitLabMR {
 }
 
 interface GitLabMRDetail {
-  additions: number;
-  deletions: number;
-  commit_count: number;
+  additions: number | null;
+  deletions: number | null;
+  commit_count: number | null;
 }
 
 interface GitLabCommit {
@@ -129,9 +129,9 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           authoredByMe,
           reviewedByMe,
           branchName: mr.source_branch,
-          additions: detail.additions,
-          deletions: detail.deletions,
-          commitCount: detail.commit_count,
+          additions: detail.additions ?? 0,
+          deletions: detail.deletions ?? 0,
+          commitCount: detail.commit_count ?? 0,
           gitlabCreatedAt: new Date(mr.created_at),
           mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
           syncedAt: new Date(),
@@ -146,9 +146,9 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
             authoredByMe,
             reviewedByMe,
             branchName: mr.source_branch,
-            additions: detail.additions,
-            deletions: detail.deletions,
-            commitCount: detail.commit_count,
+            additions: detail.additions ?? 0,
+            deletions: detail.deletions ?? 0,
+            commitCount: detail.commit_count ?? 0,
             gitlabCreatedAt: new Date(mr.created_at),
             mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
             syncedAt: new Date(),

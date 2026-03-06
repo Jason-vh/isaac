@@ -1,5 +1,6 @@
+import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { pipelines, pipelineJobs } from "../db/schema";
+import { pipelines, pipelineJobs, mergeRequests } from "../db/schema";
 import { env } from "../env";
 import { apiFetch, paginateGitLab, runSyncWithLog } from "./util";
 
@@ -176,6 +177,21 @@ export async function syncGitLabPipelines(
           authHeaders
         );
 
+        // Resolve merge request link from ref
+        let mergeRequestId: number | null = null;
+        const mrIidMatch = detail.ref?.match(
+          /^refs\/merge-requests\/(\d+)\//
+        );
+        if (mrIidMatch) {
+          const mrIid = Number(mrIidMatch[1]);
+          const [mr] = await db
+            .select({ id: mergeRequests.id })
+            .from(mergeRequests)
+            .where(eq(mergeRequests.gitlabIid, mrIid))
+            .limit(1);
+          if (mr) mergeRequestId = mr.id;
+        }
+
         // Fetch job needs via GraphQL
         const needsMap = await fetchJobNeeds(
           baseUrl,
@@ -190,6 +206,7 @@ export async function syncGitLabPipelines(
           .values({
             id: detail.id,
             iid: detail.iid,
+            mergeRequestId,
             ref: detail.ref,
             status: detail.status,
             source: detail.source,
@@ -212,6 +229,7 @@ export async function syncGitLabPipelines(
             target: pipelines.id,
             set: {
               iid: detail.iid,
+              mergeRequestId,
               ref: detail.ref,
               status: detail.status,
               source: detail.source,

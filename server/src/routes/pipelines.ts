@@ -262,9 +262,9 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
         mr.branch_name,
         mr.gitlab_created_at,
         mr.merged_at,
-        (SELECT count(*)::int FROM pipelines p WHERE p.ref = mr.branch_name) AS pipeline_count
+        (SELECT count(*)::int FROM pipelines p WHERE p.merge_request_id = mr.id) AS pipeline_count
       FROM merge_requests mr
-      WHERE EXISTS (SELECT 1 FROM pipelines p WHERE p.ref = mr.branch_name)
+      WHERE EXISTS (SELECT 1 FROM pipelines p WHERE p.merge_request_id = mr.id)
       ORDER BY mr.gitlab_created_at DESC
       LIMIT ${limit}
     `);
@@ -286,16 +286,6 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
   .get("/merge-requests/:id/pipelines", async ({ params }) => {
     const mrId = Number(params.id);
 
-    const mrRows = await db.execute(sql`
-      SELECT branch_name FROM merge_requests WHERE id = ${mrId}
-    `);
-
-    if ((mrRows as any[]).length === 0) {
-      return [];
-    }
-
-    const branchName = (mrRows as any[])[0].branch_name;
-
     const rows = await db.execute(sql`
       SELECT
         p.id, p.ref, p.status, p.source, p.duration_seconds,
@@ -303,7 +293,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
         (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
         (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
       FROM pipelines p
-      WHERE p.ref = ${branchName}
+      WHERE p.merge_request_id = ${mrId}
       ORDER BY p.gitlab_created_at DESC
     `);
 

@@ -196,6 +196,9 @@ export const keyResults = pgTable("key_results", {
 export const pipelines = pgTable("pipelines", {
   id: bigint("id", { mode: "number" }).primaryKey(),
   iid: integer("iid"),
+  mergeRequestId: integer("merge_request_id").references(
+    () => mergeRequests.id
+  ),
   ref: text("ref"),
   status: text("status").notNull(),
   source: text("source"),

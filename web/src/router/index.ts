@@ -39,7 +39,7 @@ export const router = createRouter({
       component: () => import("../views/ObjectivesView.vue"),
     },
     {
-      path: "/pipelines/waterfall",
+      path: "/pipelines/waterfall/:tab?",
       name: "pipeline-waterfall",
       component: () => import("../views/PipelineWaterfallView.vue"),
     },
