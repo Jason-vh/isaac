@@ -24,12 +24,12 @@ export const router = createRouter({
       },
     },
     {
-      path: "/",
+      path: "/:week?",
       name: "dashboard",
       component: DashboardView,
     },
     {
-      path: "/wbso",
+      path: "/wbso/:week?",
       name: "wbso",
       component: () => import("../views/WbsoView.vue"),
     },
@@ -37,6 +37,11 @@ export const router = createRouter({
       path: "/objectives",
       name: "objectives",
       component: () => import("../views/ObjectivesView.vue"),
+    },
+    {
+      path: "/pipelines/waterfall",
+      name: "pipeline-waterfall",
+      component: () => import("../views/PipelineWaterfallView.vue"),
     },
     {
       path: "/pipelines",

@@ -61,6 +61,7 @@ export const mergeRequests = pgTable("merge_requests", {
   title: text("title").notNull(),
   status: text("status").notNull(),
   authoredByMe: boolean("authored_by_me").notNull(),
+  reviewedByMe: boolean("reviewed_by_me").notNull().default(false),
   branchName: text("branch_name").notNull(),
   ticketKey: text("ticket_key").references(() => tickets.key),
   ticketKeyInferred: boolean("ticket_key_inferred").notNull().default(true),
@@ -82,6 +83,18 @@ export const mergeRequestEvents = pgTable("merge_request_events", {
   eventType: text("event_type").notNull(),
   externalUrl: text("external_url"),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+});
+
+// --- commits ---
+
+export const commits = pgTable("commits", {
+  id: serial("id").primaryKey(),
+  mergeRequestId: integer("merge_request_id")
+    .notNull()
+    .references(() => mergeRequests.id),
+  sha: text("sha").notNull().unique(),
+  title: text("title").notNull(),
+  authoredAt: timestamp("authored_at", { withTimezone: true }).notNull(),
 });
 
 // --- confluence_documents ---
@@ -182,6 +195,7 @@ export const keyResults = pgTable("key_results", {
 
 export const pipelines = pgTable("pipelines", {
   id: bigint("id", { mode: "number" }).primaryKey(),
+  iid: integer("iid"),
   ref: text("ref"),
   status: text("status").notNull(),
   source: text("source"),
@@ -209,6 +223,7 @@ export const pipelineJobs = pgTable("pipeline_jobs", {
   queuedDurationSeconds: decimal("queued_duration_seconds"),
   allowFailure: boolean("allow_failure").notNull(),
   retried: boolean("retried").notNull(),
+  needs: text("needs").array(),
   webUrl: text("web_url").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),

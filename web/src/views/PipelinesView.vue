@@ -14,6 +14,12 @@
           <p class="mt-1 text-sm text-ink-muted">CI/CD performance tracking.</p>
         </div>
         <div class="flex items-center gap-2">
+          <router-link
+            to="/pipelines/waterfall"
+            class="rounded-lg border border-border px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-1 transition-colors"
+          >
+            Waterfall
+          </router-link>
           <span class="text-sm text-ink-muted">Period:</span>
           <select
             v-model="weeks"

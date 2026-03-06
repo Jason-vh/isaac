@@ -146,4 +146,178 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       retryCount: r.retry_count,
       retryRate: Number(r.retry_rate),
     }));
+  })
+
+  // Recent pipelines list
+  .get("/list", async ({ query }) => {
+    const limit = Math.min(Number(query?.limit) || 50, 200);
+    const source = query?.source || null;
+
+    const sourceFilter = source ? sql`AND p.source = ${source}` : sql``;
+
+    const rows = await db.execute(sql`
+      SELECT
+        p.id,
+        p.ref,
+        p.status,
+        p.source,
+        p.duration_seconds,
+        p.web_url,
+        p.gitlab_created_at,
+        p.started_at,
+        p.finished_at,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
+      FROM pipelines p
+      WHERE 1=1 ${sourceFilter}
+      ORDER BY p.gitlab_created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return (rows as any[]).map((r) => ({
+      id: Number(r.id),
+      ref: r.ref,
+      status: r.status,
+      source: r.source,
+      durationSeconds: r.duration_seconds,
+      jobCount: r.job_count,
+      retriedJobCount: r.retried_job_count,
+      webUrl: r.web_url,
+      gitlabCreatedAt: new Date(r.gitlab_created_at).toISOString(),
+      startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
+      finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+    }));
+  })
+
+  // Pipeline detail with jobs
+  .get("/:id/jobs", async ({ params }) => {
+    const pipelineId = Number(params.id);
+
+    const pRows = await db.execute(sql`
+      SELECT
+        p.id, p.ref, p.status, p.source, p.duration_seconds,
+        p.web_url, p.gitlab_created_at, p.started_at, p.finished_at,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
+      FROM pipelines p
+      WHERE p.id = ${pipelineId}
+    `);
+
+    if ((pRows as any[]).length === 0) {
+      return { error: "Pipeline not found" };
+    }
+
+    const p = (pRows as any[])[0];
+
+    const jobRows = await db.execute(sql`
+      SELECT
+        j.id, j.name, j.stage, j.status, j.duration_seconds,
+        j.queued_duration_seconds, j.allow_failure, j.retried,
+        j.needs, j.web_url, j.started_at, j.finished_at
+      FROM pipeline_jobs j
+      WHERE j.pipeline_id = ${pipelineId}
+      ORDER BY j.started_at NULLS LAST, j.id
+    `);
+
+    return {
+      id: Number(p.id),
+      ref: p.ref,
+      status: p.status,
+      source: p.source,
+      durationSeconds: p.duration_seconds,
+      jobCount: p.job_count,
+      retriedJobCount: p.retried_job_count,
+      webUrl: p.web_url,
+      gitlabCreatedAt: new Date(p.gitlab_created_at).toISOString(),
+      startedAt: p.started_at ? new Date(p.started_at).toISOString() : null,
+      finishedAt: p.finished_at ? new Date(p.finished_at).toISOString() : null,
+      jobs: (jobRows as any[]).map((j) => ({
+        id: Number(j.id),
+        name: j.name,
+        stage: j.stage,
+        status: j.status,
+        durationSeconds: j.duration_seconds ? Number(j.duration_seconds) : null,
+        queuedDurationSeconds: j.queued_duration_seconds ? Number(j.queued_duration_seconds) : null,
+        allowFailure: j.allow_failure,
+        retried: j.retried,
+        needs: j.needs ?? null,
+        webUrl: j.web_url,
+        startedAt: j.started_at ? new Date(j.started_at).toISOString() : null,
+        finishedAt: j.finished_at ? new Date(j.finished_at).toISOString() : null,
+      })),
+    };
+  })
+
+  // Merge requests with pipeline counts
+  .get("/merge-requests", async ({ query }) => {
+    const limit = Math.min(Number(query?.limit) || 30, 100);
+
+    const rows = await db.execute(sql`
+      SELECT
+        mr.id,
+        mr.gitlab_iid,
+        mr.project_path,
+        mr.title,
+        mr.status,
+        mr.branch_name,
+        mr.gitlab_created_at,
+        mr.merged_at,
+        (SELECT count(*)::int FROM pipelines p WHERE p.ref = mr.branch_name) AS pipeline_count
+      FROM merge_requests mr
+      WHERE EXISTS (SELECT 1 FROM pipelines p WHERE p.ref = mr.branch_name)
+      ORDER BY mr.gitlab_created_at DESC
+      LIMIT ${limit}
+    `);
+
+    return (rows as any[]).map((r) => ({
+      id: r.id,
+      gitlabIid: r.gitlab_iid,
+      projectPath: r.project_path,
+      title: r.title,
+      status: r.status,
+      branchName: r.branch_name,
+      pipelineCount: r.pipeline_count,
+      gitlabCreatedAt: new Date(r.gitlab_created_at).toISOString(),
+      mergedAt: r.merged_at ? new Date(r.merged_at).toISOString() : null,
+    }));
+  })
+
+  // Pipelines for a specific MR
+  .get("/merge-requests/:id/pipelines", async ({ params }) => {
+    const mrId = Number(params.id);
+
+    const mrRows = await db.execute(sql`
+      SELECT branch_name FROM merge_requests WHERE id = ${mrId}
+    `);
+
+    if ((mrRows as any[]).length === 0) {
+      return [];
+    }
+
+    const branchName = (mrRows as any[])[0].branch_name;
+
+    const rows = await db.execute(sql`
+      SELECT
+        p.id, p.ref, p.status, p.source, p.duration_seconds,
+        p.web_url, p.gitlab_created_at, p.started_at, p.finished_at,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
+      FROM pipelines p
+      WHERE p.ref = ${branchName}
+      ORDER BY p.gitlab_created_at DESC
+    `);
+
+    return (rows as any[]).map((r) => ({
+      id: Number(r.id),
+      ref: r.ref,
+      status: r.status,
+      source: r.source,
+      durationSeconds: r.duration_seconds,
+      jobCount: r.job_count,
+      retriedJobCount: r.retried_job_count,
+      webUrl: r.web_url,
+      gitlabCreatedAt: new Date(r.gitlab_created_at).toISOString(),
+      startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
+      finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+    }));
   });

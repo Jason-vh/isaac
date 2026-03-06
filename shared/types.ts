@@ -32,6 +32,7 @@ export interface MergeRequest {
   title: string;
   status: string;
   authoredByMe: boolean;
+  reviewedByMe: boolean;
   branchName: string;
   ticketKey: string | null;
   ticketKeyInferred: boolean;
@@ -194,6 +195,7 @@ export interface DayActivity {
   mrsMerged: number;
   mrsOpened: number;
   mrComments: number;
+  mrsReviewed: number;
   confluencePublished: number;
   meetingMinutes: number;
   meetingCount: number;
@@ -204,6 +206,8 @@ export interface WeekStats {
   ticketsClosed: number;
   storyPointsClosed: number;
   mrsMerged: number;
+  mrsReviewed: number;
+  teamMrsMerged: number;
   linesChanged: number;
   meetingHours: number;
   meetingCount: number;
@@ -273,6 +277,116 @@ export interface FlakyJob {
   totalRuns: number;
   retryCount: number;
   retryRate: number;
+}
+
+// Pipeline Waterfall
+export interface PipelineListItem {
+  id: number;
+  ref: string | null;
+  status: string;
+  source: string | null;
+  durationSeconds: number | null;
+  jobCount: number;
+  retriedJobCount: number;
+  webUrl: string;
+  gitlabCreatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface PipelineJobDetail {
+  id: number;
+  name: string;
+  stage: string;
+  status: string;
+  durationSeconds: number | null;
+  queuedDurationSeconds: number | null;
+  allowFailure: boolean;
+  retried: boolean;
+  needs: string[] | null;
+  webUrl: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface PipelineDetail extends PipelineListItem {
+  jobs: PipelineJobDetail[];
+}
+
+export interface MergeRequestListItem {
+  id: number;
+  gitlabIid: number;
+  projectPath: string;
+  title: string;
+  status: string;
+  branchName: string;
+  pipelineCount: number;
+  gitlabCreatedAt: string;
+  mergedAt: string | null;
+}
+
+// WBSO
+export type WbsoCategory = "coding" | "dev_meeting" | "dev_misc" | "non_dev";
+
+export interface WbsoEntry {
+  category: WbsoCategory;
+  ticketKey: string | null;
+  ticketTitle: string | null;
+  epicKey: string | null;
+  epicTitle: string | null;
+  hours: number;
+  meetingId?: number;
+  reasoning: WbsoReasoning;
+}
+
+export interface WbsoReasoning {
+  meetingTitle?: string;
+  meetingDuration?: number; // minutes
+  commitCount?: number;
+  totalAdditions?: number;
+  totalDeletions?: number;
+  mrTitles?: string[];
+}
+
+export interface WbsoDayData {
+  date: string;
+  dayLabel: string;
+  totalHours: number;
+  entries: WbsoEntry[];
+}
+
+export interface WbsoCategoryTotals {
+  coding: number;
+  devMeeting: number;
+  devMisc: number;
+  nonDev: number;
+  total: number;
+}
+
+export interface WbsoEpicSummary {
+  epicKey: string;
+  epicTitle: string;
+  totalHours: number;
+  categories: { coding: number; devMeeting: number; devMisc: number };
+}
+
+export interface WbsoUnlinkedMR {
+  id: number;
+  gitlabIid: number;
+  title: string;
+  branchName: string;
+  commitCount: number;
+  additions: number;
+  deletions: number;
+}
+
+export interface WbsoWeekData {
+  weekStart: string;
+  weekEnd: string;
+  days: WbsoDayData[];
+  totals: WbsoCategoryTotals;
+  byEpic: WbsoEpicSummary[];
+  unlinkedMRs: WbsoUnlinkedMR[];
 }
 
 // Sync

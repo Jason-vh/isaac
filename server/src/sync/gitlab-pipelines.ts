@@ -9,6 +9,7 @@ import { apiFetch, paginateGitLab, runSyncWithLog } from "./util";
 
 interface GitLabPipelineListItem {
   id: number;
+  iid: number;
   ref: string;
   status: string;
   source: string;
@@ -19,6 +20,7 @@ interface GitLabPipelineListItem {
 
 interface GitLabPipelineDetail {
   id: number;
+  iid: number;
   ref: string;
   status: string;
   source: string;
@@ -29,6 +31,10 @@ interface GitLabPipelineDetail {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+}
+
+interface GitLabProject {
+  path_with_namespace: string;
 }
 
 interface GitLabJob {
@@ -47,6 +53,80 @@ interface GitLabJob {
 const FINISHED_STATUSES = new Set(["success", "failed", "canceled"]);
 
 // ---------------------------------------------------------------------------
+// GraphQL query for job `needs` (DAG dependencies)
+// ---------------------------------------------------------------------------
+
+const JOB_NEEDS_QUERY = `
+  query($projectPath: ID!, $pipelineIid: ID!) {
+    project(fullPath: $projectPath) {
+      pipeline(iid: $pipelineIid) {
+        jobs {
+          nodes {
+            name
+            needs {
+              nodes { name }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface GraphQLJobNeedsResponse {
+  data: {
+    project: {
+      pipeline: {
+        jobs: {
+          nodes: Array<{
+            name: string;
+            needs: { nodes: Array<{ name: string }> } | null;
+          }>;
+        };
+      } | null;
+    } | null;
+  };
+}
+
+async function fetchJobNeeds(
+  baseUrl: string,
+  token: string,
+  projectPath: string,
+  pipelineIid: number
+): Promise<Map<string, string[] | null>> {
+  const res = await fetch(`${baseUrl}/api/graphql`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "PRIVATE-TOKEN": token,
+    },
+    body: JSON.stringify({
+      query: JOB_NEEDS_QUERY,
+      variables: { projectPath, pipelineIid: String(pipelineIid) },
+    }),
+  });
+
+  if (!res.ok) {
+    console.warn(`[gitlab-pipelines] GraphQL needs query failed: ${res.status}`);
+    return new Map();
+  }
+
+  const json = (await res.json()) as GraphQLJobNeedsResponse;
+  const jobs = json.data?.project?.pipeline?.jobs?.nodes;
+  if (!jobs) return new Map();
+
+  const map = new Map<string, string[] | null>();
+  for (const job of jobs) {
+    if (job.needs === null) {
+      map.set(job.name, null);
+    } else {
+      map.set(job.name, job.needs.nodes.map((n) => n.name));
+    }
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 // Sync
 // ---------------------------------------------------------------------------
 
@@ -60,6 +140,13 @@ export async function syncGitLabPipelines(
       const token = env.GITLAB_API_TOKEN;
       const projectId = env.GITLAB_PROJECT_ID;
       const authHeaders = { "PRIVATE-TOKEN": token };
+
+      // Step 0: Fetch project path (needed for GraphQL queries)
+      const { data: project } = await apiFetch<GitLabProject>(
+        `${baseUrl}/api/v4/projects/${projectId}`,
+        { headers: authHeaders }
+      );
+      const projectPath = project.path_with_namespace;
 
       // Step 1: Fetch pipelines updated since last sync
       const sinceISO = since.toISOString();
@@ -89,11 +176,20 @@ export async function syncGitLabPipelines(
           authHeaders
         );
 
+        // Fetch job needs via GraphQL
+        const needsMap = await fetchJobNeeds(
+          baseUrl,
+          token,
+          projectPath,
+          detail.iid
+        );
+
         // Upsert pipeline
         await db
           .insert(pipelines)
           .values({
             id: detail.id,
+            iid: detail.iid,
             ref: detail.ref,
             status: detail.status,
             source: detail.source,
@@ -115,6 +211,7 @@ export async function syncGitLabPipelines(
           .onConflictDoUpdate({
             target: pipelines.id,
             set: {
+              iid: detail.iid,
               ref: detail.ref,
               status: detail.status,
               source: detail.source,
@@ -149,6 +246,10 @@ export async function syncGitLabPipelines(
         // Upsert jobs
         for (const job of jobs) {
           const isRetried = latestByName.get(job.name) !== job.id;
+          const jobNeeds = needsMap.has(job.name)
+            ? needsMap.get(job.name)!
+            : null;
+
           await db
             .insert(pipelineJobs)
             .values({
@@ -165,6 +266,7 @@ export async function syncGitLabPipelines(
                 : null,
               allowFailure: job.allow_failure,
               retried: isRetried,
+              needs: jobNeeds,
               webUrl: job.web_url,
               startedAt: job.started_at ? new Date(job.started_at) : null,
               finishedAt: job.finished_at
@@ -186,6 +288,7 @@ export async function syncGitLabPipelines(
                   : null,
                 allowFailure: job.allow_failure,
                 retried: isRetried,
+                needs: jobNeeds,
                 webUrl: job.web_url,
                 startedAt: job.started_at
                   ? new Date(job.started_at)

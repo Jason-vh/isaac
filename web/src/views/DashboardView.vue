@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from "vue";
 import { useDashboard } from "../composables/useDashboard";
 import WeekPicker from "../components/dashboard/WeekPicker.vue";
 import StatsCards from "../components/dashboard/StatsCards.vue";
@@ -55,4 +56,14 @@ import WeekDistribution from "../components/dashboard/WeekDistribution.vue";
 import VelocityChart from "../components/dashboard/VelocityChart.vue";
 
 const { data, velocity, loading, error, prevWeek, nextWeek, goToday } = useDashboard();
+
+function onKeydown(e: KeyboardEvent) {
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.key === "ArrowLeft") prevWeek();
+  else if (e.key === "ArrowRight") nextWeek();
+}
+
+onMounted(() => window.addEventListener("keydown", onKeydown));
+onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 </script>

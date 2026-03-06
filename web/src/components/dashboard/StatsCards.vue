@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
     <div
       v-for="stat in cards"
       :key="stat.label"
@@ -32,6 +32,7 @@ import {
   CodeBracketIcon,
   CalendarIcon,
   DocumentTextIcon,
+  EyeIcon,
 } from "@heroicons/vue/20/solid";
 
 const props = defineProps<{ stats: WeekStats }>();
@@ -56,6 +57,18 @@ const cards = computed(() => [
     icon: CodeBracketIcon,
     iconBg: "bg-violet-50",
     iconColor: "text-activity-mr",
+  },
+  {
+    label: "MRs Reviewed",
+    value: props.stats.teamMrsMerged
+      ? `${props.stats.mrsReviewed} / ${props.stats.teamMrsMerged}`
+      : "0",
+    detail: props.stats.teamMrsMerged
+      ? `${Math.round((props.stats.mrsReviewed / props.stats.teamMrsMerged) * 100)}% of team`
+      : null,
+    icon: EyeIcon,
+    iconBg: "bg-amber-50",
+    iconColor: "text-amber-600",
   },
   {
     label: "Meetings",

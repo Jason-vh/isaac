@@ -62,6 +62,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         mrsMerged: 0,
         mrsOpened: 0,
         mrComments: 0,
+        mrsReviewed: 0,
         confluencePublished: 0,
         meetingMinutes: 0,
         meetingCount: 0,
@@ -74,6 +75,8 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       ticketsClosed: 0,
       storyPointsClosed: 0,
       mrsMerged: 0,
+      mrsReviewed: 0,
+      teamMrsMerged: 0,
       linesChanged: 0,
       meetingHours: 0,
       meetingCount: 0,
@@ -191,18 +194,19 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       });
     }
 
-    // 4. MRs merged
-    const mergedMrs = await db
+    // 4. MRs merged — personal (authored by me)
+    const myMergedMrs = await db
       .select()
       .from(mergeRequests)
       .where(
         and(
+          eq(mergeRequests.authoredByMe, true),
           gte(mergeRequests.mergedAt, monday),
           lt(mergeRequests.mergedAt, nextMonday)
         )
       );
 
-    for (const mr of mergedMrs) {
+    for (const mr of myMergedMrs) {
       const dk = dayKey(mr.mergedAt!);
       const day = dayMap.get(dk);
       if (day) day.mrsMerged++;
@@ -218,6 +222,30 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
         endsAt: null,
         externalUrl: null,
       });
+    }
+
+    // 4b. Team MRs merged (all project MRs) and MRs I reviewed
+    const allMergedMrs = await db
+      .select({
+        reviewedByMe: mergeRequests.reviewedByMe,
+        mergedAt: mergeRequests.mergedAt,
+      })
+      .from(mergeRequests)
+      .where(
+        and(
+          gte(mergeRequests.mergedAt, monday),
+          lt(mergeRequests.mergedAt, nextMonday)
+        )
+      );
+
+    for (const mr of allMergedMrs) {
+      stats.teamMrsMerged++;
+      if (mr.reviewedByMe) {
+        stats.mrsReviewed++;
+        const dk = dayKey(mr.mergedAt!);
+        const day = dayMap.get(dk);
+        if (day) day.mrsReviewed++;
+      }
     }
 
     // 5. Confluence events

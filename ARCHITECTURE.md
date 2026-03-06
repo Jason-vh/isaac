@@ -74,7 +74,9 @@ isaac/
 │       │   ├── useAuth.ts      # Auth state + passkey ceremonies
 │       │   ├── useDashboard.ts  # Dashboard data fetching
 │       │   ├── useObjectives.ts # OKR CRUD + evidence management
-│       │   └── usePipelines.ts  # Pipeline metrics fetching
+│       │   ├── usePipelines.ts  # Pipeline metrics fetching
+│       │   ├── usePipelineWaterfall.ts # Pipeline waterfall data fetching
+│       │   └── useWbso.ts       # WBSO week data fetching
 │       ├── components/
 │       │   ├── dashboard/
 │       │       ├── WeekPicker.vue
@@ -93,15 +95,24 @@ isaac/
 │       │       ├── StatusBadge.vue          # on_track/at_risk/behind/completed pill
 │       │       ├── EvidencePanel.vue        # Linked evidence items (epics, tickets, MRs, docs)
 │       │       └── EvidencePicker.vue       # Search + add epic evidence to a KR
-│       │   └── pipelines/
-│       │       ├── PipelineStatsCards.vue   # Max/P90 duration + success rate
-│       │       ├── DurationTrendChart.vue   # Grouped bar chart with 15m target line
-│       │       ├── SlowestJobsList.vue      # Top 10 slowest jobs by avg duration
-│       │       └── FlakyJobsList.vue        # Top 10 flakiest jobs by retry count
+│       │   ├── pipelines/
+│       │   │   ├── PipelineStatsCards.vue   # Max/P90 duration + success rate
+│       │   │   ├── DurationTrendChart.vue   # Grouped bar chart with 15m target line
+│       │   │   ├── SlowestJobsList.vue      # Top 10 slowest jobs by avg duration
+│       │   │   ├── FlakyJobsList.vue        # Top 10 flakiest jobs by retry count
+│       │   │   ├── PipelineWaterfallCard.vue # Pipeline list item linking to waterfall
+│       │   │   └── WaterfallChart.vue        # Job timeline bars with DAG dependency lines
+│       │   └── wbso/
+│       │       ├── WbsoCategoryCards.vue    # 5 stat cards (Coding, Dev Meeting, Dev Misc, Non-Dev, Total)
+│       │       ├── WbsoWeekGrid.vue         # 5-column Mon-Fri grid with entries per day
+│       │       ├── WbsoEntryChip.vue        # Single entry chip with category color + reasoning
+│       │       ├── WbsoEpicSummary.vue      # Table grouped by epic for WBSO form
+│       │       └── WbsoUnlinkedPanel.vue    # Collapsible panel for MRs without ticket links
 │       ├── views/
 │       │   ├── DashboardView.vue
 │       │   ├── ObjectivesView.vue
 │       │   ├── PipelinesView.vue
+│       │   ├── PipelineWaterfallView.vue
 │       │   ├── WbsoView.vue
 │       │   └── LoginView.vue
 │       └── api/
@@ -160,6 +171,7 @@ Raw status transitions and other events.
 | title | text | |
 | status | text | opened, merged, closed |
 | authored_by_me | boolean | |
+| reviewed_by_me | boolean | Default false. True if user approved or commented on the MR. |
 | branch_name | text | |
 | ticket_key | text FK → tickets | Nullable, inferred from branch name |
 | ticket_key_inferred | boolean | Default true. Set to false when manually overridden. |
@@ -179,6 +191,18 @@ Raw status transitions and other events.
 | event_type | text | authored, merged, commented |
 | external_url | text | Nullable, link to GitLab comment/MR for auditability |
 | occurred_at | timestamptz | |
+
+### commits
+
+Individual commits from merge requests, used to distribute coding effort across days for WBSO estimation.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | serial PK | |
+| merge_request_id | int FK → merge_requests | |
+| sha | text unique | Git commit SHA |
+| title | text | Commit message title |
+| authored_at | timestamptz | When the commit was authored |
 
 ### confluence_documents
 
@@ -278,6 +302,7 @@ GitLab CI/CD pipelines for the project. Tracks all finished pipelines (not just 
 | Column | Type | Notes |
 |---|---|---|
 | id | integer PK | GitLab pipeline ID |
+| iid | integer | Nullable, project-scoped pipeline number (needed for GraphQL queries) |
 | ref | text | Branch/MR ref |
 | status | text | success, failed, canceled |
 | source | text | merge_request_event, push, web, schedule |
@@ -305,6 +330,7 @@ Individual jobs within a pipeline. Uses GitLab job ID as PK.
 | queued_duration_seconds | decimal | Nullable |
 | allow_failure | boolean | |
 | retried | boolean | Superseded runs marked `retried: true` |
+| needs | text[] | Nullable, job names from `needs:` DAG keyword. `null` = default stage ordering, `[]` = no dependencies |
 | web_url | text | |
 | started_at | timestamptz | Nullable |
 | finished_at | timestamptz | Nullable |
@@ -360,8 +386,8 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Wins:** GET/POST `/wins`, GET/PATCH/DELETE `/wins/:id`, POST `/wins/:id/links`, DELETE `/wins/:id/links/:linkId`
 - **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`, GET `/objectives/epics?q=`, POST `/objectives/seed` (owner-only, idempotent seeder for 2026 OKRs)
 - **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
-- **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`
-- **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning)
+- **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`, GET `/pipelines/list?limit=N&source=S`, GET `/pipelines/:id/jobs` (includes `needs` for DAG dependency visualization), GET `/pipelines/merge-requests?limit=N`, GET `/pipelines/merge-requests/:id/pipelines`
+- **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning), PATCH `/wbso/meetings/:id` (override meeting category, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills), GET `/sync/status`, GET `/sync/log`
 - **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
@@ -379,7 +405,7 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 6. Runs the KR updater to auto-update key results that have a `data_source` set
 7. Logs results to `sync_log`
 
-Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars.
+Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars. Pipeline sync uses both the REST API (for pipeline/job details) and the GraphQL API (for job `needs` DAG dependencies, which aren't exposed via REST).
 
 ### Manual sync trigger
 

@@ -1,0 +1,1 @@
+ALTER TABLE "merge_requests" ADD COLUMN "reviewed_by_me" boolean DEFAULT false NOT NULL;

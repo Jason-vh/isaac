@@ -19,8 +19,8 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 | Source | What we track | Sync method |
 |---|---|---|
 | **Jira** | Tickets created, tickets closed/transitioned, story points, epics | Periodic (hourly) via API |
-| **GitLab** | MRs authored, MRs merged, MRs commented on | Periodic (hourly) via API |
-| **GitLab Pipelines** | Pipeline durations, per-job timing, retry/flaky rates (all pipelines, not just mine) | Periodic (hourly) via API |
+| **GitLab** | All project MRs (authored, reviewed, team). "Reviewed" = approved or commented. | Periodic (hourly) via API |
+| **GitLab Pipelines** | Pipeline durations, per-job timing, retry/flaky rates, DAG dependencies (all pipelines, not just mine) | Periodic (hourly) via REST + GraphQL API |
 | **Confluence** | Documents published, documents commented on (stretch) | Periodic (hourly) via API |
 | **Google Calendar** | Meetings attended, holidays/OOO | Periodic (hourly) via API |
 | **Slack bot** | Wins logged manually (shorthand, enriched later on web) | Real-time via Slack app |
@@ -38,7 +38,7 @@ Jira issue. Has story points, belongs to an epic, has status transitions. The fu
 Groups tickets into projects. Also a Jira issue. Maps to WBSO projects. The primary linking grain for documents and meetings.
 
 **Merge Request**
-GitLab MR. Tracked events: authored, merged, commented on. Linked to tickets via branch name (inferred).
+GitLab MR. All project MRs are stored for denominator metrics (e.g. review percentage). Three classes: authored (`authoredByMe`), reviewed (`reviewedByMe` — approved or commented, not authored), and team (neither). Events are only created for MRs the user participated in. Linked to tickets via branch name (inferred).
 
 **Document**
 Confluence page. Tracked events: published, commented on. Linked to epics (inferred where possible, manual otherwise).

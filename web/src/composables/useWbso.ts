@@ -1,9 +1,9 @@
 import { ref, watch } from "vue";
-import type { WeekData, VelocityWeek } from "@isaac/shared";
+import type { WbsoWeekData } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
 
-export function useDashboard() {
+export function useWbso() {
   const route = useRoute();
   const router = useRouter();
 
@@ -14,8 +14,7 @@ export function useDashboard() {
 
   const initialWeek = (route.params.week as string) || todayStr();
   const date = ref(initialWeek);
-  const data = ref<WeekData | null>(null);
-  const velocity = ref<VelocityWeek[]>([]);
+  const data = ref<WbsoWeekData | null>(null);
   const loading = ref(false);
   const error = ref("");
 
@@ -23,12 +22,7 @@ export function useDashboard() {
     loading.value = true;
     error.value = "";
     try {
-      const [weekData, velocityData] = await Promise.all([
-        api.get<WeekData>(`/dashboard/week/${date.value}`),
-        api.get<VelocityWeek[]>(`/dashboard/velocity?weeks=12`),
-      ]);
-      data.value = weekData;
-      velocity.value = velocityData;
+      data.value = await api.get<WbsoWeekData>(`/wbso/week/${date.value}`);
     } catch (e: any) {
       if (e instanceof UnauthorizedError) {
         router.push("/login");
@@ -38,6 +32,15 @@ export function useDashboard() {
     } finally {
       loading.value = false;
     }
+  }
+
+  async function updateMeetingCategory(
+    meetingId: number,
+    category: "dev" | "non_dev",
+    epicKey?: string
+  ) {
+    await api.patch(`/wbso/meetings/${meetingId}`, { category, epicKey });
+    await fetchWeek();
   }
 
   // Sync date → URL
@@ -76,5 +79,14 @@ export function useDashboard() {
     date.value = todayStr();
   }
 
-  return { date, data, velocity, loading, error, prevWeek, nextWeek, goToday };
+  return {
+    date,
+    data,
+    loading,
+    error,
+    prevWeek,
+    nextWeek,
+    goToday,
+    updateMeetingCategory,
+  };
 }

@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { mergeRequests, mergeRequestEvents } from "../db/schema";
+import { mergeRequests, mergeRequestEvents, commits } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, paginateGitLab, runSyncWithLog, dedup } from "./util";
@@ -26,6 +26,18 @@ interface GitLabMR {
   created_at: string;
   merged_at: string | null;
   author: { id: number };
+}
+
+interface GitLabMRDetail {
+  additions: number;
+  deletions: number;
+  commit_count: number;
+}
+
+interface GitLabCommit {
+  id: string; // sha
+  title: string;
+  authored_date: string;
 }
 
 interface GitLabNote {
@@ -61,32 +73,51 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
     );
     const projectPath = project.path_with_namespace;
 
-    // Step 3: Fetch MRs I authored
     const sinceISO = since.toISOString();
-    const authoredMRs = await paginateGitLab<GitLabMR>(
-      `${baseUrl}/api/v4/projects/${projectId}/merge_requests?author_id=${myUserId}&updated_after=${sinceISO}&state=all`,
+
+    // Step 3: Fetch ALL project MRs (no author/reviewer filter)
+    const allMRs = await paginateGitLab<GitLabMR>(
+      `${baseUrl}/api/v4/projects/${projectId}/merge_requests?updated_after=${sinceISO}&state=all`,
       authHeaders
     );
-
-    // Step 4: Fetch MRs I reviewed
-    const reviewedMRs = await paginateGitLab<GitLabMR>(
-      `${baseUrl}/api/v4/projects/${projectId}/merge_requests?reviewer_id=${myUserId}&updated_after=${sinceISO}&state=all`,
-      authHeaders
-    );
-
-    // Step 5: Merge and deduplicate by gitlab_id
-    const mrMap = new Map<number, GitLabMR>();
-    for (const mr of [...authoredMRs, ...reviewedMRs]) {
-      mrMap.set(mr.id, mr);
-    }
-    const allMRs = [...mrMap.values()];
 
     if (allMRs.length === 0) return 0;
 
-    // Step 6: Upsert MRs and create events
+    // Step 4: Fetch MRs I approved (efficient list-level filter)
+    const approvedMRs = await paginateGitLab<GitLabMR>(
+      `${baseUrl}/api/v4/projects/${projectId}/merge_requests?approved_by_ids[]=${myUserId}&updated_after=${sinceISO}&state=all`,
+      authHeaders
+    );
+    const approvedSet = new Set(approvedMRs.map((mr) => mr.id));
+
+    // Step 5: Process each MR
     for (const mr of allMRs) {
       const authoredByMe = mr.author.id === myUserId;
 
+      // Fetch MR detail for line stats and commit count
+      const { data: detail } = await apiFetch<GitLabMRDetail>(
+        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}`,
+        { headers: authHeaders }
+      );
+
+      // For non-authored MRs, check if I commented
+      let hasMyComments = false;
+      let myNotes: GitLabNote[] = [];
+
+      if (!authoredByMe) {
+        const notes = await paginateGitLab<GitLabNote>(
+          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
+          authHeaders
+        );
+        myNotes = notes.filter(
+          (note) => note.author.id === myUserId && !note.system
+        );
+        hasMyComments = myNotes.length > 0;
+      }
+
+      const reviewedByMe = approvedSet.has(mr.id) || hasMyComments;
+
+      // Upsert MR with both flags
       const [upserted] = await db
         .insert(mergeRequests)
         .values({
@@ -96,10 +127,11 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           title: mr.title,
           status: mr.state,
           authoredByMe,
+          reviewedByMe,
           branchName: mr.source_branch,
-          additions: 0, // TODO: fetch per-MR detail endpoint for line-level stats
-          deletions: 0, // TODO: fetch per-MR detail endpoint for line-level stats
-          commitCount: 0, // TODO: fetch per-MR detail endpoint for commit count
+          additions: detail.additions,
+          deletions: detail.deletions,
+          commitCount: detail.commit_count,
           gitlabCreatedAt: new Date(mr.created_at),
           mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
           syncedAt: new Date(),
@@ -112,10 +144,11 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
             title: mr.title,
             status: mr.state,
             authoredByMe,
+            reviewedByMe,
             branchName: mr.source_branch,
-            additions: 0, // TODO
-            deletions: 0, // TODO
-            commitCount: 0, // TODO
+            additions: detail.additions,
+            deletions: detail.deletions,
+            commitCount: detail.commit_count,
             gitlabCreatedAt: new Date(mr.created_at),
             mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
             syncedAt: new Date(),
@@ -124,6 +157,29 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         .returning({ id: mergeRequests.id });
 
       const mrId = upserted.id;
+
+      // Fetch and upsert commits for MRs I authored
+      if (authoredByMe) {
+        const gitlabCommits = await paginateGitLab<GitLabCommit>(
+          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
+          authHeaders
+        );
+
+        for (const c of gitlabCommits) {
+          await db
+            .insert(commits)
+            .values({
+              mergeRequestId: mrId,
+              sha: c.id,
+              title: c.title,
+              authoredAt: new Date(c.authored_date),
+            })
+            .onConflictDoNothing({ target: commits.sha });
+        }
+      }
+
+      // Events stay personal — only for MRs I participated in
+      if (!authoredByMe && !reviewedByMe) continue;
 
       // Build incoming events
       const incoming: Array<{
@@ -143,7 +199,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         });
       }
 
-      // "merged" event
+      // "merged" event (for authored OR reviewed MRs)
       if (mr.state === "merged" && mr.merged_at) {
         incoming.push({
           mergeRequestId: mrId,
@@ -153,23 +209,14 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         });
       }
 
-      // "commented" events — only for MRs not authored by me
-      if (!authoredByMe) {
-        const notes = await paginateGitLab<GitLabNote>(
-          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
-          authHeaders
-        );
-
-        for (const note of notes) {
-          if (note.author.id === myUserId && !note.system) {
-            incoming.push({
-              mergeRequestId: mrId,
-              eventType: "commented",
-              externalUrl: `${mr.web_url}#note_${note.id}`,
-              occurredAt: new Date(note.created_at),
-            });
-          }
-        }
+      // "commented" events from notes (already fetched for non-authored MRs)
+      for (const note of myNotes) {
+        incoming.push({
+          mergeRequestId: mrId,
+          eventType: "commented",
+          externalUrl: `${mr.web_url}#note_${note.id}`,
+          occurredAt: new Date(note.created_at),
+        });
       }
 
       // Dedup events
