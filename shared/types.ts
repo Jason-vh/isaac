@@ -405,6 +405,7 @@ export interface WbsoUnlinkedMR {
   branchName: string;
   commitCount: number;
   changesCount: number;
+  role: "authored" | "reviewed";
 }
 
 export interface WbsoWeekData {

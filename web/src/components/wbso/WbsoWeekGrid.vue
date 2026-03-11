@@ -98,13 +98,13 @@ function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
     group.entries.push(entry);
   }
 
-  // Sort: named epics by Jira creation date (oldest first), "no epic" last
+  // Sort: named epics by Jira creation date (newest first), "no epic" last
   return [...map.values()].sort((a, b) => {
     if (a.key === "_none") return 1;
     if (b.key === "_none") return -1;
     const aDate = props.epicDates[a.key] ?? "";
     const bDate = props.epicDates[b.key] ?? "";
-    return aDate.localeCompare(bDate);
+    return bDate.localeCompare(aDate);
   });
 }
 

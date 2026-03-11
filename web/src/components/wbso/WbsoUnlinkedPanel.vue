@@ -28,8 +28,10 @@
       >
         <div class="flex items-center justify-between">
           <div class="min-w-0 flex-1">
-            <p class="truncate font-medium text-ink">
-              !{{ mr.gitlabIid }} {{ mr.title }}
+            <p class="flex items-center gap-1.5 truncate font-medium text-ink">
+              <CodeBracketIcon v-if="mr.role === 'authored'" class="h-3.5 w-3.5 flex-shrink-0 text-sky-500" />
+              <ChatBubbleLeftEllipsisIcon v-else class="h-3.5 w-3.5 flex-shrink-0 text-violet-500" />
+              <span class="truncate">!{{ mr.gitlabIid }} {{ mr.title }}</span>
             </p>
             <p class="truncate text-xs text-ink-faint">
               {{ mr.branchName }}
@@ -96,6 +98,8 @@ import { api } from "../../api/client";
 import {
   ExclamationTriangleIcon,
   ChevronDownIcon,
+  CodeBracketIcon,
+  ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/vue/20/solid";
 
 defineProps<{ mrs: WbsoUnlinkedMR[] }>();

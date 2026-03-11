@@ -726,10 +726,10 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         devMisc: Math.round(data.devMisc * 4) / 4,
       },
     }))
-    .sort((a, b) => a.jiraCreatedAt.localeCompare(b.jiraCreatedAt));
+    .sort((a, b) => b.jiraCreatedAt.localeCompare(a.jiraCreatedAt));
 
   // Unlinked MRs: authored by me, no ticket, with commits in this week
-  const unlinkedMrRows = await db
+  const unlinkedAuthoredRows = await db
     .select({
       id: mergeRequests.id,
       gitlabIid: mergeRequests.gitlabIid,
@@ -749,12 +749,39 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       )
     );
 
+  // Unlinked MRs: reviewed by me, no ticket, with review events in this week
+  const unlinkedReviewedRows = await db
+    .select({
+      id: mergeRequests.id,
+      gitlabIid: mergeRequests.gitlabIid,
+      title: mergeRequests.title,
+      branchName: mergeRequests.branchName,
+      commitCount: mergeRequests.commitCount,
+      changesCount: mergeRequests.changesCount,
+    })
+    .from(mergeRequests)
+    .innerJoin(mergeRequestEvents, eq(mergeRequestEvents.mergeRequestId, mergeRequests.id))
+    .where(
+      and(
+        eq(mergeRequests.authoredByMe, false),
+        isNull(mergeRequests.ticketKey),
+        eq(mergeRequestEvents.eventType, "commented"),
+        gte(mergeRequestEvents.occurredAt, monday),
+        lt(mergeRequestEvents.occurredAt, nextMonday)
+      )
+    );
+
   const unlinkedMRs: WbsoUnlinkedMR[] = [];
   const seenMrIds = new Set<number>();
-  for (const mr of unlinkedMrRows) {
+  for (const mr of unlinkedAuthoredRows) {
     if (seenMrIds.has(mr.id)) continue;
     seenMrIds.add(mr.id);
-    unlinkedMRs.push(mr);
+    unlinkedMRs.push({ ...mr, role: "authored" });
+  }
+  for (const mr of unlinkedReviewedRows) {
+    if (seenMrIds.has(mr.id)) continue;
+    seenMrIds.add(mr.id);
+    unlinkedMRs.push({ ...mr, role: "reviewed" });
   }
 
   return {
