@@ -36,8 +36,7 @@ export interface MergeRequest {
   branchName: string;
   ticketKey: string | null;
   ticketKeyInferred: boolean;
-  additions: number;
-  deletions: number;
+  changesCount: number;
   commitCount: number;
   gitlabCreatedAt: string;
   mergedAt: string | null;
@@ -208,7 +207,7 @@ export interface WeekStats {
   mrsMerged: number;
   mrsReviewed: number;
   teamMrsMerged: number;
-  linesChanged: number;
+  filesChanged: number;
   meetingHours: number;
   meetingCount: number;
   confluenceDocuments: number;
@@ -326,7 +325,7 @@ export interface MergeRequestListItem {
 }
 
 // WBSO
-export type WbsoCategory = "coding" | "dev_meeting" | "dev_misc" | "non_dev" | "leave";
+export type WbsoCategory = "coding" | "code_review" | "dev_meeting" | "dev_misc" | "non_dev" | "leave";
 
 export interface WbsoEntry {
   category: WbsoCategory;
@@ -339,13 +338,39 @@ export interface WbsoEntry {
   reasoning: WbsoReasoning;
 }
 
+export interface WbsoMrDetail {
+  id: number;
+  gitlabIid: number;
+  projectPath: string;
+  title: string;
+  status: string;
+  changesCount: number;
+  branchName: string;
+}
+
+export interface WbsoCommitDetail {
+  sha: string;
+  title: string;
+  authoredAt: string;
+}
+
+export interface WbsoMeetingDetail {
+  id: number;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+}
+
 export interface WbsoReasoning {
   meetingTitle?: string;
   meetingDuration?: number; // minutes
   commitCount?: number;
-  totalAdditions?: number;
-  totalDeletions?: number;
+  totalChanges?: number;
   mrTitles?: string[];
+  mergeRequests?: WbsoMrDetail[];
+  commits?: WbsoCommitDetail[];
+  meeting?: WbsoMeetingDetail;
 }
 
 export interface WbsoDayData {
@@ -357,6 +382,7 @@ export interface WbsoDayData {
 
 export interface WbsoCategoryTotals {
   coding: number;
+  codeReview: number;
   devMeeting: number;
   devMisc: number;
   nonDev: number;
@@ -368,7 +394,7 @@ export interface WbsoEpicSummary {
   epicKey: string;
   epicTitle: string;
   totalHours: number;
-  categories: { coding: number; devMeeting: number; devMisc: number };
+  categories: { coding: number; codeReview: number; devMeeting: number; devMisc: number };
 }
 
 export interface WbsoUnlinkedMR {
@@ -377,14 +403,14 @@ export interface WbsoUnlinkedMR {
   title: string;
   branchName: string;
   commitCount: number;
-  additions: number;
-  deletions: number;
+  changesCount: number;
 }
 
 export interface WbsoWeekData {
   weekStart: string;
   weekEnd: string;
   jiraBrowseUrl: string;
+  gitlabBaseUrl: string;
   days: WbsoDayData[];
   totals: WbsoCategoryTotals;
   byEpic: WbsoEpicSummary[];

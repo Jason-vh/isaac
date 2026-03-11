@@ -21,8 +21,11 @@ import type {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const HOURS_PER_DAY = 8;
-const REVIEW_WEIGHT_FACTOR = 0.3;
+const REVIEW_WEIGHT_FACTOR = 0.1;
+const CODING_MIN_WEIGHT = 60; // fallback when MR stats are 0
+const REVIEW_MIN_WEIGHT = 10; // fallback when MR stats are 0
 const MIN_ENTRY_HOURS = 0.25;
+const MIN_REVIEW_HOURS = 10 / 60; // 10 minutes
 
 function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -128,6 +131,9 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   const leaveDays = new Set<string>();
 
   for (const m of meetingRows) {
+    // Skip ignored events (location markers like Home/Office)
+    if (m.category === "ignore") continue;
+
     let category: WbsoCategory;
     if (m.category === "leave") {
       category = "leave";
@@ -145,12 +151,12 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     const isAllDay = durationHours >= 23; // ≥23h = all-day event
 
     if (isAllDay) {
-      // Place on every weekday this event spans
+      // Place on every weekday this event spans (using Amsterdam timezone)
+      const eventStartDay = toAmsterdamDate(m.startsAt);
+      // End is exclusive for all-day events (midnight after last day), so subtract 1ms
+      const eventEndDay = toAmsterdamDate(new Date(m.endsAt.getTime() - 1));
       for (const dayStr of dayDates) {
-        const dayStart = new Date(dayStr + "T00:00:00Z");
-        const dayEnd = new Date(dayStr + "T23:59:59Z");
-        // Event overlaps this day if it starts before day ends and ends after day starts
-        if (m.startsAt < dayEnd && m.endsAt > dayStart) {
+        if (dayStr >= eventStartDay && dayStr <= eventEndDay) {
           const entries = dayMeetings.get(dayStr);
           if (!entries) continue;
           if (category === "leave") leaveDays.add(dayStr);
@@ -165,6 +171,13 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
             reasoning: {
               meetingTitle: m.title,
               meetingDuration: HOURS_PER_DAY * 60,
+              meeting: {
+                id: m.id,
+                title: m.title,
+                startsAt: m.startsAt.toISOString(),
+                endsAt: m.endsAt.toISOString(),
+                durationMinutes: HOURS_PER_DAY * 60,
+              },
             },
           });
         }
@@ -188,6 +201,13 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         reasoning: {
           meetingTitle: m.title,
           meetingDuration: Math.round(durationMin),
+          meeting: {
+            id: m.id,
+            title: m.title,
+            startsAt: m.startsAt.toISOString(),
+            endsAt: m.endsAt.toISOString(),
+            durationMinutes: Math.round(durationMin),
+          },
         },
       });
     }
@@ -195,18 +215,22 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
 
   // -----------------------------------------------------------------------
   // Phase 2: Compute coding activity weights
-  // weight = (additions + deletions) * (dayCommits / totalCommits)
+  // weight = changesCount * (dayCommits / totalCommits)
   // -----------------------------------------------------------------------
   const commitRows = await db
     .select({
       sha: commits.sha,
+      commitTitle: commits.title,
       authoredAt: commits.authoredAt,
       mrId: commits.mergeRequestId,
       mrTitle: mergeRequests.title,
-      additions: mergeRequests.additions,
-      deletions: mergeRequests.deletions,
+      changesCount: mergeRequests.changesCount,
       commitCount: mergeRequests.commitCount,
       ticketKey: mergeRequests.ticketKey,
+      gitlabIid: mergeRequests.gitlabIid,
+      projectPath: mergeRequests.projectPath,
+      mrStatus: mergeRequests.status,
+      branchName: mergeRequests.branchName,
     })
     .from(commits)
     .innerJoin(mergeRequests, eq(commits.mergeRequestId, mergeRequests.id))
@@ -248,11 +272,15 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     dayStr: string;
     mrId: number;
     mrTitle: string;
-    additions: number;
-    deletions: number;
+    changesCount: number;
     totalCommits: number;
     dayCommits: number;
     ticketKey: string | null;
+    gitlabIid: number;
+    projectPath: string;
+    mrStatus: string;
+    branchName: string;
+    commits: { sha: string; title: string; authoredAt: string }[];
   };
 
   const commitGroups = new Map<string, CommitGroup>();
@@ -267,21 +295,31 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         dayStr,
         mrId: c.mrId,
         mrTitle: c.mrTitle,
-        additions: c.additions,
-        deletions: c.deletions,
+        changesCount: c.changesCount,
         totalCommits: c.commitCount,
         dayCommits: 0,
         ticketKey: c.ticketKey,
+        gitlabIid: c.gitlabIid,
+        projectPath: c.projectPath,
+        mrStatus: c.mrStatus,
+        branchName: c.branchName,
+        commits: [],
       };
       commitGroups.set(key, group);
     }
     group.dayCommits++;
+    group.commits.push({
+      sha: c.sha,
+      title: c.commitTitle,
+      authoredAt: c.authoredAt.toISOString(),
+    });
   }
 
   for (const group of commitGroups.values()) {
     const dayProportion =
       group.totalCommits > 0 ? group.dayCommits / group.totalCommits : 1;
-    const weight = (group.additions + group.deletions) * dayProportion;
+    const rawWeight = group.changesCount * dayProportion;
+    const weight = Math.max(rawWeight, CODING_MIN_WEIGHT);
 
     const ticketInfo = group.ticketKey
       ? ticketInfoMap.get(group.ticketKey)
@@ -297,16 +335,25 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       weight,
       reasoning: {
         commitCount: group.dayCommits,
-        totalAdditions: group.additions,
-        totalDeletions: group.deletions,
+        totalChanges: group.changesCount,
         mrTitles: [group.mrTitle],
+        mergeRequests: [{
+          id: group.mrId,
+          gitlabIid: group.gitlabIid,
+          projectPath: group.projectPath,
+          title: group.mrTitle,
+          status: group.mrStatus,
+          changesCount: group.changesCount,
+          branchName: group.branchName,
+        }],
+        commits: group.commits,
       },
     });
   }
 
   // -----------------------------------------------------------------------
   // Phase 3: Compute code review activity weights
-  // weight = (mr additions + mr deletions) * REVIEW_WEIGHT_FACTOR
+  // weight = changesCount * REVIEW_WEIGHT_FACTOR
   // -----------------------------------------------------------------------
   const reviewEvents = await db
     .select({
@@ -314,8 +361,11 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       mrId: mergeRequestEvents.mergeRequestId,
       mrTitle: mergeRequests.title,
       ticketKey: mergeRequests.ticketKey,
-      additions: mergeRequests.additions,
-      deletions: mergeRequests.deletions,
+      changesCount: mergeRequests.changesCount,
+      gitlabIid: mergeRequests.gitlabIid,
+      projectPath: mergeRequests.projectPath,
+      mrStatus: mergeRequests.status,
+      branchName: mergeRequests.branchName,
     })
     .from(mergeRequestEvents)
     .innerJoin(
@@ -336,10 +386,14 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     string,
     {
       dayStr: string;
+      mrId: number;
       mrTitle: string;
       ticketKey: string | null;
-      additions: number;
-      deletions: number;
+      changesCount: number;
+      gitlabIid: number;
+      projectPath: string;
+      mrStatus: string;
+      branchName: string;
     }
   >();
   for (const e of reviewEvents) {
@@ -350,10 +404,14 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     if (!reviewGroups.has(key)) {
       reviewGroups.set(key, {
         dayStr,
+        mrId: e.mrId,
         mrTitle: e.mrTitle,
         ticketKey: e.ticketKey,
-        additions: e.additions,
-        deletions: e.deletions,
+        changesCount: e.changesCount,
+        gitlabIid: e.gitlabIid,
+        projectPath: e.projectPath,
+        mrStatus: e.mrStatus,
+        branchName: e.branchName,
       });
     }
   }
@@ -383,14 +441,15 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   }
 
   for (const group of reviewGroups.values()) {
-    const weight = (group.additions + group.deletions) * REVIEW_WEIGHT_FACTOR;
+    const rawWeight = group.changesCount * REVIEW_WEIGHT_FACTOR;
+    const weight = Math.max(rawWeight, REVIEW_MIN_WEIGHT);
     const ticketInfo = group.ticketKey
       ? ticketInfoMap.get(group.ticketKey)
       : null;
     const epicKey = ticketInfo?.epicKey ?? null;
 
     dayReviewWeights.get(group.dayStr)?.push({
-      category: group.ticketKey ? "coding" : "dev_misc",
+      category: "code_review",
       ticketKey: group.ticketKey,
       ticketTitle: ticketInfo?.title ?? null,
       epicKey,
@@ -398,6 +457,15 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       weight,
       reasoning: {
         mrTitles: [group.mrTitle],
+        mergeRequests: [{
+          id: group.mrId,
+          gitlabIid: group.gitlabIid,
+          projectPath: group.projectPath,
+          title: group.mrTitle,
+          status: group.mrStatus,
+          changesCount: group.changesCount,
+          branchName: group.branchName,
+        }],
       },
     });
   }
@@ -488,8 +556,10 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       reasoning: w.reasoning,
     }));
 
-    // Enforce 0.25h minimum per entry
-    const minTotal = activityEntries.length * MIN_ENTRY_HOURS;
+    // Enforce minimum per entry (10 min for reviews, 15 min for others)
+    const minForEntry = (e: WbsoEntry) =>
+      e.category === "code_review" ? MIN_REVIEW_HOURS : MIN_ENTRY_HOURS;
+    const minTotal = activityEntries.reduce((s, e) => s + minForEntry(e), 0);
     if (minTotal >= available) {
       // Too many small entries for the available time — distribute evenly
       for (const e of activityEntries) e.hours = available / activityEntries.length;
@@ -497,9 +567,10 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       let deficit = 0;
       let aboveMinTotal = 0;
       for (const e of activityEntries) {
-        if (e.hours < MIN_ENTRY_HOURS) {
-          deficit += MIN_ENTRY_HOURS - e.hours;
-          e.hours = MIN_ENTRY_HOURS;
+        const min = minForEntry(e);
+        if (e.hours < min) {
+          deficit += min - e.hours;
+          e.hours = min;
         } else {
           aboveMinTotal += e.hours;
         }
@@ -507,7 +578,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       if (deficit > 0 && aboveMinTotal > 0) {
         const scale = (aboveMinTotal - deficit) / aboveMinTotal;
         for (const e of activityEntries) {
-          if (e.hours > MIN_ENTRY_HOURS) {
+          if (e.hours > minForEntry(e)) {
             e.hours *= scale;
           }
         }
@@ -558,6 +629,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   // Category totals
   const totals: WbsoCategoryTotals = {
     coding: 0,
+    codeReview: 0,
     devMeeting: 0,
     devMisc: 0,
     nonDev: 0,
@@ -569,6 +641,9 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       switch (e.category) {
         case "coding":
           totals.coding += e.hours;
+          break;
+        case "code_review":
+          totals.codeReview += e.hours;
           break;
         case "dev_meeting":
           totals.devMeeting += e.hours;
@@ -586,7 +661,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     }
   }
   totals.total =
-    totals.coding + totals.devMeeting + totals.devMisc + totals.nonDev + totals.leave;
+    totals.coding + totals.codeReview + totals.devMeeting + totals.devMisc + totals.nonDev + totals.leave;
   // Round totals to quarter hours
   for (const k of Object.keys(totals) as (keyof WbsoCategoryTotals)[]) {
     totals[k] = Math.round(totals[k] * 4) / 4;
@@ -598,6 +673,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     {
       epicTitle: string;
       coding: number;
+      codeReview: number;
       devMeeting: number;
       devMisc: number;
     }
@@ -610,6 +686,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         epic = {
           epicTitle: e.epicTitle ?? e.epicKey,
           coding: 0,
+          codeReview: 0,
           devMeeting: 0,
           devMisc: 0,
         };
@@ -618,6 +695,9 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       switch (e.category) {
         case "coding":
           epic.coding += e.hours;
+          break;
+        case "code_review":
+          epic.codeReview += e.hours;
           break;
         case "dev_meeting":
           epic.devMeeting += e.hours;
@@ -633,9 +713,10 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     .map(([epicKey, data]) => ({
       epicKey,
       epicTitle: data.epicTitle,
-      totalHours: Math.round((data.coding + data.devMeeting + data.devMisc) * 4) / 4,
+      totalHours: Math.round((data.coding + data.codeReview + data.devMeeting + data.devMisc) * 4) / 4,
       categories: {
         coding: Math.round(data.coding * 4) / 4,
+        codeReview: Math.round(data.codeReview * 4) / 4,
         devMeeting: Math.round(data.devMeeting * 4) / 4,
         devMisc: Math.round(data.devMisc * 4) / 4,
       },
@@ -650,8 +731,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       title: mergeRequests.title,
       branchName: mergeRequests.branchName,
       commitCount: mergeRequests.commitCount,
-      additions: mergeRequests.additions,
-      deletions: mergeRequests.deletions,
+      changesCount: mergeRequests.changesCount,
     })
     .from(mergeRequests)
     .innerJoin(commits, eq(commits.mergeRequestId, mergeRequests.id))
@@ -676,6 +756,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     weekStart: dayDates[0],
     weekEnd: dayDates[4],
     jiraBrowseUrl: `${env.JIRA_BASE_URL}/browse`,
+    gitlabBaseUrl: env.GITLAB_BASE_URL,
     days,
     totals,
     byEpic,

@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { mergeRequests, meetings, tickets } from "../db/schema";
-import { eq, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, inArray } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, basicAuthHeader } from "./util";
 
@@ -8,7 +8,7 @@ import { apiFetch, basicAuthHeader } from "./util";
 // Ticket key regex: matches patterns like PROJ-123
 // ---------------------------------------------------------------------------
 
-const TICKET_KEY_RE = /([A-Z][A-Z0-9]+-\d+)/;
+const TICKET_KEY_RE = /([A-Z][A-Z0-9]+-\d+)/i;
 
 // ---------------------------------------------------------------------------
 // Meeting category heuristics
@@ -22,6 +22,10 @@ const NON_DEV_KEYWORDS =
 
 const LEAVE_KEYWORDS =
   /\b(sick|ziek|ooo|out of office|holiday|vacation|vakantie|verlof|leave|day off|free day|vrije dag)\b/i;
+
+// Location / working-location events that should be ignored entirely
+const IGNORE_KEYWORDS =
+  /^(home|office|thuis|kantoor)$/i;
 
 // ---------------------------------------------------------------------------
 // MR → Ticket linking
@@ -46,7 +50,7 @@ export async function runLinker(): Promise<void> {
     const match = mr.branchName.match(TICKET_KEY_RE);
     if (!match) continue;
 
-    const extractedKey = match[1];
+    const extractedKey = match[1].toUpperCase();
     // Only update if the value actually changed
     if (extractedKey === mr.ticketKey) continue;
 
@@ -64,72 +68,84 @@ export async function runLinker(): Promise<void> {
     const validKeys = new Set(existingTickets.map((t) => t.key));
 
     // Fetch missing tickets from Jira so we can link to them
+    // Batch in chunks of 30 to avoid 414 URI Too Long errors
     const missingKeys = candidateKeys.filter((k) => !validKeys.has(k));
     if (missingKeys.length > 0) {
       try {
         const baseUrl = env.JIRA_BASE_URL.replace(/\/jira\/?$/, "");
         const auth = basicAuthHeader(env.JIRA_EMAIL, env.JIRA_API_TOKEN);
-        const jql = `key in (${missingKeys.map((k) => `"${k}"`).join(",")})`;
-        const url = new URL(`${baseUrl}/rest/api/3/search/jql`);
-        url.searchParams.set("jql", jql);
-        url.searchParams.set(
-          "fields",
-          "summary,issuetype,status,parent,created,updated"
-        );
-        url.searchParams.set("maxResults", "50");
+        const BATCH_SIZE = 30;
+        let totalFetched = 0;
 
-        const { data } = await apiFetch<{
-          issues: Array<{
-            key: string;
-            fields: {
-              summary: string;
-              issuetype: { name: string };
-              status: { name: string };
-              parent?: { key: string };
-              created: string;
-              updated: string;
-            };
-          }>;
-        }>(url.toString(), { headers: { Authorization: auth } });
+        for (let i = 0; i < missingKeys.length; i += BATCH_SIZE) {
+          const batch = missingKeys.slice(i, i + BATCH_SIZE);
+          const jql = `key in (${batch.map((k) => `"${k}"`).join(",")})`;
+          const url = new URL(`${baseUrl}/rest/api/3/search/jql`);
+          url.searchParams.set("jql", jql);
+          url.searchParams.set(
+            "fields",
+            "summary,issuetype,status,parent,created,updated"
+          );
+          url.searchParams.set("maxResults", "50");
 
-        for (const issue of data.issues) {
-          await db
-            .insert(tickets)
-            .values({
-              key: issue.key,
-              title: issue.fields.summary,
-              issueType: issue.fields.issuetype.name.toLowerCase(),
-              status: issue.fields.status.name,
-              storyPoints: null,
-              parentKey: issue.fields.parent?.key ?? null,
-              epicKey: null,
-              createdByMe: false,
-              assigneeIsMe: false,
-              closedAt: null,
-              jiraCreatedAt: new Date(issue.fields.created),
-              jiraUpdatedAt: new Date(issue.fields.updated),
-              syncedAt: new Date(),
-            })
-            .onConflictDoUpdate({
-              target: tickets.key,
-              set: {
+          const { data } = await apiFetch<{
+            issues: Array<{
+              key: string;
+              fields: {
+                summary: string;
+                issuetype: { name: string };
+                status: { name: string };
+                parent?: { key: string };
+                created: string;
+                updated: string;
+              };
+            }>;
+          }>(url.toString(), { headers: { Authorization: auth } });
+
+          for (const issue of data.issues) {
+            await db
+              .insert(tickets)
+              .values({
+                key: issue.key,
                 title: issue.fields.summary,
                 issueType: issue.fields.issuetype.name.toLowerCase(),
                 status: issue.fields.status.name,
+                storyPoints: null,
                 parentKey: issue.fields.parent?.key ?? null,
+                epicKey: null,
+                createdByMe: false,
+                assigneeIsMe: false,
+                closedAt: null,
+                jiraCreatedAt: new Date(issue.fields.created),
                 jiraUpdatedAt: new Date(issue.fields.updated),
                 syncedAt: new Date(),
-              },
-            });
-          validKeys.add(issue.key);
+              })
+              .onConflictDoUpdate({
+                target: tickets.key,
+                set: {
+                  title: issue.fields.summary,
+                  issueType: issue.fields.issuetype.name.toLowerCase(),
+                  status: issue.fields.status.name,
+                  parentKey: issue.fields.parent?.key ?? null,
+                  jiraUpdatedAt: new Date(issue.fields.updated),
+                  syncedAt: new Date(),
+                },
+              });
+            validKeys.add(issue.key);
+          }
+          totalFetched += data.issues.length;
         }
+
         console.log(
-          `[linker] Fetched ${data.issues.length} missing tickets from Jira.`
+          `[linker] Fetched ${totalFetched} missing tickets from Jira.`
         );
       } catch (err) {
         console.error("[linker] Failed to fetch missing tickets:", err);
       }
     }
+
+    // Resolve epicKey for any tickets with parentKey but no epicKey
+    await resolveEpicKeys();
 
     let linked = 0;
     for (const { mrId, extractedKey } of candidates) {
@@ -194,8 +210,11 @@ async function linkMeetings(): Promise<void> {
     let epicKey: string | null = null;
     let epicKeyInferred = m.epicKeyInferred;
 
+    // Skip location events (Home, Office, etc.)
+    if (IGNORE_KEYWORDS.test(m.title.trim())) {
+      category = "ignore";
     // Check leave first (sick, OOO, holiday, etc.)
-    if (LEAVE_KEYWORDS.test(m.title)) {
+    } else if (LEAVE_KEYWORDS.test(m.title)) {
       category = "leave";
     // Check for ticket key in title
     } else {

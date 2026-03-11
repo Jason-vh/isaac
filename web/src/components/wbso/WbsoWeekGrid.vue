@@ -12,18 +12,14 @@
               {{ formatShortDate(day.date) }}
             </span>
           </div>
-          <div class="mt-1 flex items-center gap-2">
-            <span class="font-mono text-lg font-medium tabular-nums text-ink">
-              {{ day.totalHours }}h
-            </span>
-            <span class="text-xs text-ink-faint">/ 8h</span>
-          </div>
-          <!-- Progress bar -->
-          <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
+          <!-- Stacked progress bar by category -->
+          <div class="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-surface-2">
             <div
-              class="h-full rounded-full transition-all"
-              :class="day.totalHours > 0 ? progressColor(day.totalHours) : ''"
-              :style="{ width: `${Math.min(100, (day.totalHours / 8) * 100)}%` }"
+              v-for="seg in categorySegments(day)"
+              :key="seg.category"
+              class="h-full transition-all"
+              :class="seg.colorClass"
+              :style="{ width: `${seg.pct}%` }"
             />
           </div>
         </div>
@@ -33,6 +29,7 @@
             v-for="group in groupByEpic(day.entries)"
             :key="group.key"
             class="mb-2 last:mb-0"
+            :class="{ 'mt-3 border-t border-dashed border-border pt-2': group.key === '_none' && groupByEpic(day.entries).length > 1 }"
           >
             <!-- Epic group header -->
             <a
@@ -45,7 +42,7 @@
             </a>
             <p
               v-else
-              class="mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint"
+              class="mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wider text-amber-500"
             >
               {{ group.label }}
             </p>
@@ -56,7 +53,7 @@
                 :key="i"
                 :entry="entry"
                 :jira-browse-url="props.jiraBrowseUrl"
-                @toggle-category="(id) => $emit('toggleCategory', id)"
+                @click="$emit('entryClick', entry, day.dayLabel, day.date)"
               />
             </div>
           </div>
@@ -77,7 +74,9 @@ import type { WbsoDayData, WbsoEntry } from "@isaac/shared";
 import WbsoEntryChip from "./WbsoEntryChip.vue";
 
 const props = defineProps<{ days: WbsoDayData[]; jiraBrowseUrl: string }>();
-defineEmits<{ toggleCategory: [meetingId: number] }>();
+defineEmits<{
+  entryClick: [entry: WbsoEntry, dayLabel: string, date: string];
+}>();
 
 interface EpicGroup {
   key: string;
@@ -90,7 +89,7 @@ function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
 
   for (const entry of entries) {
     const key = entry.epicKey ?? "_none";
-    const label = entry.epicTitle ?? "Other";
+    const label = entry.epicTitle ?? "Unlinked";
     let group = map.get(key);
     if (!group) {
       group = { key, label, entries: [] };
@@ -109,14 +108,34 @@ function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
   });
 }
 
+const CATEGORY_COLORS: Record<string, string> = {
+  coding: "bg-emerald-500",
+  code_review: "bg-violet-500",
+  dev_meeting: "bg-fuchsia-500",
+  dev_misc: "bg-fuchsia-500",
+  non_dev: "bg-amber-500",
+  leave: "bg-gray-400",
+};
+
+// Order for consistent stacking
+const CATEGORY_ORDER = ["coding", "code_review", "dev_meeting", "dev_misc", "non_dev", "leave"];
+
+function categorySegments(day: WbsoDayData): { category: string; pct: number; colorClass: string }[] {
+  const hoursByCategory = new Map<string, number>();
+  for (const e of day.entries) {
+    hoursByCategory.set(e.category, (hoursByCategory.get(e.category) ?? 0) + e.hours);
+  }
+  return CATEGORY_ORDER
+    .filter((cat) => (hoursByCategory.get(cat) ?? 0) > 0)
+    .map((cat) => ({
+      category: cat,
+      pct: ((hoursByCategory.get(cat)!) / 8) * 100,
+      colorClass: CATEGORY_COLORS[cat],
+    }));
+}
+
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function progressColor(hours: number): string {
-  if (hours >= 7) return "bg-emerald-500";
-  if (hours >= 4) return "bg-sky-500";
-  return "bg-amber-400";
 }
 </script>

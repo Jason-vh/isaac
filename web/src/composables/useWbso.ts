@@ -36,10 +36,20 @@ export function useWbso() {
 
   async function updateMeetingCategory(
     meetingId: number,
-    category: "dev" | "non_dev",
-    epicKey?: string
+    category?: "dev" | "non_dev",
+    epicKey?: string,
+    ticketKey?: string
   ) {
-    await api.patch(`/wbso/meetings/${meetingId}`, { category, epicKey });
+    const payload: Record<string, string | undefined> = {};
+    if (category) payload.category = category;
+    if (epicKey !== undefined) payload.epicKey = epicKey;
+    if (ticketKey !== undefined) payload.ticketKey = ticketKey;
+    await api.patch(`/wbso/meetings/${meetingId}`, payload);
+    await fetchWeek();
+  }
+
+  async function updateMrTicket(mrId: number, ticketKey: string) {
+    await api.patch(`/wbso/merge-requests/${mrId}`, { ticketKey });
     await fetchWeek();
   }
 
@@ -98,5 +108,7 @@ export function useWbso() {
     nextWeek,
     goToday,
     updateMeetingCategory,
+    updateMrTicket,
+    fetchWeek,
   };
 }
