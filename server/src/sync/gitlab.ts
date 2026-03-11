@@ -29,8 +29,7 @@ interface GitLabMR {
 }
 
 interface GitLabMRDetail {
-  additions: number | null;
-  deletions: number | null;
+  changes_count: string | null; // number of files changed (string!)
   commit_count: number | null;
 }
 
@@ -94,11 +93,14 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
     for (const mr of allMRs) {
       const authoredByMe = mr.author.id === myUserId;
 
-      // Fetch MR detail for line stats and commit count
+      // Fetch MR detail for file count and commit count
+      // Note: GitLab REST API doesn't return additions/deletions;
+      // we use changes_count (files changed) as a size proxy.
       const { data: detail } = await apiFetch<GitLabMRDetail>(
         `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}`,
         { headers: authHeaders }
       );
+      const changesCount = parseInt(detail.changes_count ?? "0", 10) || 0;
 
       // For non-authored MRs, check if I commented
       let hasMyComments = false;
@@ -129,8 +131,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           authoredByMe,
           reviewedByMe,
           branchName: mr.source_branch,
-          additions: detail.additions ?? 0,
-          deletions: detail.deletions ?? 0,
+          changesCount,
           commitCount: detail.commit_count ?? 0,
           gitlabCreatedAt: new Date(mr.created_at),
           mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
@@ -146,8 +147,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
             authoredByMe,
             reviewedByMe,
             branchName: mr.source_branch,
-            additions: detail.additions ?? 0,
-            deletions: detail.deletions ?? 0,
+            changesCount,
             commitCount: detail.commit_count ?? 0,
             gitlabCreatedAt: new Date(mr.created_at),
             mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,

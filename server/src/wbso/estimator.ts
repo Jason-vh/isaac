@@ -601,12 +601,16 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       if (e.epicKey) allEpicKeys.add(e.epicKey);
     }
   }
+  const epicCreatedMap = new Map<string, string>();
   if (allEpicKeys.size > 0) {
     const epicRows = await db
-      .select({ key: tickets.key, title: tickets.title })
+      .select({ key: tickets.key, title: tickets.title, jiraCreatedAt: tickets.jiraCreatedAt })
       .from(tickets)
       .where(inArray(tickets.key, [...allEpicKeys]));
-    for (const e of epicRows) epicTitleMap.set(e.key, e.title);
+    for (const e of epicRows) {
+      epicTitleMap.set(e.key, e.title);
+      epicCreatedMap.set(e.key, e.jiraCreatedAt.toISOString());
+    }
   }
   for (const entries of dayEntries.values()) {
     for (const e of entries) {
@@ -713,6 +717,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     .map(([epicKey, data]) => ({
       epicKey,
       epicTitle: data.epicTitle,
+      jiraCreatedAt: epicCreatedMap.get(epicKey) ?? "",
       totalHours: Math.round((data.coding + data.codeReview + data.devMeeting + data.devMisc) * 4) / 4,
       categories: {
         coding: Math.round(data.coding * 4) / 4,
@@ -721,7 +726,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         devMisc: Math.round(data.devMisc * 4) / 4,
       },
     }))
-    .sort((a, b) => b.totalHours - a.totalHours);
+    .sort((a, b) => a.jiraCreatedAt.localeCompare(b.jiraCreatedAt));
 
   // Unlinked MRs: authored by me, no ticket, with commits in this week
   const unlinkedMrRows = await db
@@ -757,6 +762,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     weekEnd: dayDates[4],
     jiraBrowseUrl: `${env.JIRA_BASE_URL}/browse`,
     gitlabBaseUrl: env.GITLAB_BASE_URL,
+    epicDates: Object.fromEntries(epicCreatedMap),
     days,
     totals,
     byEpic,

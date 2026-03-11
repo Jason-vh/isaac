@@ -37,6 +37,7 @@
         <WbsoWeekGrid
           :days="data.days"
           :jira-browse-url="data.jiraBrowseUrl"
+          :epic-dates="data.epicDates"
           @entry-click="onEntryClick"
         />
       </div>

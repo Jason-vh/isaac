@@ -393,6 +393,7 @@ export interface WbsoCategoryTotals {
 export interface WbsoEpicSummary {
   epicKey: string;
   epicTitle: string;
+  jiraCreatedAt: string;
   totalHours: number;
   categories: { coding: number; codeReview: number; devMeeting: number; devMisc: number };
 }
@@ -411,6 +412,7 @@ export interface WbsoWeekData {
   weekEnd: string;
   jiraBrowseUrl: string;
   gitlabBaseUrl: string;
+  epicDates: Record<string, string>; // epicKey → jiraCreatedAt ISO string
   days: WbsoDayData[];
   totals: WbsoCategoryTotals;
   byEpic: WbsoEpicSummary[];

@@ -144,9 +144,6 @@ export async function runLinker(): Promise<void> {
       }
     }
 
-    // Resolve epicKey for any tickets with parentKey but no epicKey
-    await resolveEpicKeys();
-
     let linked = 0;
     for (const { mrId, extractedKey } of candidates) {
       if (!validKeys.has(extractedKey)) continue;
@@ -160,6 +157,9 @@ export async function runLinker(): Promise<void> {
 
     console.log(`[linker] Linked ${linked} MRs to tickets.`);
   }
+
+  // Resolve epicKey for any tickets with parentKey but no epicKey
+  await resolveEpicKeys();
 
   // Meeting auto-categorization
   await linkMeetings();
@@ -247,4 +247,106 @@ async function linkMeetings(): Promise<void> {
   }
 
   console.log(`[linker] Categorized ${categorized} meetings.`);
+}
+
+// ---------------------------------------------------------------------------
+// Resolve epicKey for tickets that have parentKey but no epicKey
+// ---------------------------------------------------------------------------
+
+async function resolveEpicKeys(): Promise<void> {
+  const orphans = await db
+    .select({ key: tickets.key, parentKey: tickets.parentKey })
+    .from(tickets)
+    .where(and(isNotNull(tickets.parentKey), isNull(tickets.epicKey)));
+
+  if (orphans.length === 0) return;
+
+  const neededParentKeys = [...new Set(orphans.map((r) => r.parentKey!))];
+
+  // Check which parents already exist in the DB
+  const existingParents = await db
+    .select({ key: tickets.key })
+    .from(tickets)
+    .where(inArray(tickets.key, neededParentKeys));
+  const existingParentKeys = new Set(existingParents.map((r) => r.key));
+
+  // Fetch missing parents from Jira
+  const missingKeys = neededParentKeys.filter((k) => !existingParentKeys.has(k));
+  if (missingKeys.length > 0) {
+    try {
+      const baseUrl = env.JIRA_BASE_URL.replace(/\/jira\/?$/, "");
+      const auth = basicAuthHeader(env.JIRA_EMAIL, env.JIRA_API_TOKEN);
+
+      const jql = `key in (${missingKeys.map((k) => `"${k}"`).join(",")})`;
+      const url = new URL(`${baseUrl}/rest/api/3/search/jql`);
+      url.searchParams.set("jql", jql);
+      url.searchParams.set("fields", "summary,issuetype,status,parent,created,updated");
+      url.searchParams.set("maxResults", "50");
+
+      const { data } = await apiFetch<{
+        issues: Array<{
+          key: string;
+          fields: {
+            summary: string;
+            issuetype: { name: string };
+            status: { name: string };
+            parent?: { key: string };
+            created: string;
+            updated: string;
+          };
+        }>;
+      }>(url.toString(), { headers: { Authorization: auth } });
+
+      for (const issue of data.issues) {
+        await db
+          .insert(tickets)
+          .values({
+            key: issue.key,
+            title: issue.fields.summary,
+            issueType: issue.fields.issuetype.name.toLowerCase(),
+            status: issue.fields.status.name,
+            storyPoints: null,
+            parentKey: issue.fields.parent?.key ?? null,
+            epicKey: null,
+            createdByMe: false,
+            assigneeIsMe: false,
+            closedAt: null,
+            jiraCreatedAt: new Date(issue.fields.created),
+            jiraUpdatedAt: new Date(issue.fields.updated),
+            syncedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: tickets.key,
+            set: {
+              title: issue.fields.summary,
+              issueType: issue.fields.issuetype.name.toLowerCase(),
+              status: issue.fields.status.name,
+              parentKey: issue.fields.parent?.key ?? null,
+              jiraUpdatedAt: new Date(issue.fields.updated),
+              syncedAt: new Date(),
+            },
+          });
+        existingParentKeys.add(issue.key);
+      }
+
+      console.log(`[linker] Fetched ${data.issues.length} missing parent tickets.`);
+    } catch (err) {
+      console.error("[linker] Failed to fetch parent tickets:", err);
+    }
+  }
+
+  let resolved = 0;
+  for (const row of orphans) {
+    if (existingParentKeys.has(row.parentKey!)) {
+      await db
+        .update(tickets)
+        .set({ epicKey: row.parentKey })
+        .where(eq(tickets.key, row.key));
+      resolved++;
+    }
+  }
+
+  if (resolved > 0) {
+    console.log(`[linker] Resolved epicKey for ${resolved} tickets.`);
+  }
 }

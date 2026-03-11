@@ -66,8 +66,7 @@ export const mergeRequests = pgTable("merge_requests", {
   branchName: text("branch_name").notNull(),
   ticketKey: text("ticket_key").references(() => tickets.key),
   ticketKeyInferred: boolean("ticket_key_inferred").notNull().default(true),
-  additions: integer("additions").notNull(),
-  deletions: integer("deletions").notNull(),
+  changesCount: integer("additions").notNull(), // files changed (column kept as "additions" to avoid migration)
   commitCount: integer("commit_count").notNull(),
   gitlabCreatedAt: timestamp("gitlab_created_at", {
     withTimezone: true,

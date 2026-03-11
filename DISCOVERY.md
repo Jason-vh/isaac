@@ -44,7 +44,7 @@ GitLab MR. All project MRs are stored for denominator metrics (e.g. review perce
 Confluence page. Tracked events: published, commented on. Linked to epics (inferred where possible, manual otherwise).
 
 **Meeting**
-Google Calendar event. Categorised as dev, non-dev, or leave. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Linked to epics where possible (inferred or manual). All-day and multi-day events are placed on every weekday they span.
+Google Calendar event. Categorised as dev, non-dev, leave, or ignore. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Working-location events (Home, Office, etc.) are ignored entirely. Linked to epics where possible (inferred or manual). All-day and multi-day events are placed on every weekday they span using Amsterdam timezone boundaries.
 
 **Win**
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
@@ -80,13 +80,13 @@ Every working day must total exactly 8 hours. The algorithm:
 1. **Meetings** use their actual calendar duration.
 2. **Leave** fills the entire 8h day — no other activity is placed on leave days.
 3. **Remaining hours** (`8 - meeting_hours`) are distributed proportionally across coding and review activities using relative weights:
-   - Coding weight: `(additions + deletions) * (dayCommits / totalCommits)` — MR size scaled by commit proportion on that day
-   - Review weight: `(mr_additions + mr_deletions) * 0.3` — MR size with a 0.3 factor (reviewing is faster than writing)
+   - Coding weight: `changesCount * (dayCommits / totalCommits)` — files changed scaled by commit proportion on that day (min weight: 60)
+   - Review weight: `changesCount * 0.1` — files changed with a 0.1 factor (reviewing is faster than writing, min weight: 10)
 4. **Zero-activity days** borrow coding weights from the next weekday that has commits (you were working on things you committed the next day).
-5. **0.25h minimum** per entry, with redistribution from larger entries.
+5. **0.25h minimum** per coding entry, **10 min minimum** per review entry, with redistribution from larger entries.
 6. **Quarter-hour rounding** uses Hamilton's method (largest remainder) to preserve the 8h total exactly.
 
-At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form. The WBSO view groups entries by epic per day, with epic headers linking to Jira and ticket keys linking to individual issues.
+At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form. The WBSO view groups entries by epic per day, with epic headers linking to Jira and ticket keys linking to individual issues. Each day header shows a stacked progress bar colored by category (emerald=coding, violet=review, fuchsia=dev meeting/misc, amber=non-dev, gray=leave). Navigation is bounded to the current week (no future weeks). The epic summary table uses clickable Jira-linked titles with category-colored columns.
 
 ## User Flows
 

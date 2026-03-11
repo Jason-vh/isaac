@@ -12,7 +12,9 @@
       </button>
       <button
         @click="$emit('next')"
-        class="rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink-muted"
+        :disabled="disableNext"
+        class="rounded-lg p-1.5 transition-colors"
+        :class="disableNext ? 'cursor-not-allowed text-ink-faint/30' : 'text-ink-faint hover:bg-surface-2 hover:text-ink-muted'"
       >
         <ChevronRightIcon class="h-5 w-5" />
       </button>
@@ -24,7 +26,7 @@
 import { computed } from "vue";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/vue/20/solid";
 
-const props = defineProps<{ weekStart: string }>();
+const props = defineProps<{ weekStart: string; disableNext?: boolean }>();
 defineEmits<{
   prev: [];
   next: [];

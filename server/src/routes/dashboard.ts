@@ -77,7 +77,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       mrsMerged: 0,
       mrsReviewed: 0,
       teamMrsMerged: 0,
-      linesChanged: 0,
+      filesChanged: 0,
       meetingHours: 0,
       meetingCount: 0,
       confluenceDocuments: 0,
@@ -211,13 +211,13 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       const day = dayMap.get(dk);
       if (day) day.mrsMerged++;
       stats.mrsMerged++;
-      stats.linesChanged += mr.additions + mr.deletions;
+      stats.filesChanged += mr.changesCount;
 
       feed.push({
         id: `mr_merged:${mr.gitlabIid}`,
         type: "mr_merged",
         title: `!${mr.gitlabIid} ${mr.title}`,
-        subtitle: `+${mr.additions} -${mr.deletions}`,
+        subtitle: `${mr.changesCount} files changed`,
         occurredAt: mr.mergedAt!.toISOString(),
         endsAt: null,
         externalUrl: null,

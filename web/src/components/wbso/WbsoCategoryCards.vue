@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
+  <div class="grid grid-cols-3 gap-4 lg:grid-cols-6">
     <div
       v-for="stat in cards"
       :key="stat.label"
@@ -17,9 +17,6 @@
       <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">
         {{ stat.value }}h
       </p>
-      <p v-if="stat.detail" class="mt-1 text-sm text-ink-muted">
-        {{ stat.detail }}
-      </p>
     </div>
   </div>
 </template>
@@ -29,11 +26,11 @@ import { computed } from "vue";
 import type { WbsoCategoryTotals } from "@isaac/shared";
 import {
   CodeBracketIcon,
+  ChatBubbleLeftEllipsisIcon,
   ChatBubbleLeftRightIcon,
   WrenchScrewdriverIcon,
   ClockIcon,
-  SunIcon,
-  CalculatorIcon,
+  BellSlashIcon,
 } from "@heroicons/vue/20/solid";
 
 const props = defineProps<{ totals: WbsoCategoryTotals }>();
@@ -42,31 +39,34 @@ const cards = computed(() => [
   {
     label: "Coding",
     value: props.totals.coding,
-    detail: null,
     icon: CodeBracketIcon,
     iconBg: "bg-emerald-50",
     iconColor: "text-emerald-600",
   },
   {
-    label: "Dev Meetings",
-    value: props.totals.devMeeting,
-    detail: null,
-    icon: ChatBubbleLeftRightIcon,
-    iconBg: "bg-sky-50",
-    iconColor: "text-sky-600",
-  },
-  {
-    label: "Dev Misc",
-    value: props.totals.devMisc,
-    detail: null,
-    icon: WrenchScrewdriverIcon,
+    label: "Code Review",
+    value: props.totals.codeReview,
+    icon: ChatBubbleLeftEllipsisIcon,
     iconBg: "bg-violet-50",
     iconColor: "text-violet-600",
   },
   {
+    label: "Dev Meetings",
+    value: props.totals.devMeeting,
+    icon: ChatBubbleLeftRightIcon,
+    iconBg: "bg-fuchsia-50",
+    iconColor: "text-fuchsia-600",
+  },
+  {
+    label: "Dev Misc",
+    value: props.totals.devMisc,
+    icon: WrenchScrewdriverIcon,
+    iconBg: "bg-fuchsia-50",
+    iconColor: "text-fuchsia-600",
+  },
+  {
     label: "Non-Dev",
     value: props.totals.nonDev,
-    detail: null,
     icon: ClockIcon,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-600",
@@ -74,18 +74,9 @@ const cards = computed(() => [
   {
     label: "Leave",
     value: props.totals.leave,
-    detail: null,
-    icon: SunIcon,
-    iconBg: "bg-rose-50",
-    iconColor: "text-rose-600",
-  },
-  {
-    label: "Total",
-    value: props.totals.total,
-    detail: `of 40h week`,
-    icon: CalculatorIcon,
+    icon: BellSlashIcon,
     iconBg: "bg-gray-100",
-    iconColor: "text-gray-600",
+    iconColor: "text-gray-500",
   },
 ]);
 </script>

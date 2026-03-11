@@ -51,8 +51,8 @@ const cards = computed(() => [
   {
     label: "MRs Merged",
     value: props.stats.mrsMerged,
-    detail: props.stats.linesChanged
-      ? `${props.stats.linesChanged.toLocaleString()} lines`
+    detail: props.stats.filesChanged
+      ? `${props.stats.filesChanged.toLocaleString()} files`
       : null,
     icon: CodeBracketIcon,
     iconBg: "bg-violet-50",

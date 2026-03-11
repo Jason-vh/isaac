@@ -73,7 +73,7 @@
 import type { WbsoDayData, WbsoEntry } from "@isaac/shared";
 import WbsoEntryChip from "./WbsoEntryChip.vue";
 
-const props = defineProps<{ days: WbsoDayData[]; jiraBrowseUrl: string }>();
+const props = defineProps<{ days: WbsoDayData[]; jiraBrowseUrl: string; epicDates: Record<string, string> }>();
 defineEmits<{
   entryClick: [entry: WbsoEntry, dayLabel: string, date: string];
 }>();
@@ -89,7 +89,7 @@ function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
 
   for (const entry of entries) {
     const key = entry.epicKey ?? "_none";
-    const label = entry.epicTitle ?? "Unlinked";
+    const label = entry.epicTitle ?? "No epic";
     let group = map.get(key);
     if (!group) {
       group = { key, label, entries: [] };
@@ -98,13 +98,13 @@ function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
     group.entries.push(entry);
   }
 
-  // Sort: named epics first (by total hours desc), "Other" last
+  // Sort: named epics by Jira creation date (oldest first), "no epic" last
   return [...map.values()].sort((a, b) => {
     if (a.key === "_none") return 1;
     if (b.key === "_none") return -1;
-    const aHours = a.entries.reduce((s, e) => s + e.hours, 0);
-    const bHours = b.entries.reduce((s, e) => s + e.hours, 0);
-    return bHours - aHours;
+    const aDate = props.epicDates[a.key] ?? "";
+    const bDate = props.epicDates[b.key] ?? "";
+    return aDate.localeCompare(bDate);
   });
 }
 

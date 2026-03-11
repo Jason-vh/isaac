@@ -103,10 +103,10 @@ isaac/
 │       │   │   ├── PipelineWaterfallCard.vue # Pipeline list item linking to waterfall
 │       │   │   └── WaterfallChart.vue        # Job timeline bars with DAG dependency lines
 │       │   └── wbso/
-│       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Dev Meeting, Dev Misc, Non-Dev, Leave, Total)
-│       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid, entries grouped by epic with Jira-linked headers
+│       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Code Review, Dev Meeting, Dev Misc, Non-Dev, Leave)
+│       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid with stacked category progress bars, entries grouped by epic
 │       │       ├── WbsoEntryChip.vue        # Entry as sentence ("1.25h coding on DESK-1234") with type icon + Jira link
-│       │       ├── WbsoEpicSummary.vue      # Table grouped by epic for WBSO form
+│       │       ├── WbsoEpicSummary.vue      # Table grouped by epic with clickable Jira-linked titles and category-colored columns
 │       │       └── WbsoUnlinkedPanel.vue    # Collapsible panel for MRs without ticket links
 │       ├── views/
 │       │   ├── DashboardView.vue
@@ -177,8 +177,7 @@ Raw status transitions and other events.
 | branch_name | text | |
 | ticket_key | text FK → tickets | Nullable, inferred from branch name |
 | ticket_key_inferred | boolean | Default true. Set to false when manually overridden. |
-| additions | int | |
-| deletions | int | |
+| additions | int | Files changed (sourced from GitLab `changes_count`; column name kept for compatibility) |
 | commit_count | int | |
 | gitlab_created_at | timestamptz | |
 | merged_at | timestamptz | Nullable |
@@ -238,7 +237,7 @@ Individual commits from merge requests, used to distribute coding effort across 
 | id | serial PK | |
 | calendar_event_id | text unique | From Apps Script |
 | title | text | |
-| category | text | dev, non_dev, leave — initially null, set manually or inferred |
+| category | text | dev, non_dev, leave, ignore — initially null, set by linker or manually |
 | epic_key | text FK → tickets | Nullable |
 | epic_key_inferred | boolean | Default true. Set to false when manually overridden. |
 | response_status | text | Nullable, accepted/declined/tentative/needsAction — proves attendance |

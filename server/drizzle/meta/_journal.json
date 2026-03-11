@@ -64,6 +64,13 @@
       "when": 1773231938166,
       "tag": "0008_illegal_owl",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773236714421,
+      "tag": "0009_freezing_landau",
+      "breakpoints": true
     }
   ]
 }

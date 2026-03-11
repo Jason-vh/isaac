@@ -183,7 +183,7 @@
                       class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
                       :class="mrStatusClass(mr.status)"
                     >
-                      {{ mr.status }}
+                      {{ mr.status === 'opened' ? 'open' : mr.status }}
                     </span>
                   </div>
                   <p class="mt-1 truncate text-sm text-ink-muted">
