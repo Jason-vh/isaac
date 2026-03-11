@@ -50,11 +50,29 @@ export async function syncCalendar(sinceOverride?: Date): Promise<void> {
     if (events.length === 0) return 0;
 
     // Upsert meetings — do NOT overwrite category, epicKey, epicKeyInferred
+    // Google Calendar's getId() returns the same iCalUID for every instance
+    // of a recurring event, so we derive a unique key per instance by
+    // appending the start time to all instances of duplicate eventIds.
+    const idCounts = new Map<string, number>();
     for (const event of events) {
+      idCounts.set(event.eventId, (idCounts.get(event.eventId) ?? 0) + 1);
+    }
+
+    for (const event of events) {
+      let key = event.eventId;
+      if (idCounts.get(key)! > 1) {
+        // Recurring instance — make unique by inserting start date before @google.com
+        const startUtc = new Date(event.startTime)
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d+Z$/, "Z");
+        key = key.replace("@google.com", `_${startUtc}@google.com`);
+      }
+
       await db
         .insert(meetings)
         .values({
-          calendarEventId: event.eventId,
+          calendarEventId: key,
           title: event.title,
           responseStatus: event.responseStatus,
           startsAt: new Date(event.startTime),
