@@ -25,7 +25,7 @@ const REVIEW_WEIGHT_FACTOR = 0.1;
 const CODING_MIN_WEIGHT = 60; // fallback when MR stats are 0
 const REVIEW_MIN_WEIGHT = 10; // fallback when MR stats are 0
 const MIN_ENTRY_HOURS = 0.25;
-const MIN_REVIEW_HOURS = 10 / 60; // 10 minutes
+const MIN_REVIEW_HOURS = 0.25; // 15 minutes (quarter hour, survives rounding)
 
 function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
