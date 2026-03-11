@@ -1,4 +1,7 @@
 import { Elysia } from "elysia";
+import { desc, eq, and, lt } from "drizzle-orm";
+import { db } from "../db";
+import { syncLog } from "../db/schema";
 import { isSyncRunning } from "../sync/util";
 import { syncJira } from "../sync/jira";
 import { syncGitLab } from "../sync/gitlab";
@@ -17,7 +20,25 @@ const SYNC_FNS: Record<string, (since?: Date) => Promise<void>> = {
 
 const VALID_SOURCES = Object.keys(SYNC_FNS);
 
-export const syncRoutes = new Elysia({ prefix: "/api/sync" }).post(
+export const syncRoutes = new Elysia({ prefix: "/api/sync" })
+  .get("/log", async () => {
+    const entries = await db
+      .select()
+      .from(syncLog)
+      .orderBy(desc(syncLog.startedAt))
+      .limit(50);
+    return entries;
+  })
+  .post("/cleanup", async () => {
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const cleaned = await db
+      .update(syncLog)
+      .set({ status: "error", finishedAt: new Date(), error: "Stale — cleaned up" })
+      .where(and(eq(syncLog.status, "running"), lt(syncLog.startedAt, tenMinAgo)))
+      .returning({ id: syncLog.id, source: syncLog.source });
+    return { cleaned: cleaned.length, sources: cleaned.map((r) => r.source) };
+  })
+  .post(
   "/trigger",
   async ({ body }) => {
     const { sources, since } = (body ?? {}) as {
@@ -43,9 +64,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" }).post(
       }
     }
 
-    // Guard against concurrent syncs
-    if (await isSyncRunning()) {
-      return { error: "Another sync is already running" };
+    // Guard against concurrent syncs (per-source)
+    const running = await isSyncRunning(toSync);
+    if (running.length > 0) {
+      return { error: `Already running: ${running.join(", ")}` };
     }
 
     // Run syncs sequentially

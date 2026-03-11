@@ -24,6 +24,11 @@ export const router = createRouter({
       },
     },
     {
+      path: "/admin",
+      name: "admin",
+      component: () => import("../views/AdminView.vue"),
+    },
+    {
       path: "/:week?",
       name: "dashboard",
       component: DashboardView,

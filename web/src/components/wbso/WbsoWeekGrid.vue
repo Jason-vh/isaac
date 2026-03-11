@@ -27,14 +27,39 @@
             />
           </div>
         </div>
-        <!-- Entries -->
-        <div class="space-y-1 p-2" :class="{ 'min-h-[120px]': day.entries.length === 0 }">
-          <WbsoEntryChip
-            v-for="(entry, i) in day.entries"
-            :key="i"
-            :entry="entry"
-            @toggle-category="(id) => $emit('toggleCategory', id)"
-          />
+        <!-- Entries grouped by epic -->
+        <div class="p-2" :class="{ 'min-h-[120px]': day.entries.length === 0 }">
+          <div
+            v-for="group in groupByEpic(day.entries)"
+            :key="group.key"
+            class="mb-2 last:mb-0"
+          >
+            <!-- Epic group header -->
+            <a
+              v-if="group.key !== '_none'"
+              :href="`${jiraBrowseUrl}/${group.key}`"
+              target="_blank"
+              class="mb-1 block truncate px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint hover:text-ink-muted"
+            >
+              {{ group.label }}
+            </a>
+            <p
+              v-else
+              class="mb-1 truncate px-1 text-[11px] font-semibold uppercase tracking-wider text-ink-faint"
+            >
+              {{ group.label }}
+            </p>
+            <!-- Entries in group -->
+            <div class="space-y-1">
+              <WbsoEntryChip
+                v-for="(entry, i) in group.entries"
+                :key="i"
+                :entry="entry"
+                :jira-browse-url="props.jiraBrowseUrl"
+                @toggle-category="(id) => $emit('toggleCategory', id)"
+              />
+            </div>
+          </div>
           <p
             v-if="day.entries.length === 0"
             class="py-4 text-center text-xs text-ink-faint"
@@ -48,11 +73,41 @@
 </template>
 
 <script setup lang="ts">
-import type { WbsoDayData } from "@isaac/shared";
+import type { WbsoDayData, WbsoEntry } from "@isaac/shared";
 import WbsoEntryChip from "./WbsoEntryChip.vue";
 
-defineProps<{ days: WbsoDayData[] }>();
+const props = defineProps<{ days: WbsoDayData[]; jiraBrowseUrl: string }>();
 defineEmits<{ toggleCategory: [meetingId: number] }>();
+
+interface EpicGroup {
+  key: string;
+  label: string;
+  entries: WbsoEntry[];
+}
+
+function groupByEpic(entries: WbsoEntry[]): EpicGroup[] {
+  const map = new Map<string, EpicGroup>();
+
+  for (const entry of entries) {
+    const key = entry.epicKey ?? "_none";
+    const label = entry.epicTitle ?? "Other";
+    let group = map.get(key);
+    if (!group) {
+      group = { key, label, entries: [] };
+      map.set(key, group);
+    }
+    group.entries.push(entry);
+  }
+
+  // Sort: named epics first (by total hours desc), "Other" last
+  return [...map.values()].sort((a, b) => {
+    if (a.key === "_none") return 1;
+    if (b.key === "_none") return -1;
+    const aHours = a.entries.reduce((s, e) => s + e.hours, 0);
+    const bHours = b.entries.reduce((s, e) => s + e.hours, 0);
+    return bHours - aHours;
+  });
+}
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");

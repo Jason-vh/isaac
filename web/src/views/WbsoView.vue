@@ -13,9 +13,17 @@
           :week-start="data.weekStart"
           @prev="prevWeek"
           @next="nextWeek"
-          @today="goToday"
         />
-        <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
+        <div class="flex items-center gap-3">
+          <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
+          <button
+            v-if="!isCurrentWeek"
+            @click="goToday"
+            class="rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            This week
+          </button>
+        </div>
       </div>
 
       <!-- Category cards -->
@@ -25,7 +33,7 @@
 
       <!-- Week grid -->
       <div class="mt-6">
-        <WbsoWeekGrid :days="data.days" @toggle-category="onToggleCategory" />
+        <WbsoWeekGrid :days="data.days" :jira-browse-url="data.jiraBrowseUrl" @toggle-category="onToggleCategory" />
       </div>
 
       <!-- Epic summary -->
@@ -50,7 +58,7 @@ import WbsoWeekGrid from "../components/wbso/WbsoWeekGrid.vue";
 import WbsoEpicSummary from "../components/wbso/WbsoEpicSummary.vue";
 import WbsoUnlinkedPanel from "../components/wbso/WbsoUnlinkedPanel.vue";
 
-const { data, loading, error, prevWeek, nextWeek, goToday, updateMeetingCategory } =
+const { data, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday, updateMeetingCategory } =
   useWbso();
 
 function onToggleCategory(meetingId: number) {

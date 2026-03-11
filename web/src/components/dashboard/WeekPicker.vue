@@ -17,13 +17,6 @@
         <ChevronRightIcon class="h-5 w-5" />
       </button>
     </div>
-    <button
-      v-if="!isCurrentWeek"
-      @click="$emit('today')"
-      class="ml-1 rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-    >
-      Today
-    </button>
   </div>
 </template>
 
@@ -35,7 +28,6 @@ const props = defineProps<{ weekStart: string }>();
 defineEmits<{
   prev: [];
   next: [];
-  today: [];
 }>();
 
 const formattedDate = computed(() => {
@@ -45,14 +37,5 @@ const formattedDate = computed(() => {
     day: "numeric",
     year: "numeric",
   });
-});
-
-const isCurrentWeek = computed(() => {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diff);
-  return monday.toISOString().split("T")[0] === props.weekStart;
 });
 </script>

@@ -13,9 +13,17 @@
           :week-start="data.weekStart"
           @prev="prevWeek"
           @next="nextWeek"
-          @today="goToday"
         />
-        <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
+        <div class="flex items-center gap-3">
+          <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
+          <button
+            v-if="!isCurrentWeek"
+            @click="goToday"
+            class="rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            This week
+          </button>
+        </div>
       </div>
 
       <!-- Stats -->
@@ -55,7 +63,7 @@ import ProjectsPanel from "../components/dashboard/ProjectsPanel.vue";
 import WeekDistribution from "../components/dashboard/WeekDistribution.vue";
 import VelocityChart from "../components/dashboard/VelocityChart.vue";
 
-const { data, velocity, loading, error, prevWeek, nextWeek, goToday } = useDashboard();
+const { data, velocity, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday } = useDashboard();
 
 function onKeydown(e: KeyboardEvent) {
   const tag = document.activeElement?.tagName;

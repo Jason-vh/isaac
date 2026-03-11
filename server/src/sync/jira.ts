@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { tickets, ticketEvents } from "../db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, basicAuthHeader, runSyncWithLog, dedup } from "./util";
 
@@ -95,7 +95,7 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
 
     if (allIssues.length === 0) return 0;
 
-    // --- First pass: upsert all tickets with epicKey = null ---
+    // --- First pass: upsert all tickets ---
     for (const issue of allIssues) {
       const sp = issue.fields.customfield_10502 ?? null;
 
@@ -103,6 +103,7 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
         issue.fields.reporter?.emailAddress === email;
       const assigneeIsMe =
         issue.fields.assignee?.emailAddress === email;
+      const parentKey = issue.fields.parent?.key ?? null;
 
       const jiraCreatedAt = new Date(issue.fields.created);
       const jiraUpdatedAt = new Date(issue.fields.updated);
@@ -137,6 +138,7 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
           issueType: issue.fields.issuetype.name.toLowerCase(),
           status: issue.fields.status.name,
           storyPoints: sp != null ? String(sp) : null,
+          parentKey,
           epicKey: null,
           createdByMe,
           assigneeIsMe,
@@ -152,6 +154,7 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
             issueType: issue.fields.issuetype.name.toLowerCase(),
             status: issue.fields.status.name,
             storyPoints: sp != null ? String(sp) : null,
+            parentKey,
             createdByMe,
             assigneeIsMe,
             closedAt,
@@ -162,27 +165,79 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
         });
     }
 
-    // --- Second pass: update epicKey where parent exists in tickets table ---
-    const issuesWithParent = allIssues.filter(
-      (issue) => issue.fields.parent?.key
-    );
-    if (issuesWithParent.length > 0) {
-      const parentKeys = [
-        ...new Set(issuesWithParent.map((i) => i.fields.parent!.key)),
+    // --- Second pass: backfill epicKey for ALL tickets with parentKey but no epicKey ---
+    const orphanRows = await db
+      .select({ key: tickets.key, parentKey: tickets.parentKey })
+      .from(tickets)
+      .where(and(isNotNull(tickets.parentKey), isNull(tickets.epicKey)));
+
+    if (orphanRows.length > 0) {
+      const neededParentKeys = [
+        ...new Set(orphanRows.map((r) => r.parentKey!)),
       ];
+
+      // Check which parents already exist in the DB
       const existingParents = await db
         .select({ key: tickets.key })
         .from(tickets)
-        .where(inArray(tickets.key, parentKeys));
+        .where(inArray(tickets.key, neededParentKeys));
       const existingParentKeys = new Set(existingParents.map((r) => r.key));
 
-      for (const issue of issuesWithParent) {
-        const parentKey = issue.fields.parent!.key;
-        if (existingParentKeys.has(parentKey)) {
+      // Fetch and insert any parent tickets not already in the DB
+      const missingParentKeys = neededParentKeys.filter(
+        (k) => !existingParentKeys.has(k)
+      );
+      if (missingParentKeys.length > 0) {
+        const parentJql = `key in (${missingParentKeys.map((k) => `"${k}"`).join(",")})`;
+        const parentUrl = new URL(`${baseUrl}/rest/api/3/search/jql`);
+        parentUrl.searchParams.set("jql", parentJql);
+        parentUrl.searchParams.set("fields", fields);
+        parentUrl.searchParams.set("maxResults", "50");
+
+        const { data: parentData } = await apiFetch<JiraSearchResponse>(
+          parentUrl.toString(),
+          { headers: { Authorization: auth } }
+        );
+
+        for (const parent of parentData.issues) {
+          await db
+            .insert(tickets)
+            .values({
+              key: parent.key,
+              title: parent.fields.summary,
+              issueType: parent.fields.issuetype.name.toLowerCase(),
+              status: parent.fields.status.name,
+              storyPoints: null,
+              parentKey: parent.fields.parent?.key ?? null,
+              epicKey: null,
+              createdByMe: false,
+              assigneeIsMe: false,
+              closedAt: null,
+              jiraCreatedAt: new Date(parent.fields.created),
+              jiraUpdatedAt: new Date(parent.fields.updated),
+              syncedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: tickets.key,
+              set: {
+                title: parent.fields.summary,
+                issueType: parent.fields.issuetype.name.toLowerCase(),
+                status: parent.fields.status.name,
+                jiraUpdatedAt: new Date(parent.fields.updated),
+                syncedAt: new Date(),
+              },
+            });
+          existingParentKeys.add(parent.key);
+        }
+      }
+
+      // Set epicKey for all orphans whose parent now exists
+      for (const row of orphanRows) {
+        if (existingParentKeys.has(row.parentKey!)) {
           await db
             .update(tickets)
-            .set({ epicKey: parentKey })
-            .where(eq(tickets.key, issue.key));
+            .set({ epicKey: row.parentKey })
+            .where(eq(tickets.key, row.key));
         }
       }
     }

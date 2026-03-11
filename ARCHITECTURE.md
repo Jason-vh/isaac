@@ -103,9 +103,9 @@ isaac/
 │       │   │   ├── PipelineWaterfallCard.vue # Pipeline list item linking to waterfall
 │       │   │   └── WaterfallChart.vue        # Job timeline bars with DAG dependency lines
 │       │   └── wbso/
-│       │       ├── WbsoCategoryCards.vue    # 5 stat cards (Coding, Dev Meeting, Dev Misc, Non-Dev, Total)
-│       │       ├── WbsoWeekGrid.vue         # 5-column Mon-Fri grid with entries per day
-│       │       ├── WbsoEntryChip.vue        # Single entry chip with category color + reasoning
+│       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Dev Meeting, Dev Misc, Non-Dev, Leave, Total)
+│       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid, entries grouped by epic with Jira-linked headers
+│       │       ├── WbsoEntryChip.vue        # Entry as sentence ("1.25h coding on DESK-1234") with type icon + Jira link
 │       │       ├── WbsoEpicSummary.vue      # Table grouped by epic for WBSO form
 │       │       └── WbsoUnlinkedPanel.vue    # Collapsible panel for MRs without ticket links
 │       ├── views/
@@ -114,6 +114,7 @@ isaac/
 │       │   ├── PipelinesView.vue
 │       │   ├── PipelineWaterfallView.vue
 │       │   ├── WbsoView.vue
+│       │   ├── AdminView.vue         # Sync trigger + log (hidden from nav, /admin)
 │       │   └── LoginView.vue
 │       └── api/
 │           └── client.ts       # Typed API client
@@ -139,6 +140,7 @@ The core entity. Epics are tickets with `issue_type = 'epic'`. Uses Jira key as 
 | issue_type | text | epic, story, task, bug, etc. |
 | status | text | Current Jira status |
 | story_points | decimal | Nullable |
+| parent_key | text | Nullable, raw Jira parent key (for epic backfill) |
 | epic_key | text FK → tickets | Nullable (epics don't have a parent epic) |
 | created_by_me | boolean | |
 | assignee_is_me | boolean | |
@@ -236,10 +238,10 @@ Individual commits from merge requests, used to distribute coding effort across 
 | id | serial PK | |
 | calendar_event_id | text unique | From Apps Script |
 | title | text | |
-| category | text | dev, non_dev — initially null, set manually or inferred |
+| category | text | dev, non_dev, leave — initially null, set manually or inferred |
 | epic_key | text FK → tickets | Nullable |
 | epic_key_inferred | boolean | Default true. Set to false when manually overridden. |
-| response_status | text | Nullable, accepted/declined/tentative — proves attendance |
+| response_status | text | Nullable, accepted/declined/tentative/needsAction — proves attendance |
 | starts_at | timestamptz | |
 | ends_at | timestamptz | |
 | synced_at | timestamptz | |
@@ -366,7 +368,7 @@ Track sync job runs.
 
 ### No wbso_entries table
 
-WBSO estimates are computed on the fly from activity data (tickets, MRs, meetings, etc.) and rendered as a weekly summary. The WBSO API returns estimation reasoning alongside hours so that estimates are traceable to source events. No persistence needed.
+WBSO estimates are computed on the fly from activity data (tickets, MRs, meetings, etc.) and rendered as a weekly summary. The WBSO API returns estimation reasoning alongside hours so that estimates are traceable to source events. No persistence needed. The API also returns `jiraBrowseUrl` so the frontend can link tickets and epics to Jira.
 
 ## API Design
 
@@ -390,7 +392,7 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`, GET `/pipelines/list?limit=N&source=S`, GET `/pipelines/:id/jobs` (includes `needs` for DAG dependency visualization), GET `/pipelines/merge-requests?limit=N`, GET `/pipelines/merge-requests/:id/pipelines`
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning), PATCH `/wbso/meetings/:id` (override meeting category, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
-- **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills), GET `/sync/status`, GET `/sync/log`
+- **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills, per-source concurrency guard), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
@@ -402,7 +404,7 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 2. Imports DB and sync modules directly (same codebase, no HTTP)
 3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar → GitLab Pipelines)
 4. All sync functions accept an optional `sinceOverride` parameter for backfill support
-5. Runs the linker to infer relationships (branch name → ticket, etc.), skipping rows where `*_inferred = false`
+5. Runs the linker to infer relationships (branch name → ticket, meeting title → category/leave, etc.), skipping rows where `*_inferred = false`. The linker fetches missing tickets from Jira when branch names reference tickets not yet in the DB (common for reviewed MRs authored by others).
 6. Runs the KR updater to auto-update key results that have a `data_source` set
 7. Logs results to `sync_log`
 
@@ -410,7 +412,7 @@ Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources
 
 ### Manual sync trigger
 
-`POST /api/sync/trigger` allows on-demand syncs with source filtering and date override. Useful when fixing field mappings or backfilling data. Example:
+`POST /api/sync/trigger` allows on-demand syncs with source filtering and date override. The concurrency guard is per-source — different sources can sync in parallel, but the same source can't run twice. Useful when fixing field mappings or backfilling data. Example:
 
 ```bash
 curl -X POST https://isaac.vhtm.eu/api/sync/trigger \
@@ -419,9 +421,11 @@ curl -X POST https://isaac.vhtm.eu/api/sync/trigger \
   -d '{"sources": ["jira"], "since": "2025-09-01"}'
 ```
 
-### Jira field mapping
+### Jira sync details
 
-Story points use `customfield_10502` (FareHarbor's Jira instance). This was discovered via `acli jira workitem view DESK-XXXX --fields '*all' --json`.
+**Parent/epic resolution:** The Jira sync stores `parent_key` on every ticket. After upserting the batch, it queries for all tickets with `parent_key IS NOT NULL AND epic_key IS NULL`, fetches any missing parent tickets (epics) from Jira, inserts them, and sets `epic_key`. This ensures epics are resolved even for tickets where you aren't the assignee/reporter of the parent.
+
+**Field mapping:** Story points use `customfield_10502` (FareHarbor's Jira instance). This was discovered via `acli jira workitem view DESK-XXXX --fields '*all' --json`.
 
 ## Hosting — Railway
 

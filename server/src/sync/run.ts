@@ -18,7 +18,7 @@ async function main() {
   validateSyncEnv();
 
   // Step 2: Concurrent-sync guard
-  if (await isSyncRunning()) {
+  if ((await isSyncRunning()).length > 0) {
     console.log("[sync] Another sync is already running, exiting.");
     process.exit(0);
   }

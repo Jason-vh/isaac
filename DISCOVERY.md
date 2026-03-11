@@ -44,7 +44,7 @@ GitLab MR. All project MRs are stored for denominator metrics (e.g. review perce
 Confluence page. Tracked events: published, commented on. Linked to epics (inferred where possible, manual otherwise).
 
 **Meeting**
-Google Calendar event. Categorised as dev or non-dev. Linked to epics where possible (inferred or manual).
+Google Calendar event. Categorised as dev, non-dev, or leave. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Linked to epics where possible (inferred or manual). All-day and multi-day events are placed on every weekday they span.
 
 **Win**
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
@@ -66,15 +66,27 @@ The primary output. Isaac estimates hours per ticket per day, placed into catego
 
 | Category | Description |
 |---|---|
-| Coding/commit | Dev work linked to a ticket |
+| Coding | Dev work linked to a ticket (commits) |
+| Code review | Review activity on other people's MRs |
 | Dev meeting | Meetings linked to a ticket/epic |
-| Dev miscellaneous | Dev work not linked to a ticket (e.g. code reviews) |
+| Dev miscellaneous | Dev work not linked to a ticket |
 | Non-dev | General company meetings, etc. |
-| Leave/holiday/sickness | Time off |
+| Leave | Sick days, holidays, OOO (detected from calendar event titles) |
 
-Hours are estimated from activity signals (commits, MR size, calendar events) and proposed by Isaac. Estimates don't need to be exact - reasonable approximations are fine.
+#### Fill-to-8h algorithm
 
-At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form.
+Every working day must total exactly 8 hours. The algorithm:
+
+1. **Meetings** use their actual calendar duration.
+2. **Leave** fills the entire 8h day — no other activity is placed on leave days.
+3. **Remaining hours** (`8 - meeting_hours`) are distributed proportionally across coding and review activities using relative weights:
+   - Coding weight: `(additions + deletions) * (dayCommits / totalCommits)` — MR size scaled by commit proportion on that day
+   - Review weight: `(mr_additions + mr_deletions) * 0.3` — MR size with a 0.3 factor (reviewing is faster than writing)
+4. **Zero-activity days** borrow coding weights from the next weekday that has commits (you were working on things you committed the next day).
+5. **0.25h minimum** per entry, with redistribution from larger entries.
+6. **Quarter-hour rounding** uses Hamilton's method (largest remainder) to preserve the 8h total exactly.
+
+At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form. The WBSO view groups entries by epic per day, with epic headers linking to Jira and ticket keys linking to individual issues.
 
 ## User Flows
 
@@ -97,6 +109,10 @@ At submission time, hours are grouped by epic (WBSO project) to produce a weekly
 - Review OKR progress on the Objectives page — expand objectives to see linked evidence (epics auto-resolve child tickets, MRs, and docs)
 - Track CI/CD health on the Pipelines page — weekly duration trends, slowest jobs, flakiest jobs
 - Use accumulated data for performance reviews, brag documents, retrospectives
+
+### Admin (`/admin` — not in nav)
+- Trigger manual syncs (all sources or selected subset) — different sources can run in parallel
+- View sync log history and clean up stale running entries from interrupted processes
 
 ## Technical Decisions
 

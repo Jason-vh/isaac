@@ -31,6 +31,7 @@ export const tickets = pgTable("tickets", {
   issueType: text("issue_type").notNull(),
   status: text("status").notNull(),
   storyPoints: decimal("story_points"),
+  parentKey: text("parent_key"),
   epicKey: text("epic_key").references(() => tickets.key),
   createdByMe: boolean("created_by_me").notNull(),
   assigneeIsMe: boolean("assignee_is_me").notNull(),

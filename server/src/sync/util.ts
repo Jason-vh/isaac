@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { syncLog } from "../db/schema";
-import { eq, and, desc, gt } from "drizzle-orm";
+import { eq, and, desc, gt, inArray } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // apiFetch — thin fetch wrapper with retries on 429/5xx
@@ -190,17 +190,17 @@ export async function paginateGitLab<T>(
 // isSyncRunning — concurrent-sync guard
 // ---------------------------------------------------------------------------
 
-export async function isSyncRunning(): Promise<boolean> {
+export async function isSyncRunning(sources?: string[]): Promise<string[]> {
   const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
   const rows = await db
-    .select({ id: syncLog.id })
+    .select({ source: syncLog.source })
     .from(syncLog)
     .where(
       and(
         eq(syncLog.status, "running"),
-        gt(syncLog.startedAt, tenMinAgo)
+        gt(syncLog.startedAt, tenMinAgo),
+        ...(sources?.length ? [inArray(syncLog.source, sources)] : [])
       )
-    )
-    .limit(1);
-  return rows.length > 0;
+    );
+  return rows.map((r) => r.source);
 }

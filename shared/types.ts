@@ -326,7 +326,7 @@ export interface MergeRequestListItem {
 }
 
 // WBSO
-export type WbsoCategory = "coding" | "dev_meeting" | "dev_misc" | "non_dev";
+export type WbsoCategory = "coding" | "dev_meeting" | "dev_misc" | "non_dev" | "leave";
 
 export interface WbsoEntry {
   category: WbsoCategory;
@@ -360,6 +360,7 @@ export interface WbsoCategoryTotals {
   devMeeting: number;
   devMisc: number;
   nonDev: number;
+  leave: number;
   total: number;
 }
 
@@ -383,6 +384,7 @@ export interface WbsoUnlinkedMR {
 export interface WbsoWeekData {
   weekStart: string;
   weekEnd: string;
+  jiraBrowseUrl: string;
   days: WbsoDayData[];
   totals: WbsoCategoryTotals;
   byEpic: WbsoEpicSummary[];

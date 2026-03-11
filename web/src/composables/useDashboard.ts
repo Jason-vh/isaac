@@ -1,4 +1,4 @@
-import { ref, watch } from "vue";
+import { ref, computed, watch } from "vue";
 import type { WeekData, VelocityWeek } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
@@ -76,5 +76,14 @@ export function useDashboard() {
     date.value = todayStr();
   }
 
-  return { date, data, velocity, loading, error, prevWeek, nextWeek, goToday };
+  const isCurrentWeek = computed(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diff);
+    return data.value?.weekStart === monday.toISOString().split("T")[0];
+  });
+
+  return { date, data, velocity, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday };
 }

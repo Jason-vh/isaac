@@ -1,6 +1,8 @@
 import { db } from "../db";
 import { mergeRequests, meetings, tickets } from "../db/schema";
 import { eq, isNull, inArray } from "drizzle-orm";
+import { env } from "../env";
+import { apiFetch, basicAuthHeader } from "./util";
 
 // ---------------------------------------------------------------------------
 // Ticket key regex: matches patterns like PROJ-123
@@ -17,6 +19,9 @@ const DEV_KEYWORDS =
 
 const NON_DEV_KEYWORDS =
   /\b(all-hands|all hands|company|team social|lunch|offsite|hr|performance review)\b/i;
+
+const LEAVE_KEYWORDS =
+  /\b(sick|ziek|ooo|out of office|holiday|vacation|vakantie|verlof|leave|day off|free day|vrije dag)\b/i;
 
 // ---------------------------------------------------------------------------
 // MR → Ticket linking
@@ -51,13 +56,80 @@ export async function runLinker(): Promise<void> {
   if (candidates.length === 0) {
     console.log("[linker] No new MR links to infer.");
   } else {
-    // Validate extracted keys exist in tickets table (avoid FK violation)
     const candidateKeys = [...new Set(candidates.map((c) => c.extractedKey))];
     const existingTickets = await db
       .select({ key: tickets.key })
       .from(tickets)
       .where(inArray(tickets.key, candidateKeys));
     const validKeys = new Set(existingTickets.map((t) => t.key));
+
+    // Fetch missing tickets from Jira so we can link to them
+    const missingKeys = candidateKeys.filter((k) => !validKeys.has(k));
+    if (missingKeys.length > 0) {
+      try {
+        const baseUrl = env.JIRA_BASE_URL.replace(/\/jira\/?$/, "");
+        const auth = basicAuthHeader(env.JIRA_EMAIL, env.JIRA_API_TOKEN);
+        const jql = `key in (${missingKeys.map((k) => `"${k}"`).join(",")})`;
+        const url = new URL(`${baseUrl}/rest/api/3/search/jql`);
+        url.searchParams.set("jql", jql);
+        url.searchParams.set(
+          "fields",
+          "summary,issuetype,status,parent,created,updated"
+        );
+        url.searchParams.set("maxResults", "50");
+
+        const { data } = await apiFetch<{
+          issues: Array<{
+            key: string;
+            fields: {
+              summary: string;
+              issuetype: { name: string };
+              status: { name: string };
+              parent?: { key: string };
+              created: string;
+              updated: string;
+            };
+          }>;
+        }>(url.toString(), { headers: { Authorization: auth } });
+
+        for (const issue of data.issues) {
+          await db
+            .insert(tickets)
+            .values({
+              key: issue.key,
+              title: issue.fields.summary,
+              issueType: issue.fields.issuetype.name.toLowerCase(),
+              status: issue.fields.status.name,
+              storyPoints: null,
+              parentKey: issue.fields.parent?.key ?? null,
+              epicKey: null,
+              createdByMe: false,
+              assigneeIsMe: false,
+              closedAt: null,
+              jiraCreatedAt: new Date(issue.fields.created),
+              jiraUpdatedAt: new Date(issue.fields.updated),
+              syncedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: tickets.key,
+              set: {
+                title: issue.fields.summary,
+                issueType: issue.fields.issuetype.name.toLowerCase(),
+                status: issue.fields.status.name,
+                parentKey: issue.fields.parent?.key ?? null,
+                jiraUpdatedAt: new Date(issue.fields.updated),
+                syncedAt: new Date(),
+              },
+            });
+          validKeys.add(issue.key);
+        }
+        console.log(
+          `[linker] Fetched ${data.issues.length} missing tickets from Jira.`
+        );
+      } catch (err) {
+        console.error("[linker] Failed to fetch missing tickets:", err);
+      }
+    }
 
     let linked = 0;
     for (const { mrId, extractedKey } of candidates) {
@@ -122,20 +194,25 @@ async function linkMeetings(): Promise<void> {
     let epicKey: string | null = null;
     let epicKeyInferred = m.epicKeyInferred;
 
+    // Check leave first (sick, OOO, holiday, etc.)
+    if (LEAVE_KEYWORDS.test(m.title)) {
+      category = "leave";
     // Check for ticket key in title
-    const ticketMatch = m.title.match(TICKET_KEY_RE);
-    if (ticketMatch && validTicketKeys.has(ticketMatch[1])) {
-      category = "dev";
-      // Look up the ticket's epic
-      const ticketEpic = ticketEpicMap.get(ticketMatch[1]);
-      if (ticketEpic) {
-        epicKey = ticketEpic;
-        epicKeyInferred = true;
+    } else {
+      const ticketMatch = m.title.match(TICKET_KEY_RE);
+      if (ticketMatch && validTicketKeys.has(ticketMatch[1])) {
+        category = "dev";
+        // Look up the ticket's epic
+        const ticketEpic = ticketEpicMap.get(ticketMatch[1]);
+        if (ticketEpic) {
+          epicKey = ticketEpic;
+          epicKeyInferred = true;
+        }
+      } else if (DEV_KEYWORDS.test(m.title)) {
+        category = "dev";
+      } else if (NON_DEV_KEYWORDS.test(m.title)) {
+        category = "non_dev";
       }
-    } else if (DEV_KEYWORDS.test(m.title)) {
-      category = "dev";
-    } else if (NON_DEV_KEYWORDS.test(m.title)) {
-      category = "non_dev";
     }
 
     if (category === null) continue;

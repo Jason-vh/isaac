@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
     <div
       v-for="stat in cards"
       :key="stat.label"
@@ -32,6 +32,7 @@ import {
   ChatBubbleLeftRightIcon,
   WrenchScrewdriverIcon,
   ClockIcon,
+  SunIcon,
   CalculatorIcon,
 } from "@heroicons/vue/20/solid";
 
@@ -69,6 +70,14 @@ const cards = computed(() => [
     icon: ClockIcon,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-600",
+  },
+  {
+    label: "Leave",
+    value: props.totals.leave,
+    detail: null,
+    icon: SunIcon,
+    iconBg: "bg-rose-50",
+    iconColor: "text-rose-600",
   },
   {
     label: "Total",
