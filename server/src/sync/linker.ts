@@ -259,6 +259,11 @@ async function resolveEpicKeys(): Promise<void> {
     .from(tickets)
     .where(and(isNotNull(tickets.parentKey), isNull(tickets.epicKey)));
 
+  console.log(`[linker] Found ${orphans.length} tickets with parentKey but no epicKey`);
+  if (orphans.length > 0) {
+    console.log(`[linker] Orphan samples:`, orphans.slice(0, 5).map((o) => `${o.key} → ${o.parentKey}`));
+  }
+
   if (orphans.length === 0) return;
 
   const neededParentKeys = [...new Set(orphans.map((r) => r.parentKey!))];

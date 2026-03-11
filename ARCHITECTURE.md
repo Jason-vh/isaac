@@ -79,7 +79,7 @@ isaac/
 │       │   └── useWbso.ts       # WBSO week data fetching
 │       ├── components/
 │       │   ├── dashboard/
-│       │       ├── WeekPicker.vue
+│       │       ├── WeekPicker.vue         # Week navigation with optional disableNext prop
 │       │       ├── StatsCards.vue
 │       │       ├── WeekGrid.vue
 │       │       ├── DayTimeline.vue    # Compact day summary (meetings + grouped activity)
@@ -106,8 +106,9 @@ isaac/
 │       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Code Review, Dev Meeting, Dev Misc, Non-Dev, Leave)
 │       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid with stacked category progress bars, entries grouped by epic
 │       │       ├── WbsoEntryChip.vue        # Entry as sentence ("1.25h coding on DESK-1234") with type icon + Jira link
+│       │       ├── WbsoEntryDetail.vue       # Slide-over panel with entry details, ticket/epic info, MR links, commit list
 │       │       ├── WbsoEpicSummary.vue      # Table grouped by epic with clickable Jira-linked titles and category-colored columns
-│       │       └── WbsoUnlinkedPanel.vue    # Collapsible panel for MRs without ticket links
+│       │       └── WbsoUnlinkedPanel.vue    # Collapsible panel for MRs without ticket links, with inline ticket search
 │       ├── views/
 │       │   ├── DashboardView.vue
 │       │   ├── ObjectivesView.vue
@@ -389,7 +390,7 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`, GET `/objectives/epics?q=`, POST `/objectives/seed` (owner-only, idempotent seeder for 2026 OKRs)
 - **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
 - **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`, GET `/pipelines/list?limit=N&source=S`, GET `/pipelines/:id/jobs` (includes `needs` for DAG dependency visualization), GET `/pipelines/merge-requests?limit=N`, GET `/pipelines/merge-requests/:id/pipelines`
-- **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning), PATCH `/wbso/meetings/:id` (override meeting category, owner-only)
+- **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills, per-source concurrency guard), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
@@ -403,7 +404,7 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 2. Imports DB and sync modules directly (same codebase, no HTTP)
 3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar → GitLab Pipelines)
 4. All sync functions accept an optional `sinceOverride` parameter for backfill support
-5. Runs the linker to infer relationships (branch name → ticket, meeting title → category/leave, etc.), skipping rows where `*_inferred = false`. The linker fetches missing tickets from Jira when branch names reference tickets not yet in the DB (common for reviewed MRs authored by others).
+5. Runs the linker to infer relationships (branch name → ticket, meeting title → category/leave, etc.), skipping rows where `*_inferred = false`. The linker fetches missing tickets from Jira when branch names reference tickets not yet in the DB (common for reviewed MRs authored by others). The linker also resolves `epic_key` for any ticket that has `parent_key` but no `epic_key`, fetching missing parent tickets from Jira if needed.
 6. Runs the KR updater to auto-update key results that have a `data_source` set
 7. Logs results to `sync_log`
 
