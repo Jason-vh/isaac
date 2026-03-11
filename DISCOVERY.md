@@ -38,13 +38,13 @@ Jira issue. Has story points, belongs to an epic, has status transitions. The fu
 Groups tickets into projects. Also a Jira issue. Maps to WBSO projects. The primary linking grain for documents and meetings.
 
 **Merge Request**
-GitLab MR. All project MRs are stored for denominator metrics (e.g. review percentage). Three classes: authored (`authoredByMe`), reviewed (`reviewedByMe` — approved or commented, not authored), and team (neither). Events are only created for MRs the user participated in. Linked to tickets via branch name (inferred).
+GitLab MR. All project MRs are stored for denominator metrics (e.g. review percentage). Three classes: authored (`authoredByMe`), reviewed (`reviewedByMe` — approved or commented, not authored), and team (neither). Events are only created for MRs the user participated in. Linked to tickets via branch name (inferred, case-insensitive). Can also be manually linked to a ticket via the entry detail panel or the unlinked MRs panel.
 
 **Document**
 Confluence page. Tracked events: published, commented on. Linked to epics (inferred where possible, manual otherwise).
 
 **Meeting**
-Google Calendar event. Categorised as dev, non-dev, leave, or ignore. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Working-location events (Home, Office, etc.) are ignored entirely. Linked to epics where possible (inferred or manual). All-day and multi-day events are placed on every weekday they span using Amsterdam timezone boundaries.
+Google Calendar event. Categorised as dev, non-dev, leave, or ignore. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Working-location events (Home, Office, etc.) are ignored entirely. Linked to epics where possible (inferred or manual). Linking a meeting to a ticket automatically resolves its epic and sets the category to "dev". All-day and multi-day events are placed on every weekday they span using Amsterdam timezone boundaries.
 
 **Win**
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
@@ -86,7 +86,9 @@ Every working day must total exactly 8 hours. The algorithm:
 5. **0.25h minimum** per coding entry, **10 min minimum** per review entry, with redistribution from larger entries.
 6. **Quarter-hour rounding** uses Hamilton's method (largest remainder) to preserve the 8h total exactly.
 
-At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form. The WBSO view groups entries by epic per day, with epic headers linking to Jira and ticket keys linking to individual issues. Each day header shows a stacked progress bar colored by category (emerald=coding, violet=review, fuchsia=dev meeting/misc, amber=non-dev, gray=leave). Navigation is bounded to the current week (no future weeks). The epic summary table uses clickable Jira-linked titles with category-colored columns.
+At submission time, hours are grouped by epic (WBSO project) to produce a weekly summary that can be transcribed into the WBSO web form. The WBSO view groups entries by epic per day, with epic headers linking to Jira and ticket keys linking to individual issues. Epics are sorted by their Jira creation date (oldest first), with unlinked entries shown last under a "No epic" divider. Each day header shows a stacked progress bar colored by category (emerald=coding, violet=review, fuchsia=dev meeting/misc, amber=non-dev, gray=leave). Navigation is bounded to the current week (no future weeks). The epic summary table uses clickable Jira-linked titles with category-colored columns, also sorted by Jira creation date.
+
+Clicking an entry chip opens a slide-over detail panel showing the entry's underlying data: MR details (title, branch, additions/deletions, GitLab link), commits, meeting info (time, duration), and ticket/epic linkage. The panel includes a ticket search (by key or title) for linking unlinked entries — searching resolves the ticket's epic and displays epic badges in the results. Unlinked MRs listed at the bottom of the WBSO view also have inline ticket search for quick linking.
 
 ## User Flows
 
