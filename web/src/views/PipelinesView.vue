@@ -1,64 +1,85 @@
 <template>
   <div>
-    <div v-if="loading && !metrics.length" class="py-20 text-center text-ink-faint">
-      Loading...
+    <!-- Header (always visible) -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-ink">Pipelines</h1>
+        <p class="mt-1 text-sm text-ink-muted">CI/CD performance tracking.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          v-for="p in presets"
+          :key="p.days"
+          class="rounded-lg border px-2.5 py-1 text-sm transition-colors"
+          :class="isActivePreset(p.days)
+            ? 'border-accent bg-accent-light text-accent'
+            : 'border-border text-ink-muted hover:text-ink hover:bg-surface-1'"
+          @click="applyPreset(p.days)"
+        >
+          {{ p.label }}
+        </button>
+        <input
+          v-model="since"
+          type="date"
+          class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm text-ink"
+        />
+        <span class="text-sm text-ink-faint">to</span>
+        <input
+          v-model="until"
+          type="date"
+          class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm text-ink"
+        />
+      </div>
     </div>
-    <div v-else-if="error" class="py-20 text-center text-red-500">
-      {{ error }}
+
+    <!-- Stats -->
+    <div class="mt-6">
+      <PipelineDurationStats :comparison="comparison" :loading="initialLoading" />
     </div>
-    <template v-else>
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold text-ink">Pipelines</h1>
-          <p class="mt-1 text-sm text-ink-muted">CI/CD performance tracking.</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <router-link
-            to="/pipelines/waterfall"
-            class="rounded-lg border border-border px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-1 transition-colors"
-          >
-            Waterfall
-          </router-link>
-          <span class="text-sm text-ink-muted">Period:</span>
-          <select
-            v-model="weeks"
-            class="rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink"
-          >
-            <option :value="8">8 weeks</option>
-            <option :value="12">12 weeks</option>
-            <option :value="16">16 weeks</option>
-            <option :value="24">24 weeks</option>
-          </select>
-          <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
-        </div>
-      </div>
 
-      <!-- Stats cards -->
-      <div class="mt-6">
-        <PipelineStatsCards :metrics="metrics" />
+    <!-- Chart area -->
+    <div class="mt-6">
+      <div v-if="error" class="py-20 text-center text-red-500">
+        {{ error }}
       </div>
+      <DurationScatterChart v-else :points="points" :loading="initialLoading" @select="onSelectPipeline" />
+    </div>
 
-      <!-- Duration trend chart -->
-      <div class="mt-6">
-        <DurationTrendChart :metrics="metrics" />
-      </div>
+    <!-- Job Gantt chart -->
+    <div class="mt-6">
+      <JobGanttChart :jobs="jobStats" :loading="initialLoading" />
+    </div>
 
-      <!-- Two-column: slowest + flaky -->
-      <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SlowestJobsList :jobs="slowestJobs" />
-        <FlakyJobsList :jobs="flakyJobs" />
-      </div>
-    </template>
+    <!-- Job overview -->
+    <div class="mt-6">
+      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :loading="initialLoading" />
+    </div>
+
+    <!-- Pipeline list -->
+    <div class="mt-6">
+      <PipelineList :points="points" :loading="initialLoading" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useRouter } from "vue-router";
 import { usePipelines } from "../composables/usePipelines";
-import PipelineStatsCards from "../components/pipelines/PipelineStatsCards.vue";
-import DurationTrendChart from "../components/pipelines/DurationTrendChart.vue";
-import SlowestJobsList from "../components/pipelines/SlowestJobsList.vue";
-import FlakyJobsList from "../components/pipelines/FlakyJobsList.vue";
 
-const { weeks, metrics, slowestJobs, flakyJobs, loading, error } = usePipelines();
+const router = useRouter();
+function onSelectPipeline(id: number) {
+  router.push({ name: "pipeline-detail", params: { id } });
+}
+import DurationScatterChart from "../components/pipelines/DurationScatterChart.vue";
+import PipelineDurationStats from "../components/pipelines/PipelineDurationStats.vue";
+import PipelineList from "../components/pipelines/PipelineList.vue";
+import JobOverview from "../components/pipelines/JobOverview.vue";
+import JobGanttChart from "../components/pipelines/JobGanttChart.vue";
+
+const presets = [
+  { label: "7d", days: 7 },
+  { label: "30d", days: 30 },
+];
+
+const { since, until, points, comparison, jobStats, prevJobStats, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
 </script>

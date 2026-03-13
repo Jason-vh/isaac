@@ -71,6 +71,13 @@
       "when": 1773236714421,
       "tag": "0009_freezing_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1773434068331,
+      "tag": "0010_minor_echo",
+      "breakpoints": true
     }
   ]
 }

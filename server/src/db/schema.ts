@@ -7,6 +7,7 @@ import {
   bigint,
   decimal,
   timestamp,
+  index,
   customType,
 } from "drizzle-orm/pg-core";
 
@@ -212,7 +213,9 @@ export const pipelines = pgTable("pipelines", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
   syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
-});
+}, (t) => [
+  index("pipelines_status_created_idx").on(t.status, t.gitlabCreatedAt),
+]);
 
 export const pipelineJobs = pgTable("pipeline_jobs", {
   id: bigint("id", { mode: "number" }).primaryKey(),
@@ -230,7 +233,9 @@ export const pipelineJobs = pgTable("pipeline_jobs", {
   webUrl: text("web_url").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("pipeline_jobs_pipeline_retried_idx").on(t.pipelineId, t.retried),
+]);
 
 // --- passkey_credentials ---
 

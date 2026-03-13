@@ -250,32 +250,24 @@ export interface VelocityWeek {
 }
 
 // Pipelines
-export interface WeeklyPipelineStats {
-  weekStart: string;
-  total: number;
-  successCount: number;
-  failedCount: number;
-  p50Duration: number | null;
-  p90Duration: number | null;
-  maxDuration: number | null;
-  avgQueueTime: number | null;
-  retryRate: number;
+export interface PipelineDurationPoint {
+  id: number;
+  type: "merge" | "train";
+  durationSeconds: number;
+  createdAt: string;
+  webUrl: string;
+  jobCount: number;
+  retriedJobCount: number;
 }
 
-export interface SlowestJob {
+export interface JobStats {
   name: string;
   stage: string;
   runCount: number;
   avgDuration: number;
-  p90Duration: number | null;
-}
-
-export interface FlakyJob {
-  name: string;
-  stage: string;
-  totalRuns: number;
+  p50Duration: number | null;
   retryCount: number;
-  retryRate: number;
+  needs: string[];
 }
 
 // Pipeline Waterfall

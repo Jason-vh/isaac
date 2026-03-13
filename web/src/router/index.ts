@@ -43,15 +43,15 @@ export const router = createRouter({
       name: "objectives",
       component: () => import("../views/ObjectivesView.vue"),
     },
-    {
-      path: "/pipelines/waterfall/:tab?",
-      name: "pipeline-waterfall",
-      component: () => import("../views/PipelineWaterfallView.vue"),
-    },
-    {
+{
       path: "/pipelines",
       name: "pipelines",
       component: () => import("../views/PipelinesView.vue"),
+    },
+    {
+      path: "/pipelines/:id",
+      name: "pipeline-detail",
+      component: () => import("../views/PipelineDetailView.vue"),
     },
   ],
 });

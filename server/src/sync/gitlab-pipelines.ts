@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { pipelines, pipelineJobs, mergeRequests } from "../db/schema";
 import { env } from "../env";
@@ -131,6 +131,8 @@ async function fetchJobNeeds(
 // Sync
 // ---------------------------------------------------------------------------
 
+const CONCURRENCY = 6;
+
 export async function syncGitLabPipelines(
   sinceOverride?: Date
 ): Promise<void> {
@@ -163,19 +165,33 @@ export async function syncGitLabPipelines(
 
       if (finished.length === 0) return 0;
 
-      // Step 3: For each pipeline, fetch detail + jobs, then upsert
-      for (const pipeline of finished) {
-        // Fetch pipeline detail (for duration, queued_duration, coverage)
-        const { data: detail } = await apiFetch<GitLabPipelineDetail>(
-          `${baseUrl}/api/v4/projects/${projectId}/pipelines/${pipeline.id}`,
-          { headers: authHeaders }
-        );
+      // Step 3: Skip pipelines we've already synced (finished pipelines don't change)
+      const existingIds = new Set(
+        (
+          await db
+            .select({ id: pipelines.id })
+            .from(pipelines)
+            .where(inArray(pipelines.id, finished.map((p) => p.id)))
+        ).map((r) => r.id)
+      );
+      const toSync = finished.filter((p) => !existingIds.has(p.id));
 
-        // Fetch jobs for this pipeline
-        const jobs = await paginateGitLab<GitLabJob>(
-          `${baseUrl}/api/v4/projects/${projectId}/pipelines/${pipeline.id}/jobs?include_retried=true`,
-          authHeaders
-        );
+      if (toSync.length === 0) return 0;
+
+      // Helper: process a single pipeline
+      async function processPipeline(pipeline: GitLabPipelineListItem) {
+        // Fetch detail, jobs, and job needs in parallel
+        const [{ data: detail }, jobs, needsMap] = await Promise.all([
+          apiFetch<GitLabPipelineDetail>(
+            `${baseUrl}/api/v4/projects/${projectId}/pipelines/${pipeline.id}`,
+            { headers: authHeaders }
+          ),
+          paginateGitLab<GitLabJob>(
+            `${baseUrl}/api/v4/projects/${projectId}/pipelines/${pipeline.id}/jobs?include_retried=true`,
+            authHeaders
+          ),
+          fetchJobNeeds(baseUrl, token, projectPath, pipeline.iid),
+        ]);
 
         // Resolve merge request link from ref
         let mergeRequestId: number | null = null;
@@ -191,14 +207,6 @@ export async function syncGitLabPipelines(
             .limit(1);
           if (mr) mergeRequestId = mr.id;
         }
-
-        // Fetch job needs via GraphQL
-        const needsMap = await fetchJobNeeds(
-          baseUrl,
-          token,
-          projectPath,
-          detail.iid
-        );
 
         // Upsert pipeline
         await db
@@ -252,7 +260,6 @@ export async function syncGitLabPipelines(
 
         // Infer retried: when multiple jobs share the same name in a pipeline,
         // only the one with the highest ID (latest attempt) is the "real" run.
-        // GitLab's API doesn't reliably set the `retried` field on our instance.
         const latestByName = new Map<string, number>();
         for (const job of jobs) {
           const prev = latestByName.get(job.name);
@@ -261,27 +268,26 @@ export async function syncGitLabPipelines(
           }
         }
 
-        // Upsert jobs
-        for (const job of jobs) {
-          const isRetried = latestByName.get(job.name) !== job.id;
-          const jobNeeds = needsMap.has(job.name)
-            ? needsMap.get(job.name)!
-            : null;
+        // Batch upsert all jobs
+        if (jobs.length > 0) {
+          const jobRows = jobs.map((job) => {
+            const isRetried = latestByName.get(job.name) !== job.id;
+            const jobNeeds = needsMap.has(job.name)
+              ? needsMap.get(job.name)!
+              : null;
 
-          await db
-            .insert(pipelineJobs)
-            .values({
+            return {
               id: job.id,
               pipelineId: detail.id,
               name: job.name,
               stage: job.stage,
               status: job.status,
-              durationSeconds: job.duration != null
-                ? String(job.duration)
-                : null,
-              queuedDurationSeconds: job.queued_duration != null
-                ? String(job.queued_duration)
-                : null,
+              durationSeconds:
+                job.duration != null ? String(job.duration) : null,
+              queuedDurationSeconds:
+                job.queued_duration != null
+                  ? String(job.queued_duration)
+                  : null,
               allowFailure: job.allow_failure,
               retried: isRetried,
               needs: jobNeeds,
@@ -290,36 +296,39 @@ export async function syncGitLabPipelines(
               finishedAt: job.finished_at
                 ? new Date(job.finished_at)
                 : null,
-            })
+            };
+          });
+
+          await db
+            .insert(pipelineJobs)
+            .values(jobRows)
             .onConflictDoUpdate({
               target: pipelineJobs.id,
               set: {
-                pipelineId: detail.id,
-                name: job.name,
-                stage: job.stage,
-                status: job.status,
-                durationSeconds: job.duration != null
-                  ? String(job.duration)
-                  : null,
-                queuedDurationSeconds: job.queued_duration != null
-                  ? String(job.queued_duration)
-                  : null,
-                allowFailure: job.allow_failure,
-                retried: isRetried,
-                needs: jobNeeds,
-                webUrl: job.web_url,
-                startedAt: job.started_at
-                  ? new Date(job.started_at)
-                  : null,
-                finishedAt: job.finished_at
-                  ? new Date(job.finished_at)
-                  : null,
+                pipelineId: sql`excluded.pipeline_id`,
+                name: sql`excluded.name`,
+                stage: sql`excluded.stage`,
+                status: sql`excluded.status`,
+                durationSeconds: sql`excluded.duration_seconds`,
+                queuedDurationSeconds: sql`excluded.queued_duration_seconds`,
+                allowFailure: sql`excluded.allow_failure`,
+                retried: sql`excluded.retried`,
+                needs: sql`excluded.needs`,
+                webUrl: sql`excluded.web_url`,
+                startedAt: sql`excluded.started_at`,
+                finishedAt: sql`excluded.finished_at`,
               },
             });
         }
       }
 
-      return finished.length;
+      // Step 4: Process pipelines in parallel batches
+      for (let i = 0; i < toSync.length; i += CONCURRENCY) {
+        const batch = toSync.slice(i, i + CONCURRENCY);
+        await Promise.all(batch.map((p) => processPipeline(p)));
+      }
+
+      return toSync.length;
     },
     sinceOverride
   );

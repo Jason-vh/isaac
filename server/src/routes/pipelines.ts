@@ -1,109 +1,99 @@
 import { Elysia } from "elysia";
-import { sql, gte, and, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { pipelines, pipelineJobs } from "../db/schema";
 
-function weeksAgoISO(weeks: number): string {
-  return new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
-}
-
 export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
-  // Weekly aggregated metrics
-  .get("/metrics", async ({ query }) => {
-    const weeks = Number(query?.weeks) || 8;
-    const since = weeksAgoISO(weeks);
+  // Duration scatter: individual successful merge/train pipelines
+  .get("/duration-scatter", async ({ query }) => {
+    const since = query?.since
+      || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const until = query?.until || new Date().toISOString();
 
     const rows = await db.execute(sql`
-      WITH weekly AS (
-        SELECT
-          date_trunc('week', gitlab_created_at) AS week_start,
-          duration_seconds,
-          queued_duration_seconds,
-          status
-        FROM pipelines
-        WHERE gitlab_created_at >= ${since}
-      )
       SELECT
-        week_start,
-        count(*)::int AS total,
-        count(*) FILTER (WHERE status = 'success')::int AS success_count,
-        count(*) FILTER (WHERE status = 'failed')::int AS failed_count,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_seconds)
-          FILTER (WHERE duration_seconds IS NOT NULL) AS p50_duration,
-        percentile_cont(0.9) WITHIN GROUP (ORDER BY duration_seconds)
-          FILTER (WHERE duration_seconds IS NOT NULL) AS p90_duration,
-        max(duration_seconds) AS max_duration,
-        avg(queued_duration_seconds)
-          FILTER (WHERE queued_duration_seconds IS NOT NULL) AS avg_queue_time
-      FROM weekly
-      GROUP BY week_start
-      ORDER BY week_start
+        p.id, p.ref, p.duration_seconds, p.gitlab_created_at, p.web_url,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
+      FROM pipelines p
+      WHERE p.status = 'success'
+        AND p.duration_seconds IS NOT NULL
+        AND p.ref LIKE 'refs/merge-requests/%'
+        AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+        AND p.gitlab_created_at >= ${since}
+        AND p.gitlab_created_at <= ${until}
+      ORDER BY p.gitlab_created_at
     `);
 
-    // Compute retry rate per week separately (from jobs table)
-    const retryRows = await db.execute(sql`
-      SELECT
-        date_trunc('week', p.gitlab_created_at) AS week_start,
-        count(*) FILTER (WHERE j.retried = true)::int AS retried_count,
-        count(*)::int AS total_jobs
-      FROM pipeline_jobs j
-      JOIN pipelines p ON p.id = j.pipeline_id
-      WHERE p.gitlab_created_at >= ${since}
-      GROUP BY week_start
-      ORDER BY week_start
-    `);
-
-    const retryMap = new Map<string, { retried: number; total: number }>();
-    for (const r of retryRows) {
-      const key = new Date(r.week_start as string).toISOString();
-      retryMap.set(key, {
-        retried: r.retried_count as number,
-        total: r.total_jobs as number,
-      });
-    }
-
-    return (rows as any[]).map((r) => {
-      const weekKey = new Date(r.week_start).toISOString();
-      const retry = retryMap.get(weekKey);
-      return {
-        weekStart: weekKey,
-        total: r.total,
-        successCount: r.success_count,
-        failedCount: r.failed_count,
-        p50Duration: r.p50_duration ? Math.round(Number(r.p50_duration)) : null,
-        p90Duration: r.p90_duration ? Math.round(Number(r.p90_duration)) : null,
-        maxDuration: r.max_duration,
-        avgQueueTime: r.avg_queue_time
-          ? Math.round(Number(r.avg_queue_time))
-          : null,
-        retryRate: retry && retry.total > 0
-          ? Number((retry.retried / retry.total).toFixed(3))
-          : 0,
-      };
-    });
+    return (rows as any[]).map((r) => ({
+      id: Number(r.id),
+      type: (r.ref as string).endsWith("/train") ? "train" : "merge",
+      durationSeconds: r.duration_seconds,
+      createdAt: new Date(r.gitlab_created_at).toISOString(),
+      webUrl: r.web_url,
+      jobCount: r.job_count,
+      retriedJobCount: r.retried_job_count,
+    }));
   })
 
-  // Slowest jobs by average duration
-  .get("/jobs/slowest", async ({ query }) => {
-    const weeks = Number(query?.weeks) || 8;
-    const since = weeksAgoISO(weeks);
+  // Job stats: average duration per job name for successful merge/train pipelines
+  .get("/job-stats", async ({ query }) => {
+    const since = query?.since
+      || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const until = query?.until || new Date().toISOString();
 
     const rows = await db.execute(sql`
+      WITH pipeline_ids AS (
+        SELECT id FROM pipelines
+        WHERE status = 'success'
+          AND ref LIKE 'refs/merge-requests/%'
+          AND (ref LIKE '%/merge' OR ref LIKE '%/train')
+          AND gitlab_created_at >= ${since}
+          AND gitlab_created_at <= ${until}
+      ),
+      duration_stats AS (
+        SELECT
+          j.name,
+          j.stage,
+          count(*)::int AS run_count,
+          round(avg(j.duration_seconds::numeric), 1) AS avg_duration,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p50_duration
+        FROM pipeline_jobs j
+        WHERE j.pipeline_id IN (SELECT id FROM pipeline_ids)
+          AND j.retried = false
+          AND j.duration_seconds IS NOT NULL
+          AND j.stage != 'security'
+          AND j.name != 'pages'
+        GROUP BY j.name, j.stage
+      ),
+      retry_counts AS (
+        SELECT j.name, count(*)::int AS retry_count
+        FROM pipeline_jobs j
+        WHERE j.pipeline_id IN (SELECT id FROM pipeline_ids)
+          AND j.retried = true
+          AND j.stage != 'security'
+          AND j.name != 'pages'
+        GROUP BY j.name
+      ),
+      job_needs AS (
+        SELECT DISTINCT ON (j.name)
+          j.name,
+          j.needs
+        FROM pipeline_jobs j
+        WHERE j.pipeline_id IN (SELECT id FROM pipeline_ids)
+          AND j.retried = false
+          AND j.stage != 'security'
+          AND j.name != 'pages'
+        ORDER BY j.name, j.pipeline_id DESC
+      )
       SELECT
-        j.name,
-        j.stage,
-        count(*)::int AS run_count,
-        round(avg(j.duration_seconds::numeric), 1) AS avg_duration,
-        percentile_cont(0.9) WITHIN GROUP (ORDER BY j.duration_seconds::numeric)
-          AS p90_duration
-      FROM pipeline_jobs j
-      JOIN pipelines p ON p.id = j.pipeline_id
-      WHERE p.gitlab_created_at >= ${since}
-        AND j.duration_seconds IS NOT NULL
-        AND j.retried = false
-      GROUP BY j.name, j.stage
-      ORDER BY avg_duration DESC
-      LIMIT 30
+        d.name, d.stage, d.run_count, d.avg_duration, d.p50_duration,
+        COALESCE(r.retry_count, 0) AS retry_count,
+        COALESCE(n.needs, '{}') AS needs
+      FROM duration_stats d
+      LEFT JOIN retry_counts r ON r.name = d.name
+      LEFT JOIN job_needs n ON n.name = d.name
+      ORDER BY d.p50_duration DESC
     `);
 
     return (rows as any[]).map((r) => ({
@@ -111,40 +101,9 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       stage: r.stage,
       runCount: r.run_count,
       avgDuration: Number(r.avg_duration),
-      p90Duration: r.p90_duration ? Math.round(Number(r.p90_duration)) : null,
-    }));
-  })
-
-  // Most retried (flaky) jobs
-  .get("/jobs/flaky", async ({ query }) => {
-    const weeks = Number(query?.weeks) || 8;
-    const since = weeksAgoISO(weeks);
-
-    const rows = await db.execute(sql`
-      SELECT
-        j.name,
-        j.stage,
-        count(*)::int AS total_runs,
-        count(*) FILTER (WHERE j.retried = true)::int AS retry_count,
-        round(
-          count(*) FILTER (WHERE j.retried = true)::numeric / count(*)::numeric,
-          3
-        ) AS retry_rate
-      FROM pipeline_jobs j
-      JOIN pipelines p ON p.id = j.pipeline_id
-      WHERE p.gitlab_created_at >= ${since}
-      GROUP BY j.name, j.stage
-      HAVING count(*) FILTER (WHERE j.retried = true) > 0
-      ORDER BY retry_count DESC
-      LIMIT 30
-    `);
-
-    return (rows as any[]).map((r) => ({
-      name: r.name,
-      stage: r.stage,
-      totalRuns: r.total_runs,
+      p50Duration: r.p50_duration ? Math.round(Number(r.p50_duration)) : null,
       retryCount: r.retry_count,
-      retryRate: Number(r.retry_rate),
+      needs: r.needs ?? [],
     }));
   })
 
