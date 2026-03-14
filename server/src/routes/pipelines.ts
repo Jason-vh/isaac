@@ -107,6 +107,95 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
     }));
   })
 
+  // Job retry trend: sparkline data (4 weeks)
+  .get("/job-retry-trend", async ({ query }) => {
+    const until = query?.until || new Date().toISOString();
+
+    const rows = await db.execute(sql`
+      WITH bounds AS (
+        SELECT date_trunc('week', gs)::date AS week_start
+        FROM generate_series(
+          date_trunc('week', ${until}::timestamptz) - INTERVAL '3 weeks',
+          date_trunc('week', ${until}::timestamptz),
+          '1 week'
+        ) AS gs
+      ),
+      pipeline_ids AS (
+        SELECT id, date_trunc('week', gitlab_created_at)::date AS week_start
+        FROM pipelines
+        WHERE status = 'success'
+          AND ref LIKE 'refs/merge-requests/%'
+          AND (ref LIKE '%/merge' OR ref LIKE '%/train')
+          AND gitlab_created_at >= date_trunc('week', ${until}::timestamptz) - INTERVAL '3 weeks'
+          AND gitlab_created_at < date_trunc('week', ${until}::timestamptz) + INTERVAL '1 week'
+      ),
+      job_runs AS (
+        SELECT
+          j.name,
+          p.week_start,
+          COUNT(*) FILTER (WHERE j.retried = false AND j.duration_seconds IS NOT NULL) AS run_count,
+          COUNT(*) FILTER (WHERE j.retried = true) AS retry_count
+        FROM pipeline_jobs j
+        JOIN pipeline_ids p ON p.id = j.pipeline_id
+        WHERE j.stage != 'security' AND j.name != 'pages'
+        GROUP BY j.name, p.week_start
+      ),
+      job_names AS (
+        SELECT DISTINCT name FROM job_runs WHERE run_count + retry_count >= 2
+      ),
+      filled AS (
+        SELECT
+          jn.name, b.week_start,
+          COALESCE(r.run_count, 0) AS run_count,
+          COALESCE(r.retry_count, 0) AS retry_count
+        FROM job_names jn
+        CROSS JOIN bounds b
+        LEFT JOIN job_runs r ON r.name = jn.name AND r.week_start = b.week_start
+      )
+      SELECT name, week_start, run_count, retry_count,
+        CASE WHEN run_count + retry_count > 0
+          THEN round((retry_count::numeric / (run_count + retry_count)) * 100, 1)
+          ELSE 0
+        END AS retry_rate
+      FROM filled
+      ORDER BY name, week_start
+    `);
+
+    // Group by job name
+    const byJob = new Map<string, { weekStart: string; runCount: number; retryCount: number; retryRate: number }[]>();
+    for (const r of rows as any[]) {
+      const name = r.name as string;
+      if (!byJob.has(name)) byJob.set(name, []);
+      byJob.get(name)!.push({
+        weekStart: new Date(r.week_start).toISOString().slice(0, 10),
+        runCount: Number(r.run_count),
+        retryCount: Number(r.retry_count),
+        retryRate: Number(r.retry_rate),
+      });
+    }
+
+    function classifySeverity(weeks: { retryRate: number }[]): "healthy" | "improving" | "worsening" | "chronic" {
+      const rates = weeks.map(w => w.retryRate);
+      const slope = rates[3] - rates[0];
+      const THRESHOLD = 5;
+      const DELTA = 5;
+      if (rates.every(r => r < THRESHOLD)) return "healthy";
+      if (rates.filter(r => r >= THRESHOLD).length >= 3 && Math.abs(slope) < DELTA) return "chronic";
+      if (slope >= DELTA) return "worsening";
+      if (slope <= -DELTA) return "improving";
+      return "chronic";
+    }
+
+    const result = [];
+    for (const [name, weeks] of byJob) {
+      const slope = weeks[3].retryRate - weeks[0].retryRate;
+      const severity = classifySeverity(weeks);
+      result.push({ name, weeks, slope, severity });
+    }
+
+    return result;
+  })
+
   // Recent pipelines list
   .get("/list", async ({ query }) => {
     const limit = Math.min(Number(query?.limit) || 50, 200);

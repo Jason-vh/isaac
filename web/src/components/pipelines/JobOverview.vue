@@ -17,7 +17,7 @@
     <!-- Column headers -->
     <div
       v-if="!loading && rows.length > 0"
-      class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
+      class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem_3.5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
     >
       <template v-for="(col, i) in columns" :key="col.key">
         <div v-if="i === 3" class="h-full w-px bg-border" />
@@ -38,7 +38,7 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
+        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem_3.5rem] items-center gap-x-2 px-4 py-3"
       >
         <div>
           <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
@@ -49,6 +49,7 @@
         <div class="h-full w-px bg-border" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
+        <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
       </div>
     </div>
     <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
@@ -58,7 +59,7 @@
       <div
         v-for="row in rows"
         :key="row.name"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
+        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem_3.5rem] items-center gap-x-2 px-4 py-2.5"
       >
         <!-- Job name + runs -->
         <div class="min-w-0">
@@ -103,6 +104,11 @@
           <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
           <p v-else class="text-[10px] text-ink-faint">new</p>
         </div>
+
+        <!-- Trend sparkline -->
+        <div class="flex justify-end">
+          <JobSparkline v-if="row.trendWeeks" :weeks="row.trendWeeks" :severity="row.severity!" />
+        </div>
       </div>
     </div>
   </div>
@@ -110,13 +116,17 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { JobStats } from "@isaac/shared";
+import type { JobStats, JobRetryTrend } from "@isaac/shared";
+import JobSparkline from "./JobSparkline.vue";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   jobs: JobStats[];
   prevJobs: JobStats[];
+  jobTrends?: JobRetryTrend[];
   loading: boolean;
-}>();
+}>(), {
+  jobTrends: () => [],
+});
 
 function fmtDuration(seconds: number | null): string {
   if (seconds == null) return "--";
@@ -127,7 +137,7 @@ function fmtDuration(seconds: number | null): string {
 
 const search = ref("");
 
-type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta";
+type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta" | "trend";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
@@ -138,6 +148,7 @@ const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   // divider column (1px) is not a button — handled in template
   { key: "retryRate", label: "Retry Rate", align: "right" },
   { key: "retryDelta", label: "Δ Retries", align: "right" },
+  { key: "trend", label: "Trend", align: "right" },
 ];
 
 function toggleSort(key: SortKey) {
@@ -148,6 +159,10 @@ function toggleSort(key: SortKey) {
     sortDir.value = key === "name" ? "asc" : "desc";
   }
 }
+
+const trendMap = computed(() =>
+  new Map(props.jobTrends.map((t) => [t.name, t]))
+);
 
 const allRows = computed(() => {
   const prevMap = new Map<string, JobStats>();
@@ -197,6 +212,8 @@ const allRows = computed(() => {
       }
     }
 
+    const trend = trendMap.value.get(j.name);
+
     return {
       name: j.name,
       runCount: j.runCount,
@@ -210,6 +227,9 @@ const allRows = computed(() => {
       retryRateDelta,
       retryRateDeltaLabel,
       prevRetryRateLabel,
+      trendWeeks: trend?.weeks ?? null,
+      severity: trend?.severity ?? null,
+      slope: trend?.slope ?? null,
     };
   });
 });
@@ -237,6 +257,12 @@ const sortedRows = computed(() => {
         if (a.retryRateDelta === null) return 1;
         if (b.retryRateDelta === null) return -1;
         return dir * (a.retryRateDelta - b.retryRateDelta);
+      }
+      case "trend": {
+        if (a.slope === null && b.slope === null) return 0;
+        if (a.slope === null) return 1;
+        if (b.slope === null) return -1;
+        return dir * (a.slope - b.slope);
       }
       default:
         return 0;
