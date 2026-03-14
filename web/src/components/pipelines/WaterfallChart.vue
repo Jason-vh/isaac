@@ -22,6 +22,12 @@
         </span>
         <span v-if="hoveredJob.retried" class="text-amber-500">retried</span>
       </div>
+      <div v-if="criticalPath && !hoveredJob.retried && hoveredJob.durationSeconds != null" class="mt-1 text-xs">
+        <span v-if="criticalPath.criticalJobs.has(hoveredJob.name)" class="font-medium text-amber-500">On critical path</span>
+        <span v-else-if="criticalPath.slack.has(hoveredJob.name)" class="text-ink-faint">
+          Slack: +{{ formatDuration(criticalPath.slack.get(hoveredJob.name)!) }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -31,10 +37,15 @@ import { computed, ref, onMounted, onUnmounted } from "vue";
 import type { PipelineDetail, PipelineJobDetail } from "@isaac/shared";
 import GanttChart from "./GanttChart.vue";
 import type { GanttStage, GanttTick, GanttBar, GanttRow } from "./gantt-types";
+import { computeCriticalPath } from "../../composables/useCriticalPath";
 
 const HIDDEN_STAGES = new Set(["security"]);
 
-const props = defineProps<{ pipeline: PipelineDetail; search?: string }>();
+const props = defineProps<{
+  pipeline: PipelineDetail;
+  search?: string;
+  showCriticalPath?: boolean;
+}>();
 
 const searchTerms = computed(() =>
   (props.search ?? "").toLowerCase().split(/\s+/).filter(Boolean)
@@ -99,6 +110,11 @@ const pipelineEnd = computed(() => {
 
 const totalDuration = computed(() => {
   return Math.max((pipelineEnd.value - pipelineStart.value) / 1000, 1);
+});
+
+const criticalPath = computed(() => {
+  if (!props.showCriticalPath) return null;
+  return computeCriticalPath(visibleJobs.value, pipelineStart.value, pipelineEnd.value);
 });
 
 function jobStart(job: PipelineJobDetail): number {
@@ -208,6 +224,9 @@ const stages = computed<GanttStage[]>(() => {
         const rowJobs = rowMap.get(name)!;
         const nonRetried = rowJobs.find((j) => !j.retried);
 
+        const cp = criticalPath.value;
+        const isCritical = cp ? cp.criticalJobs.has(name) : undefined;
+
         const bars: GanttBar[] = rowJobs.map((job) => {
           if (!job.startedAt || !job.finishedAt) {
             return {
@@ -229,6 +248,7 @@ const stages = computed<GanttStage[]>(() => {
             color: job.retried ? "#FBBF24" : statusToColor(job.status),
             opacity: 1,
             dashed: job.status === "skipped",
+            highlight: isCritical === true && !job.retried,
             data: job,
           };
         });
@@ -239,6 +259,7 @@ const stages = computed<GanttStage[]>(() => {
           name,
           bars,
           labelClass: hasRetried ? "text-amber-600" : undefined,
+          onCriticalPath: isCritical,
           deps: nonRetried?.needs?.filter((n) => visibleNames.has(n)) ?? [],
           depFromPct:
             nonRetried?.startedAt && nonRetried?.finishedAt
