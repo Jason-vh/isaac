@@ -254,6 +254,7 @@ export interface PipelineDurationPoint {
   id: number;
   type: "merge" | "train";
   durationSeconds: number;
+  queuedDurationSeconds: number | null;
   createdAt: string;
   webUrl: string;
   jobCount: number;
@@ -267,6 +268,8 @@ export interface JobStats {
   runCount: number;
   avgDuration: number;
   p50Duration: number | null;
+  avgQueuedDuration: number | null;
+  p50QueuedDuration: number | null;
   retryCount: number;
   needs: string[];
 }

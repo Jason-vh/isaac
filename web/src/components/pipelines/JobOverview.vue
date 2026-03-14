@@ -17,10 +17,10 @@
     <!-- Column headers -->
     <div
       v-if="!loading && rows.length > 0"
-      class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
+      class="grid grid-cols-[1fr_5rem_7rem_5rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
     >
       <template v-for="(col, i) in columns" :key="col.key">
-        <div v-if="i === 3" class="h-full w-px bg-border" />
+        <div v-if="i === 4" class="h-full w-px bg-border" />
         <button
           class="text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer select-none"
           :class="[
@@ -38,7 +38,7 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
+        class="grid grid-cols-[1fr_5rem_7rem_5rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
       >
         <div>
           <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
@@ -46,6 +46,7 @@
         </div>
         <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
+        <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-full w-px bg-border" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
@@ -58,7 +59,7 @@
       <div
         v-for="row in rows"
         :key="row.name"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
+        class="grid grid-cols-[1fr_5rem_7rem_5rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
       >
         <!-- Job name + runs -->
         <div class="min-w-0">
@@ -81,6 +82,11 @@
           </template>
           <p v-else class="text-[10px] text-ink-faint">new</p>
         </div>
+
+        <!-- P50 Queue -->
+        <p class="text-right font-mono text-xs tabular-nums" :class="row.p50Queue != null ? 'text-amber-600' : 'text-ink-faint'">
+          {{ row.p50Queue != null ? fmtDuration(row.p50Queue) : '--' }}
+        </p>
 
         <!-- Divider -->
         <div class="h-full w-px bg-border" />
@@ -127,7 +133,7 @@ function fmtDuration(seconds: number | null): string {
 
 const search = ref("");
 
-type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta";
+type SortKey = "name" | "medianDuration" | "delta" | "p50Queue" | "retryRate" | "retryDelta";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
@@ -135,6 +141,7 @@ const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "name", label: "Job", align: "left" },
   { key: "medianDuration", label: "P50 Duration", align: "right" },
   { key: "delta", label: "Δ Duration", align: "right" },
+  { key: "p50Queue", label: "P50 Queue", align: "right" },
   // divider column (1px) is not a button — handled in template
   { key: "retryRate", label: "Retry Rate", align: "right" },
   { key: "retryDelta", label: "Δ Retries", align: "right" },
@@ -205,6 +212,7 @@ const allRows = computed(() => {
       delta,
       deltaLabel,
       deltaClass,
+      p50Queue: j.p50QueuedDuration,
       retryRate,
       retryRateLabel,
       retryRateDelta,
@@ -229,6 +237,12 @@ const sortedRows = computed(() => {
         if (a.delta === null) return 1;
         if (b.delta === null) return -1;
         return dir * (a.delta - b.delta);
+      }
+      case "p50Queue": {
+        if (a.p50Queue == null && b.p50Queue == null) return 0;
+        if (a.p50Queue == null) return 1;
+        if (b.p50Queue == null) return -1;
+        return dir * (a.p50Queue - b.p50Queue);
       }
       case "retryRate":
         return dir * (a.retryRate - b.retryRate);

@@ -14,13 +14,23 @@
       :style="tooltipStyle"
     >
       <p class="text-sm font-medium text-ink">{{ hoveredJob.name }}</p>
-      <p class="text-xs text-ink-muted">{{ hoveredJob.stage }}</p>
+      <p class="text-xs text-ink-muted">{{ hoveredBarKind === 'queue' ? 'queued' : hoveredJob.stage }}</p>
       <div class="mt-1 flex items-center gap-3 text-xs">
-        <span :class="statusTextColor(hoveredJob.status)">{{ hoveredJob.status }}</span>
-        <span v-if="hoveredJob.durationSeconds != null" class="font-mono text-ink-muted">
-          {{ formatDuration(hoveredJob.durationSeconds) }}
-        </span>
-        <span v-if="hoveredJob.retried" class="text-amber-500">retried</span>
+        <template v-if="hoveredBarKind === 'queue'">
+          <span class="font-mono text-amber-500">
+            Queued: {{ formatDuration(hoveredJob.queuedDurationSeconds!) }}
+          </span>
+        </template>
+        <template v-else>
+          <span :class="statusTextColor(hoveredJob.status)">{{ hoveredJob.status }}</span>
+          <span v-if="hoveredJob.durationSeconds != null" class="font-mono text-ink-muted">
+            {{ formatDuration(hoveredJob.durationSeconds) }}
+          </span>
+          <span v-if="hoveredJob.queuedDurationSeconds" class="font-mono text-amber-500">
+            +{{ formatDuration(hoveredJob.queuedDurationSeconds) }} queued
+          </span>
+          <span v-if="hoveredJob.retried" class="text-amber-500">retried</span>
+        </template>
       </div>
     </div>
   </div>
@@ -49,6 +59,7 @@ function isMatch(name: string): boolean {
 // --- Tooltip state ---
 
 const hoveredJob = ref<PipelineJobDetail | null>(null);
+const hoveredBarKind = ref<"queue" | "execution">("execution");
 const mouseX = ref(0);
 const mouseY = ref(0);
 
@@ -66,11 +77,19 @@ const tooltipStyle = computed(() => ({
 }));
 
 function onBarEnter(data: unknown) {
-  hoveredJob.value = data as PipelineJobDetail;
+  const barData = data as { kind?: "queue" | "execution"; job: PipelineJobDetail } | PipelineJobDetail;
+  if ("kind" in barData && barData.kind) {
+    hoveredBarKind.value = barData.kind;
+    hoveredJob.value = barData.job;
+  } else {
+    hoveredBarKind.value = "execution";
+    hoveredJob.value = barData as PipelineJobDetail;
+  }
 }
 
 function onBarLeave() {
   hoveredJob.value = null;
+  hoveredBarKind.value = "execution";
 }
 
 // --- Timeline helpers ---
@@ -80,10 +99,17 @@ const visibleJobs = computed(() =>
 );
 
 const pipelineStart = computed(() => {
-  const jobStarts = visibleJobs.value
-    .filter((j) => j.startedAt)
-    .map((j) => new Date(j.startedAt!).getTime());
-  if (jobStarts.length > 0) return Math.min(...jobStarts);
+  const starts: number[] = [];
+  for (const j of visibleJobs.value) {
+    if (!j.startedAt) continue;
+    const startMs = new Date(j.startedAt).getTime();
+    if (j.queuedDurationSeconds && j.queuedDurationSeconds > 0) {
+      starts.push(startMs - j.queuedDurationSeconds * 1000);
+    } else {
+      starts.push(startMs);
+    }
+  }
+  if (starts.length > 0) return Math.min(...starts);
   if (props.pipeline.startedAt) return new Date(props.pipeline.startedAt).getTime();
   return 0;
 });
@@ -208,30 +234,45 @@ const stages = computed<GanttStage[]>(() => {
         const rowJobs = rowMap.get(name)!;
         const nonRetried = rowJobs.find((j) => !j.retried);
 
-        const bars: GanttBar[] = rowJobs.map((job) => {
+        const bars: GanttBar[] = [];
+        for (const job of rowJobs) {
           if (!job.startedAt || !job.finishedAt) {
-            return {
+            bars.push({
               key: `job-${job.id}`,
               startPct: 0,
               widthPct: 0,
               color: "#9CA3AF",
               opacity: 1,
               dot: true,
-              data: job,
-            };
+              data: { kind: "execution" as const, job },
+            });
+            continue;
           }
+          // Queue bar (before execution)
+          if (job.queuedDurationSeconds && job.queuedDurationSeconds > 0) {
+            const queueStart = jobStart(job) - job.queuedDurationSeconds;
+            bars.push({
+              key: `queue-${job.id}`,
+              startPct: (queueStart / dur) * 100,
+              widthPct: (job.queuedDurationSeconds / dur) * 100,
+              color: "#F59E0B",
+              opacity: 0.5,
+              data: { kind: "queue" as const, job },
+            });
+          }
+          // Execution bar
           const start = jobStart(job);
           const width = jobDuration(job);
-          return {
+          bars.push({
             key: `job-${job.id}`,
             startPct: (start / dur) * 100,
             widthPct: (width / dur) * 100,
             color: job.retried ? "#FBBF24" : statusToColor(job.status),
             opacity: 1,
             dashed: job.status === "skipped",
-            data: job,
-          };
-        });
+            data: { kind: "execution" as const, job },
+          });
+        }
 
         const hasRetried = rowJobs.some((j) => j.retried);
         return {

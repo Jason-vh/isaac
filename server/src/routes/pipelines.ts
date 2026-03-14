@@ -12,7 +12,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
 
     const rows = await db.execute(sql`
       SELECT
-        p.id, p.ref, p.duration_seconds, p.gitlab_created_at, p.web_url,
+        p.id, p.ref, p.duration_seconds, p.queued_duration_seconds, p.gitlab_created_at, p.web_url,
         (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
         (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count,
         (
@@ -36,6 +36,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       id: Number(r.id),
       type: (r.ref as string).endsWith("/train") ? "train" : "merge",
       durationSeconds: r.duration_seconds,
+      queuedDurationSeconds: r.queued_duration_seconds ? Number(r.queued_duration_seconds) : null,
       createdAt: new Date(r.gitlab_created_at).toISOString(),
       webUrl: r.web_url,
       jobCount: r.job_count,
@@ -65,7 +66,9 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
           j.stage,
           count(*)::int AS run_count,
           round(avg(j.duration_seconds::numeric), 1) AS avg_duration,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p50_duration
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p50_duration,
+          round(avg(CASE WHEN j.queued_duration_seconds IS NOT NULL THEN j.queued_duration_seconds::numeric END), 1) AS avg_queued_duration,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY j.queued_duration_seconds::numeric) FILTER (WHERE j.queued_duration_seconds IS NOT NULL) AS p50_queued_duration
         FROM pipeline_jobs j
         WHERE j.pipeline_id IN (SELECT id FROM pipeline_ids)
           AND j.retried = false
@@ -95,7 +98,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
         ORDER BY j.name, j.pipeline_id DESC
       )
       SELECT
-        d.name, d.stage, d.run_count, d.avg_duration, d.p50_duration,
+        d.name, d.stage, d.run_count, d.avg_duration, d.p50_duration, d.avg_queued_duration, d.p50_queued_duration,
         COALESCE(r.retry_count, 0) AS retry_count,
         COALESCE(n.needs, '{}') AS needs
       FROM duration_stats d
@@ -110,6 +113,8 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       runCount: r.run_count,
       avgDuration: Number(r.avg_duration),
       p50Duration: r.p50_duration ? Math.round(Number(r.p50_duration)) : null,
+      avgQueuedDuration: r.avg_queued_duration ? Number(r.avg_queued_duration) : null,
+      p50QueuedDuration: r.p50_queued_duration ? Math.round(Number(r.p50_queued_duration)) : null,
       retryCount: r.retry_count,
       needs: r.needs ?? [],
     }));
