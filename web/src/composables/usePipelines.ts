@@ -2,6 +2,7 @@ import { ref, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import type { PipelineDurationPoint, JobStats } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
+import { decomposeCriticalPath } from "../components/pipelines/criticalPath";
 
 function toDateString(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -169,7 +170,13 @@ export function usePipelines() {
     });
   });
 
+  const criticalPathDecomposition = computed(() =>
+    jobStats.value.length && prevJobStats.value.length
+      ? decomposeCriticalPath(jobStats.value, prevJobStats.value)
+      : null
+  );
+
   watch(queryParams, () => fetchAll(), { immediate: true });
 
-  return { since, until, points, comparison, jobStats, prevJobStats, loading, initialLoading, error, applyPreset, isActivePreset };
+  return { since, until, points, comparison, jobStats, prevJobStats, criticalPathDecomposition, loading, initialLoading, error, applyPreset, isActivePreset };
 }

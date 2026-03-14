@@ -416,6 +416,26 @@ export interface WbsoWeekData {
   unlinkedMRs: WbsoUnlinkedMR[];
 }
 
+// Critical Path Decomposition
+export interface CriticalPathSegment {
+  jobName: string;
+  stage: string;
+  currentEndTime: number;
+  prevEndTime: number | null;
+  ownContribution: number; // seconds, signed
+  cumulativeTotal: number;
+}
+
+export interface CriticalPathDecomposition {
+  totalDeltaSeconds: number;
+  currentMaxTime: number;
+  prevMaxTime: number | null;
+  segments: CriticalPathSegment[]; // ordered by execution
+  pathChanged: boolean;
+  newJobs: string[];
+  droppedJobs: string[];
+}
+
 // Sync
 export type SyncSource =
   | "jira"
