@@ -258,6 +258,7 @@ export interface PipelineDurationPoint {
   webUrl: string;
   jobCount: number;
   retriedJobCount: number;
+  jobDurationSum: number | null;
 }
 
 export interface JobStats {

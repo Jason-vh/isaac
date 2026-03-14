@@ -14,7 +14,14 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       SELECT
         p.id, p.ref, p.duration_seconds, p.gitlab_created_at, p.web_url,
         (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id) AS job_count,
-        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count
+        (SELECT count(*)::int FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.retried = true) AS retried_job_count,
+        (
+          SELECT round(sum(j.duration_seconds::numeric), 0)
+          FROM pipeline_jobs j
+          WHERE j.pipeline_id = p.id
+            AND j.retried = false
+            AND j.duration_seconds IS NOT NULL
+        ) AS job_duration_sum
       FROM pipelines p
       WHERE p.status = 'success'
         AND p.duration_seconds IS NOT NULL
@@ -33,6 +40,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       webUrl: r.web_url,
       jobCount: r.job_count,
       retriedJobCount: r.retried_job_count,
+      jobDurationSum: r.job_duration_sum !== null ? Number(r.job_duration_sum) : null,
     }));
   })
 

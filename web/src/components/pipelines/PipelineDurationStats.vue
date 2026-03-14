@@ -3,8 +3,8 @@
     <template v-if="loading">
       <div v-for="i in 2" :key="i" class="card p-4">
         <div class="h-3 w-16 animate-pulse rounded bg-surface-2" />
-        <div class="mt-3 grid grid-cols-3 gap-4">
-          <div v-for="j in 3" :key="j">
+        <div class="mt-3 grid grid-cols-4 gap-4">
+          <div v-for="j in 4" :key="j">
             <div class="h-2 w-8 animate-pulse rounded bg-surface-2" />
             <div class="mt-2 h-6 w-20 animate-pulse rounded bg-surface-2" />
           </div>
@@ -16,7 +16,7 @@
         <p class="text-xs font-semibold uppercase tracking-wider" :class="group.labelClass">
           {{ group.label }}
         </p>
-        <div class="mt-3 grid grid-cols-3 gap-4">
+        <div class="mt-3 grid grid-cols-4 gap-4">
           <div v-for="stat in group.stats" :key="stat.label">
             <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">
               {{ stat.label }}
@@ -62,6 +62,25 @@ function durationDelta(current: number | null, previous: number | null) {
   };
 }
 
+function fmtEfficiency(v: number | null): string {
+  if (v == null) return "--";
+  return v.toFixed(1) + "x";
+}
+
+function efficiencyDelta(current: number | null, previous: number | null) {
+  if (current == null || previous == null || previous === 0) {
+    return { delta: null as number | null, deltaLabel: "", deltaClass: "" };
+  }
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return { delta: 0, deltaLabel: "0%", deltaClass: "text-ink-muted" };
+  const sign = pct > 0 ? "+" : "";
+  return {
+    delta: pct,
+    deltaLabel: `${sign}${pct}%`,
+    deltaClass: pct > 0 ? "text-emerald-600" : "text-red-500",
+  };
+}
+
 function countDelta(current: number, previous: number) {
   if (previous === 0) {
     return { delta: null as number | null, deltaLabel: "", deltaClass: "" };
@@ -80,10 +99,12 @@ function buildStats(current: TypeStats, previous: TypeStats) {
   const p50Delta = durationDelta(current.p50, previous.p50);
   const p99Delta = durationDelta(current.p99, previous.p99);
   const cntDelta = countDelta(current.count, previous.count);
+  const effDelta = efficiencyDelta(current.efficiencyP50, previous.efficiencyP50);
   return [
     { label: "P50", value: fmtDuration(current.p50), previousValue: fmtDuration(previous.p50), ...p50Delta },
     { label: "P99", value: fmtDuration(current.p99), previousValue: fmtDuration(previous.p99), ...p99Delta },
     { label: "Count", value: current.count.toString(), previousValue: previous.count.toString(), ...cntDelta },
+    { label: "Parallelism", value: fmtEfficiency(current.efficiencyP50), previousValue: fmtEfficiency(previous.efficiencyP50), ...effDelta },
   ];
 }
 

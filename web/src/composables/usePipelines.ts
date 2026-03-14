@@ -15,6 +15,7 @@ export interface TypeStats {
   p50: number | null;
   p99: number | null;
   count: number;
+  efficiencyP50: number | null;
 }
 
 export interface PeriodComparison {
@@ -31,22 +32,30 @@ function percentile(sorted: number[], p: number): number {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }
 
-function computeTypeStats(durations: number[]): TypeStats {
-  if (durations.length === 0) return { p50: null, p99: null, count: 0 };
+function computeTypeStats(points: PipelineDurationPoint[]): TypeStats {
+  const durations = points.map((p) => p.durationSeconds);
+  if (durations.length === 0) return { p50: null, p99: null, count: 0, efficiencyP50: null };
   const sorted = [...durations].sort((a, b) => a - b);
+
+  const ratios = points
+    .filter((p) => p.jobDurationSum != null && p.durationSeconds > 0)
+    .map((p) => p.jobDurationSum! / p.durationSeconds);
+  const sortedRatios = [...ratios].sort((a, b) => a - b);
+
   return {
     p50: percentile(sorted, 50),
     p99: percentile(sorted, 99),
     count: durations.length,
+    efficiencyP50: sortedRatios.length > 0 ? percentile(sortedRatios, 50) : null,
   };
 }
 
 function computeStats(points: PipelineDurationPoint[]) {
-  const mergeDurations = points.filter((p) => p.type === "merge").map((p) => p.durationSeconds);
-  const trainDurations = points.filter((p) => p.type === "train").map((p) => p.durationSeconds);
+  const mergePoints = points.filter((p) => p.type === "merge");
+  const trainPoints = points.filter((p) => p.type === "train");
   return {
-    merge: computeTypeStats(mergeDurations),
-    train: computeTypeStats(trainDurations),
+    merge: computeTypeStats(mergePoints),
+    train: computeTypeStats(trainPoints),
   };
 }
 
