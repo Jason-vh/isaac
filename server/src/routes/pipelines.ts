@@ -66,7 +66,10 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
           j.stage,
           count(*)::int AS run_count,
           round(avg(j.duration_seconds::numeric), 1) AS avg_duration,
+          percentile_cont(0.1) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p10_duration,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p50_duration,
+          percentile_cont(0.9) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p90_duration,
+          round(stddev(j.duration_seconds::numeric), 1) AS stddev_duration,
           round(avg(CASE WHEN j.queued_duration_seconds IS NOT NULL THEN j.queued_duration_seconds::numeric END), 1) AS avg_queued_duration,
           percentile_cont(0.5) WITHIN GROUP (ORDER BY j.queued_duration_seconds::numeric) FILTER (WHERE j.queued_duration_seconds IS NOT NULL) AS p50_queued_duration
         FROM pipeline_jobs j
@@ -98,7 +101,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
         ORDER BY j.name, j.pipeline_id DESC
       )
       SELECT
-        d.name, d.stage, d.run_count, d.avg_duration, d.p50_duration, d.avg_queued_duration, d.p50_queued_duration,
+        d.name, d.stage, d.run_count, d.avg_duration, d.p10_duration, d.p50_duration, d.p90_duration, d.stddev_duration, d.avg_queued_duration, d.p50_queued_duration,
         COALESCE(r.retry_count, 0) AS retry_count,
         COALESCE(n.needs, '{}') AS needs
       FROM duration_stats d
@@ -112,7 +115,10 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       stage: r.stage,
       runCount: r.run_count,
       avgDuration: Number(r.avg_duration),
+      p10Duration: r.p10_duration ? Math.round(Number(r.p10_duration)) : null,
       p50Duration: r.p50_duration ? Math.round(Number(r.p50_duration)) : null,
+      p90Duration: r.p90_duration ? Math.round(Number(r.p90_duration)) : null,
+      stddevDuration: r.stddev_duration ? Number(r.stddev_duration) : null,
       avgQueuedDuration: r.avg_queued_duration ? Number(r.avg_queued_duration) : null,
       p50QueuedDuration: r.p50_queued_duration ? Math.round(Number(r.p50_queued_duration)) : null,
       retryCount: r.retry_count,
