@@ -56,6 +56,7 @@
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div v-if="criticalPath" class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
+        <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
       </div>
     </div>
     <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
@@ -141,6 +142,11 @@
         <p v-if="criticalPath" class="text-right text-xs font-mono tabular-nums" :class="row.cpContrib !== null ? (row.cpContrib > 0 ? 'text-red-500' : row.cpContrib < 0 ? 'text-emerald-600' : 'text-ink-faint') : 'text-ink-faint'">
           {{ row.cpContrib !== null ? fmtContribution(row.cpContrib) : '\u2014' }}
         </p>
+
+        <!-- Trend sparkline -->
+        <div class="flex justify-end">
+          <JobSparkline v-if="row.trendWeeks" :weeks="row.trendWeeks" :severity="row.severity!" />
+        </div>
       </div>
     </div>
   </div>
@@ -148,15 +154,19 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { JobStats, CriticalPathDecomposition } from "@isaac/shared";
+import type { JobStats, CriticalPathDecomposition, JobRetryTrend } from "@isaac/shared";
 import JobDistributionBar from "./JobDistributionBar.vue";
+import JobSparkline from "./JobSparkline.vue";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   jobs: JobStats[];
   prevJobs: JobStats[];
+  jobTrends?: JobRetryTrend[];
   loading: boolean;
   criticalPath?: CriticalPathDecomposition | null;
-}>();
+}>(), {
+  jobTrends: () => [],
+});
 
 // Build a map of job name -> ownContribution for quick lookup
 const cpContribMap = computed(() => {
@@ -185,7 +195,7 @@ function fmtDuration(seconds: number | null): string {
 
 const search = ref("");
 
-type SortKey = "name" | "medianDuration" | "delta" | "p50Queue" | "cv" | "cpContrib" | "retryRate" | "retryDelta";
+type SortKey = "name" | "medianDuration" | "delta" | "p50Queue" | "cv" | "cpContrib" | "retryRate" | "retryDelta" | "trend";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
@@ -202,13 +212,14 @@ const columns = computed(() => {
   if (props.criticalPath) {
     cols.push({ key: "cpContrib", label: "CP", align: "right" });
   }
+  cols.push({ key: "trend", label: "Trend", align: "right" });
   return cols;
 });
 
 const gridClass = computed(() =>
   props.criticalPath
-    ? "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem_5rem]"
-    : "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem]"
+    ? "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem_5rem_3.5rem]"
+    : "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem_3.5rem]"
 );
 
 function toggleSort(key: SortKey) {
@@ -219,6 +230,10 @@ function toggleSort(key: SortKey) {
     sortDir.value = key === "name" ? "asc" : "desc";
   }
 }
+
+const trendMap = computed(() =>
+  new Map(props.jobTrends.map((t) => [t.name, t]))
+);
 
 const allRows = computed(() => {
   const prevMap = new Map<string, JobStats>();
@@ -283,6 +298,8 @@ const allRows = computed(() => {
       else if (cv >= 10) cvBadge = "amber";
     }
 
+    const trend = trendMap.value.get(j.name);
+
     return {
       name: j.name,
       runCount: j.runCount,
@@ -302,6 +319,9 @@ const allRows = computed(() => {
       cpContrib,
       cv,
       cvBadge,
+      trendWeeks: trend?.weeks ?? null,
+      severity: trend?.severity ?? null,
+      slope: trend?.slope ?? null,
     };
   });
 });
@@ -352,6 +372,12 @@ const sortedRows = computed(() => {
         if (a.cpContrib === null) return 1;
         if (b.cpContrib === null) return -1;
         return dir * (a.cpContrib - b.cpContrib);
+      }
+      case "trend": {
+        if (a.slope === null && b.slope === null) return 0;
+        if (a.slope === null) return 1;
+        if (b.slope === null) return -1;
+        return dir * (a.slope - b.slope);
       }
       default:
         return 0;

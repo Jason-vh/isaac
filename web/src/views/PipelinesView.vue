@@ -57,7 +57,7 @@
 
     <!-- Job overview -->
     <div class="mt-6">
-      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :critical-path="criticalPathDecomposition" :loading="initialLoading" />
+      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :critical-path="criticalPathDecomposition" :job-trends="jobTrends" :loading="initialLoading" />
     </div>
 
     <!-- Pipeline list -->
@@ -87,5 +87,5 @@ const presets = [
   { label: "30d", days: 30 },
 ];
 
-const { since, until, points, comparison, jobStats, prevJobStats, criticalPathDecomposition, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, jobStats, prevJobStats, criticalPathDecomposition, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
 </script>

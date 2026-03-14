@@ -439,6 +439,21 @@ export interface CriticalPathDecomposition {
   droppedJobs: string[];
 }
 
+// Job Retry Trends
+export interface JobRetryTrendPoint {
+  weekStart: string;   // ISO date string, Monday of the week
+  runCount: number;
+  retryCount: number;
+  retryRate: number;   // 0-100, percentage
+}
+
+export interface JobRetryTrend {
+  name: string;
+  weeks: JobRetryTrendPoint[];  // always 4 entries, oldest first
+  slope: number;        // last week rate minus first week rate (pp)
+  severity: "healthy" | "improving" | "worsening" | "chronic";
+}
+
 // Sync
 export type SyncSource =
   | "jira"
