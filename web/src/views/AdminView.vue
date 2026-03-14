@@ -15,7 +15,7 @@
           <button
             @click="triggerSync(selectedSources)"
             :disabled="syncing || selectedSources.length === 0"
-            class="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-hover disabled:opacity-40"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-2 disabled:opacity-40"
           >
             Sync Selected
           </button>

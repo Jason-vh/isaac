@@ -4,17 +4,41 @@
       <router-link to="/pipelines" class="text-ink-faint hover:text-ink transition-colors">
         <ArrowLeftIcon class="h-4 w-4" />
       </router-link>
-      <h1 class="text-2xl font-bold text-ink">
-        Pipeline #{{ pipelineId }}
-      </h1>
+      <div class="flex-1">
+        <h1 class="text-2xl font-bold text-ink">
+          Pipeline #{{ pipelineId }}
+        </h1>
+        <div v-if="detail" class="mt-1 flex items-center gap-3 text-sm">
+          <span
+            class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+            :class="statusBadgeColor(detail.status)"
+          >{{ detail.status }}</span>
+          <span class="text-ink-faint">&middot;</span>
+          <span class="font-mono text-ink-muted">{{ detail.durationSeconds ? fmtDuration(detail.durationSeconds) : '--' }}</span>
+          <span class="text-ink-faint">&middot;</span>
+          <span class="text-ink-muted">{{ detail.jobCount }} jobs</span>
+          <template v-if="detail.retriedJobCount > 0">
+            <span class="text-ink-faint">&middot;</span>
+            <span class="text-amber-600">{{ detail.retriedJobCount }} retried</span>
+          </template>
+          <span class="text-ink-faint">&middot;</span>
+          <span
+            class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+            :class="pipelineTypeColor"
+          >{{ pipelineType }}</span>
+          <span class="text-ink-faint">&middot;</span>
+          <span class="text-ink-muted">{{ fmtDate(detail.gitlabCreatedAt) }}</span>
+        </div>
+      </div>
       <a
         v-if="detail"
         :href="detail.webUrl"
         target="_blank"
         rel="noopener"
-        class="text-ink-faint hover:text-ink transition-colors"
+        class="flex items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
       >
-        <ArrowTopRightOnSquareIcon class="h-4 w-4" />
+        View on GitLab
+        <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />
       </a>
     </div>
 
@@ -23,74 +47,23 @@
     </div>
     <div v-else-if="error" class="py-20 text-center text-red-500">{{ error }}</div>
     <template v-else-if="detail">
-      <!-- Summary -->
-      <div class="mt-6 flex flex-wrap gap-4">
-        <div class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Status</p>
-          <p class="mt-0.5 text-sm font-medium" :class="statusColor(detail.status)">
-            {{ detail.status }}
-          </p>
-        </div>
-        <div class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Duration</p>
-          <p class="mt-0.5 font-mono text-sm text-ink">
-            {{ detail.durationSeconds ? fmtDuration(detail.durationSeconds) : '--' }}
-          </p>
-        </div>
-        <div class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Jobs</p>
-          <p class="mt-0.5 text-sm text-ink">{{ detail.jobCount }}</p>
-        </div>
-        <div v-if="detail.retriedJobCount > 0" class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Retried</p>
-          <p class="mt-0.5 text-sm text-amber-600">{{ detail.retriedJobCount }}</p>
-        </div>
-        <div class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Type</p>
-          <p class="mt-0.5 text-sm text-ink">{{ pipelineType }}</p>
-        </div>
-        <div class="card px-4 py-3">
-          <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">Created</p>
-          <p class="mt-0.5 text-sm text-ink">{{ fmtDate(detail.gitlabCreatedAt) }}</p>
-        </div>
-      </div>
 
       <!-- Waterfall chart -->
       <div class="mt-6 card overflow-hidden">
-        <h3 class="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-          Job Timeline
-        </h3>
-        <div class="px-4 py-3">
-          <WaterfallChart :pipeline="detail" />
+        <div class="flex items-center gap-3 border-b border-border px-4 py-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
+            Job Timeline
+          </h3>
+          <input
+            v-model="jobSearch"
+            type="text"
+            placeholder="Filter jobs..."
+            class="ml-auto w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+          />
         </div>
+        <WaterfallChart :pipeline="detail" :search="jobSearch" />
       </div>
 
-      <!-- Job list -->
-      <div class="mt-6 card overflow-hidden">
-        <h3 class="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-          Jobs
-        </h3>
-        <div class="divide-y divide-border">
-          <a
-            v-for="job in nonRetriedJobs"
-            :key="job.id"
-            :href="job.webUrl"
-            target="_blank"
-            rel="noopener"
-            class="flex items-center gap-3 px-4 py-2 hover:bg-surface-1 transition-colors"
-          >
-            <div class="h-2 w-2 shrink-0 rounded-full" :class="statusDot(job.status)" />
-            <span class="min-w-0 flex-1 truncate text-sm text-ink">{{ job.name }}</span>
-            <span class="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-ink-faint">
-              {{ job.stage }}
-            </span>
-            <span v-if="job.durationSeconds != null" class="shrink-0 font-mono text-xs tabular-nums text-ink-muted">
-              {{ fmtDuration(job.durationSeconds) }}
-            </span>
-            <span v-else class="shrink-0 text-xs text-ink-faint">--</span>
-          </a>
-        </div>
-      </div>
     </template>
   </div>
 </template>
@@ -107,6 +80,7 @@ const route = useRoute();
 const router = useRouter();
 
 const pipelineId = computed(() => Number(route.params.id));
+const jobSearch = ref("");
 const detail = ref<PipelineDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
@@ -119,9 +93,11 @@ const pipelineType = computed(() => {
   return detail.value.source ?? "unknown";
 });
 
-const nonRetriedJobs = computed(() =>
-  (detail.value?.jobs ?? []).filter((j) => !j.retried)
-);
+const pipelineTypeColor = computed(() => {
+  if (!detail.value?.ref) return "bg-gray-100 text-gray-600";
+  if (detail.value.ref.endsWith("/train")) return "bg-purple-100 text-purple-700";
+  return "bg-blue-100 text-blue-700";
+});
 
 onMounted(async () => {
   try {
@@ -153,23 +129,14 @@ function fmtDate(iso: string): string {
   });
 }
 
-function statusColor(status: string): string {
+function statusBadgeColor(status: string): string {
   switch (status) {
-    case "success": return "text-emerald-600";
-    case "failed": return "text-red-500";
-    case "canceled": return "text-gray-400";
-    case "running": return "text-blue-500";
-    default: return "text-ink-muted";
+    case "success": return "bg-emerald-100 text-emerald-700";
+    case "failed": return "bg-red-100 text-red-700";
+    case "canceled": return "bg-gray-100 text-gray-600";
+    case "running": return "bg-blue-100 text-blue-700";
+    default: return "bg-gray-100 text-gray-600";
   }
 }
 
-function statusDot(status: string): string {
-  switch (status) {
-    case "success": return "bg-emerald-500";
-    case "failed": return "bg-red-500";
-    case "canceled": return "bg-gray-400";
-    case "skipped": return "bg-gray-300";
-    default: return "bg-blue-400";
-  }
-}
 </script>

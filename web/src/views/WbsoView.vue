@@ -20,7 +20,7 @@
           <button
             v-if="!isCurrentWeek"
             @click="goToday"
-            class="rounded-lg border border-border px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             This week
           </button>

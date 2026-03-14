@@ -29,7 +29,11 @@ export const router = createRouter({
       component: () => import("../views/AdminView.vue"),
     },
     {
-      path: "/:week?",
+      path: "/",
+      redirect: "/dashboard",
+    },
+    {
+      path: "/dashboard/:week?",
       name: "dashboard",
       component: DashboardView,
     },
@@ -45,13 +49,18 @@ export const router = createRouter({
     },
 {
       path: "/pipelines",
-      name: "pipelines",
-      component: () => import("../views/PipelinesView.vue"),
-    },
-    {
-      path: "/pipelines/:id",
-      name: "pipeline-detail",
-      component: () => import("../views/PipelineDetailView.vue"),
+      children: [
+        {
+          path: "",
+          name: "pipelines",
+          component: () => import("../views/PipelinesView.vue"),
+        },
+        {
+          path: ":id",
+          name: "pipeline-detail",
+          component: () => import("../views/PipelineDetailView.vue"),
+        },
+      ],
     },
   ],
 });

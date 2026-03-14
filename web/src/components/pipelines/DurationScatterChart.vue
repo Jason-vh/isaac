@@ -93,8 +93,10 @@ const chartOption = computed(() => {
   const trainScatter: [number, number, number][] = [];
   const mergePts: { time: number; value: number }[] = [];
   const trainPts: { time: number; value: number }[] = [];
+  const pointMap = new Map<number, PipelineDurationPoint>();
 
   for (const p of props.points) {
+    pointMap.set(p.id, p);
     const t = new Date(p.createdAt).getTime();
     const v = toMinutes(p.durationSeconds);
     if (p.type === "merge") {
@@ -131,8 +133,16 @@ const chartOption = computed(() => {
     },
     tooltip: {
       trigger: "item" as const,
+      backgroundColor: "#FFFFFF",
+      borderColor: "#E5E5E0",
+      borderWidth: 1,
+      padding: [8, 12],
+      textStyle: { color: "#1A1A1A", fontSize: 12 },
       formatter(params: any) {
-        const d = new Date(params.value[0]);
+        const id = params.value[2];
+        const p = pointMap.get(id);
+        if (!p) return `${params.value[1]}m`;
+        const d = new Date(p.createdAt);
         const date = d.toLocaleDateString("en-US", {
           weekday: "short",
           month: "short",
@@ -140,7 +150,19 @@ const chartOption = computed(() => {
           hour: "2-digit",
           minute: "2-digit",
         });
-        return `${date}<br/>${params.value[1]}m`;
+        const type = p.type === "train" ? "Merge Train" : "Merged Results";
+        const dur = params.value[1];
+        let html = `<div style="font-weight:500">#${id}</div>`;
+        html += `<div style="color:#6B6B6B;margin-top:2px">${date}</div>`;
+        html += `<div style="margin-top:6px;display:flex;gap:12px">`;
+        html += `<span style="font-family:monospace">${dur}m</span>`;
+        html += `<span style="color:#6B6B6B">${p.jobCount} jobs</span>`;
+        if (p.retriedJobCount > 0) {
+          html += `<span style="color:#D97706">${p.retriedJobCount} retried</span>`;
+        }
+        html += `</div>`;
+        html += `<div style="margin-top:2px;color:${p.type === "train" ? "#7C3AED" : "#3B82F6"};font-size:10px;font-weight:600;text-transform:uppercase">${type}</div>`;
+        return html;
       },
     },
     legend: {

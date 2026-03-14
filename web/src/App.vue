@@ -12,8 +12,7 @@
               :key="link.to"
               :to="link.to"
               class="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-              :active-class="link.exact ? '' : '!bg-surface-2 !text-ink'"
-              :exact-active-class="link.exact ? '!bg-surface-2 !text-ink' : ''"
+              active-class="!bg-surface-2 !text-ink"
             >
               {{ link.label }}
             </router-link>
@@ -57,10 +56,10 @@ const { isAuthenticated, isShareMode, logout: doLogout } = useAuth();
 provide("isShareMode", isShareMode);
 
 const navLinks = [
-  { to: "/", label: "Dashboard", exact: true },
-  { to: "/wbso", label: "WBSO", exact: false },
-  { to: "/objectives", label: "Objectives", exact: false },
-  { to: "/pipelines", label: "Pipelines", exact: false },
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/wbso", label: "WBSO" },
+  { to: "/objectives", label: "Objectives" },
+  { to: "/pipelines", label: "Pipelines" },
 ];
 
 const shareButtonText = ref("Share");

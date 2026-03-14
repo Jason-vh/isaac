@@ -13,7 +13,7 @@
           class="rounded-lg border px-2.5 py-1 text-sm transition-colors"
           :class="isActivePreset(p.days)
             ? 'border-accent bg-accent-light text-accent'
-            : 'border-border text-ink-muted hover:text-ink hover:bg-surface-1'"
+            : 'border-border bg-surface-0 text-ink-muted hover:text-ink hover:bg-surface-2'"
           @click="applyPreset(p.days)"
         >
           {{ p.label }}

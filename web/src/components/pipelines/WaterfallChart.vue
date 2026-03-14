@@ -1,91 +1,11 @@
 <template>
-  <div class="relative overflow-x-auto">
-    <!-- Time ruler -->
-    <div class="relative ml-[180px] h-6 border-b border-border">
-      <div
-        v-for="mark in timeMarks"
-        :key="mark.seconds"
-        class="absolute top-0 flex h-full flex-col justify-end"
-        :style="{ left: `${pct(mark.seconds)}%` }"
-      >
-        <span class="text-[10px] text-ink-faint -translate-x-1/2">{{ mark.label }}</span>
-        <div class="mx-auto h-2 w-px bg-border" />
-      </div>
-    </div>
-
-    <!-- Stages and jobs -->
-    <div ref="chartArea">
-      <div v-for="stage in stages" :key="stage.name" class="mt-2">
-        <div class="flex items-center gap-2 px-2 py-1">
-          <span class="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            {{ stage.name }}
-          </span>
-        </div>
-        <div
-          v-for="row in stage.rows"
-          :key="row.name"
-          :ref="(el) => setRowRef(row.name, el as HTMLElement)"
-          class="group relative flex h-7 items-center"
-        >
-          <!-- Job name -->
-          <div class="w-[180px] flex-shrink-0 truncate px-2 text-xs text-ink-muted" :title="row.name">
-            {{ row.name }}
-          </div>
-
-          <!-- Bar area -->
-          <div class="relative h-5 flex-1">
-            <!-- Vertical grid lines -->
-            <div
-              v-for="mark in timeMarks"
-              :key="`grid-${mark.seconds}`"
-              class="absolute top-0 h-full w-px bg-border/30"
-              :style="{ left: `${pct(mark.seconds)}%` }"
-            />
-
-            <!-- All attempts for this job -->
-            <template v-for="job in row.jobs" :key="job.id">
-              <!-- Job bar -->
-              <div
-                v-if="job.startedAt && job.finishedAt"
-                class="absolute top-0.5 h-4 rounded"
-                :class="[statusColor(job.status), { 'opacity-40': job.retried }]"
-                :style="{
-                  left: `${pct(jobStart(job))}%`,
-                  width: `max(3px, ${pct(jobDuration(job))}%)`,
-                }"
-                @mouseenter="hoveredJob = job"
-                @mouseleave="hoveredJob = null"
-              />
-              <!-- No-timestamp indicator -->
-              <div
-                v-else
-                class="absolute left-0 top-1 h-3 w-3 rounded-full border-2"
-                :class="noTimestampStyle(job.status)"
-                @mouseenter="hoveredJob = job"
-                @mouseleave="hoveredJob = null"
-              />
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dependency lines SVG overlay -->
-      <svg
-        v-if="depLines.length > 0"
-        class="pointer-events-none absolute inset-0"
-        :style="{ width: '100%', height: '100%' }"
-      >
-        <path
-          v-for="(line, i) in depLines"
-          :key="i"
-          :d="line.d"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1"
-          class="text-ink-faint/40"
-        />
-      </svg>
-    </div>
+  <div class="relative">
+    <GanttChart
+      :stages="stages"
+      :ticks="ticks"
+      @bar-enter="onBarEnter"
+      @bar-leave="onBarLeave"
+    />
 
     <!-- Tooltip -->
     <div
@@ -107,20 +27,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted, onUnmounted, watch } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import type { PipelineDetail, PipelineJobDetail } from "@isaac/shared";
+import GanttChart from "./GanttChart.vue";
+import type { GanttStage, GanttTick, GanttBar, GanttRow } from "./gantt-types";
 
-const props = defineProps<{ pipeline: PipelineDetail }>();
+const HIDDEN_STAGES = new Set(["security"]);
+
+const props = defineProps<{ pipeline: PipelineDetail; search?: string }>();
+
+const searchTerms = computed(() =>
+  (props.search ?? "").toLowerCase().split(/\s+/).filter(Boolean)
+);
+
+function isMatch(name: string): boolean {
+  if (searchTerms.value.length === 0) return true;
+  const lower = name.toLowerCase();
+  return searchTerms.value.some((term) => lower.includes(term));
+}
+
+// --- Tooltip state ---
 
 const hoveredJob = ref<PipelineJobDetail | null>(null);
 const mouseX = ref(0);
 const mouseY = ref(0);
-const chartArea = ref<HTMLElement | null>(null);
-const rowRefs = new Map<string, HTMLElement>();
-
-function setRowRef(name: string, el: HTMLElement | null) {
-  if (el) rowRefs.set(name, el);
-}
 
 function onMouseMove(e: MouseEvent) {
   mouseX.value = e.clientX;
@@ -135,182 +65,41 @@ const tooltipStyle = computed(() => ({
   top: `${mouseY.value - 40}px`,
 }));
 
+function onBarEnter(data: unknown) {
+  hoveredJob.value = data as PipelineJobDetail;
+}
+
+function onBarLeave() {
+  hoveredJob.value = null;
+}
+
+// --- Timeline helpers ---
+
+const visibleJobs = computed(() =>
+  props.pipeline.jobs.filter((j) => !HIDDEN_STAGES.has(j.stage) && j.status !== "manual")
+);
+
 const pipelineStart = computed(() => {
-  if (!props.pipeline.startedAt) return 0;
-  return new Date(props.pipeline.startedAt).getTime();
+  const jobStarts = visibleJobs.value
+    .filter((j) => j.startedAt)
+    .map((j) => new Date(j.startedAt!).getTime());
+  if (jobStarts.length > 0) return Math.min(...jobStarts);
+  if (props.pipeline.startedAt) return new Date(props.pipeline.startedAt).getTime();
+  return 0;
+});
+
+const pipelineEnd = computed(() => {
+  const jobEnds = visibleJobs.value
+    .filter((j) => j.finishedAt)
+    .map((j) => new Date(j.finishedAt!).getTime());
+  if (jobEnds.length > 0) return Math.max(...jobEnds);
+  if (props.pipeline.finishedAt) return new Date(props.pipeline.finishedAt).getTime();
+  return pipelineStart.value + (props.pipeline.durationSeconds || 1) * 1000;
 });
 
 const totalDuration = computed(() => {
-  if (!props.pipeline.startedAt || !props.pipeline.finishedAt) {
-    return props.pipeline.durationSeconds || 1;
-  }
-  return (new Date(props.pipeline.finishedAt).getTime() - pipelineStart.value) / 1000;
+  return Math.max((pipelineEnd.value - pipelineStart.value) / 1000, 1);
 });
-
-const timeMarks = computed(() => {
-  const dur = totalDuration.value;
-  const marks: { seconds: number; label: string }[] = [];
-  let interval: number;
-  if (dur <= 120) interval = 30;
-  else if (dur <= 600) interval = 60;
-  else if (dur <= 1800) interval = 300;
-  else interval = 600;
-
-  for (let t = 0; t <= dur; t += interval) {
-    marks.push({ seconds: t, label: formatDuration(t) });
-  }
-  return marks;
-});
-
-interface JobRow {
-  name: string;
-  jobs: PipelineJobDetail[]; // multiple if retried
-}
-
-interface StageGroup {
-  name: string;
-  rows: JobRow[];
-}
-
-const stages = computed<StageGroup[]>(() => {
-  const stageMap = new Map<string, PipelineJobDetail[]>();
-  const stageOrder: string[] = [];
-
-  for (const job of props.pipeline.jobs) {
-    if (!stageMap.has(job.stage)) {
-      stageMap.set(job.stage, []);
-      stageOrder.push(job.stage);
-    }
-    stageMap.get(job.stage)!.push(job);
-  }
-
-  // Sort stages by earliest startedAt
-  stageOrder.sort((a, b) => {
-    const aJobs = stageMap.get(a)!;
-    const bJobs = stageMap.get(b)!;
-    const aStart = Math.min(...aJobs.filter(j => j.startedAt).map(j => new Date(j.startedAt!).getTime()), Infinity);
-    const bStart = Math.min(...bJobs.filter(j => j.startedAt).map(j => new Date(j.startedAt!).getTime()), Infinity);
-    return aStart - bStart;
-  });
-
-  return stageOrder.map((stageName) => {
-    const jobs = stageMap.get(stageName)!;
-    // Group jobs by name into rows
-    const rowMap = new Map<string, PipelineJobDetail[]>();
-    const rowOrder: string[] = [];
-    for (const job of jobs) {
-      if (!rowMap.has(job.name)) {
-        rowMap.set(job.name, []);
-        rowOrder.push(job.name);
-      }
-      rowMap.get(job.name)!.push(job);
-    }
-    // Sort rows by earliest startedAt
-    rowOrder.sort((a, b) => {
-      const aJobs = rowMap.get(a)!;
-      const bJobs = rowMap.get(b)!;
-      const aStart = Math.min(...aJobs.filter(j => j.startedAt).map(j => new Date(j.startedAt!).getTime()), Infinity);
-      const bStart = Math.min(...bJobs.filter(j => j.startedAt).map(j => new Date(j.startedAt!).getTime()), Infinity);
-      return aStart - bStart;
-    });
-    return {
-      name: stageName,
-      rows: rowOrder.map((name) => ({ name, jobs: rowMap.get(name)! })),
-    };
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Dependency lines between jobs with `needs`
-// ---------------------------------------------------------------------------
-
-interface DepLine {
-  d: string;
-}
-
-const depLines = ref<DepLine[]>([]);
-
-function computeDepLines() {
-  if (!chartArea.value) {
-    depLines.value = [];
-    return;
-  }
-
-  const chartRect = chartArea.value.getBoundingClientRect();
-  const lines: DepLine[] = [];
-
-  // Build lookup: job name → latest non-retried job
-  const latestJob = new Map<string, PipelineJobDetail>();
-  for (const job of props.pipeline.jobs) {
-    if (job.retried) continue;
-    latestJob.set(job.name, job);
-  }
-
-  for (const [name, job] of latestJob) {
-    if (!job.needs || job.needs.length === 0) continue;
-    if (!job.startedAt || !job.finishedAt) continue;
-
-    const toRow = rowRefs.get(name);
-    if (!toRow) continue;
-    const toRect = toRow.getBoundingClientRect();
-    const toY = toRect.top + toRect.height / 2 - chartRect.top;
-
-    // Bar area starts after the 180px label
-    const barAreaEl = toRow.querySelector('.relative.flex-1') as HTMLElement;
-    if (!barAreaEl) continue;
-    const barAreaRect = barAreaEl.getBoundingClientRect();
-    const barAreaLeft = barAreaRect.left - chartRect.left;
-    const barAreaWidth = barAreaRect.width;
-
-    // Target job left edge (start of its bar)
-    const toX = barAreaLeft + (jobStart(job) / totalDuration.value) * barAreaWidth;
-
-    for (const needName of job.needs) {
-      const needJob = latestJob.get(needName);
-      if (!needJob || !needJob.startedAt || !needJob.finishedAt) continue;
-
-      const fromRow = rowRefs.get(needName);
-      if (!fromRow) continue;
-      const fromRect = fromRow.getBoundingClientRect();
-      const fromY = fromRect.top + fromRect.height / 2 - chartRect.top;
-
-      const fromBarArea = fromRow.querySelector('.relative.flex-1') as HTMLElement;
-      if (!fromBarArea) continue;
-      const fromBarRect = fromBarArea.getBoundingClientRect();
-      const fromBarLeft = fromBarRect.left - chartRect.left;
-      const fromBarWidth = fromBarRect.width;
-
-      // Source job right edge (end of its bar)
-      const fromX = fromBarLeft + ((jobStart(needJob) + jobDuration(needJob)) / totalDuration.value) * fromBarWidth;
-
-      // Cubic bezier curve
-      const midX = (fromX + toX) / 2;
-      lines.push({
-        d: `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`,
-      });
-    }
-  }
-
-  depLines.value = lines;
-}
-
-watch(
-  () => props.pipeline,
-  async () => {
-    await nextTick();
-    computeDepLines();
-  },
-  { immediate: false }
-);
-
-onMounted(async () => {
-  await nextTick();
-  computeDepLines();
-});
-
-function pct(seconds: number): number {
-  return (seconds / totalDuration.value) * 100;
-}
 
 function jobStart(job: PipelineJobDetail): number {
   if (!job.startedAt) return 0;
@@ -322,22 +111,13 @@ function jobDuration(job: PipelineJobDetail): number {
   return (new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) / 1000;
 }
 
-function statusColor(status: string): string {
+function statusToColor(status: string): string {
   switch (status) {
-    case "success": return "bg-emerald-500";
-    case "failed": return "bg-red-500";
-    case "canceled": return "bg-gray-400";
-    case "skipped": return "border border-dashed border-gray-400 bg-transparent";
-    case "manual": return "bg-gray-500";
-    default: return "bg-blue-400";
-  }
-}
-
-function noTimestampStyle(status: string): string {
-  switch (status) {
-    case "skipped": return "border-gray-400";
-    case "manual": return "border-gray-500 bg-gray-500/20";
-    default: return "border-gray-400";
+    case "success": return "#10B981";
+    case "failed": return "#EF4444";
+    case "canceled": return "#9CA3AF";
+    case "manual": return "#6B7280";
+    default: return "#60A5FA";
   }
 }
 
@@ -356,4 +136,143 @@ function formatDuration(seconds: number): string {
   if (m === 0) return `${s}s`;
   return `${m}m ${s}s`;
 }
+
+// --- Build GanttStage[] from pipeline data ---
+
+const stages = computed<GanttStage[]>(() => {
+  const dur = totalDuration.value;
+  const jobs = visibleJobs.value;
+
+  // Collect visible job names for dep filtering
+  const visibleNames = new Set(jobs.map((j) => j.name));
+
+  const stageMap = new Map<string, PipelineJobDetail[]>();
+  const stageOrder: string[] = [];
+
+  for (const job of jobs) {
+    if (!stageMap.has(job.stage)) {
+      stageMap.set(job.stage, []);
+      stageOrder.push(job.stage);
+    }
+    stageMap.get(job.stage)!.push(job);
+  }
+
+  // Sort stages by earliest start
+  stageOrder.sort((a, b) => {
+    const aJobs = stageMap.get(a)!;
+    const bJobs = stageMap.get(b)!;
+    const aStart = Math.min(
+      ...aJobs.filter((j) => j.startedAt).map((j) => new Date(j.startedAt!).getTime()),
+      Infinity
+    );
+    const bStart = Math.min(
+      ...bJobs.filter((j) => j.startedAt).map((j) => new Date(j.startedAt!).getTime()),
+      Infinity
+    );
+    return aStart - bStart;
+  });
+
+  return stageOrder.map((stageName) => {
+    const jobs = stageMap.get(stageName)!;
+
+    // Group by job name into rows
+    const rowMap = new Map<string, PipelineJobDetail[]>();
+    const rowOrder: string[] = [];
+    for (const job of jobs) {
+      if (!rowMap.has(job.name)) {
+        rowMap.set(job.name, []);
+        rowOrder.push(job.name);
+      }
+      rowMap.get(job.name)!.push(job);
+    }
+
+    // Sort rows by earliest start
+    rowOrder.sort((a, b) => {
+      const aJobs = rowMap.get(a)!;
+      const bJobs = rowMap.get(b)!;
+      const aStart = Math.min(
+        ...aJobs.filter((j) => j.startedAt).map((j) => new Date(j.startedAt!).getTime()),
+        Infinity
+      );
+      const bStart = Math.min(
+        ...bJobs.filter((j) => j.startedAt).map((j) => new Date(j.startedAt!).getTime()),
+        Infinity
+      );
+      return aStart - bStart;
+    });
+
+    return {
+      key: stageName,
+      name: stageName,
+      rows: rowOrder.map((name): GanttRow => {
+        const rowJobs = rowMap.get(name)!;
+        const nonRetried = rowJobs.find((j) => !j.retried);
+
+        const bars: GanttBar[] = rowJobs.map((job) => {
+          if (!job.startedAt || !job.finishedAt) {
+            return {
+              key: `job-${job.id}`,
+              startPct: 0,
+              widthPct: 0,
+              color: "#9CA3AF",
+              opacity: 1,
+              dot: true,
+              data: job,
+            };
+          }
+          const start = jobStart(job);
+          const width = jobDuration(job);
+          return {
+            key: `job-${job.id}`,
+            startPct: (start / dur) * 100,
+            widthPct: (width / dur) * 100,
+            color: job.retried ? "#FBBF24" : statusToColor(job.status),
+            opacity: 1,
+            dashed: job.status === "skipped",
+            data: job,
+          };
+        });
+
+        const hasRetried = rowJobs.some((j) => j.retried);
+        return {
+          key: name,
+          name,
+          bars,
+          labelClass: hasRetried ? "text-amber-600" : undefined,
+          deps: nonRetried?.needs?.filter((n) => visibleNames.has(n)) ?? [],
+          depFromPct:
+            nonRetried?.startedAt && nonRetried?.finishedAt
+              ? ((jobStart(nonRetried) + jobDuration(nonRetried)) / dur) * 100
+              : undefined,
+          depToPct:
+            nonRetried?.startedAt
+              ? (jobStart(nonRetried) / dur) * 100
+              : undefined,
+        };
+      }).map((row) => ({ ...row, hidden: !isMatch(row.name) })),
+    };
+  });
+});
+
+// --- Time axis ticks ---
+
+const ticks = computed<GanttTick[]>(() => {
+  const dur = totalDuration.value;
+  if (dur <= 0) return [];
+
+  let interval: number;
+  if (dur <= 120) interval = 30;
+  else if (dur <= 600) interval = 60;
+  else if (dur <= 1800) interval = 300;
+  else interval = 600;
+
+  const result: GanttTick[] = [];
+  for (let t = 0; t <= dur; t += interval) {
+    result.push({
+      pct: (t / dur) * 100,
+      label: formatDuration(t),
+    });
+  }
+  return result;
+});
 </script>
