@@ -315,24 +315,27 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
     };
   })
 
-  // Merge requests with pipeline counts
+  // Merge requests with pipeline counts and CI cost summary
   .get("/merge-requests", async ({ query }) => {
-    const limit = Math.min(Number(query?.limit) || 30, 100);
+    const limit = Math.min(Number(query?.limit) || 50, 200);
+    const since = query?.since
+      || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const rows = await db.execute(sql`
       SELECT
-        mr.id,
-        mr.gitlab_iid,
-        mr.project_path,
-        mr.title,
-        mr.status,
-        mr.branch_name,
-        mr.gitlab_created_at,
-        mr.merged_at,
-        (SELECT count(*)::int FROM pipelines p WHERE p.merge_request_id = mr.id) AS pipeline_count
+        mr.id, mr.gitlab_iid, mr.project_path, mr.title, mr.status,
+        mr.branch_name, mr.gitlab_created_at, mr.merged_at,
+        COUNT(p.id)::int AS pipeline_count,
+        COUNT(p.id) FILTER (WHERE p.status = 'failed')::int AS failed_count,
+        COUNT(p.id) FILTER (WHERE p.status = 'success')::int AS success_count,
+        SUM(p.duration_seconds)::int AS total_duration_seconds,
+        MIN(p.gitlab_created_at) AS first_pipeline_at,
+        MAX(p.gitlab_created_at) AS last_pipeline_at
       FROM merge_requests mr
-      WHERE EXISTS (SELECT 1 FROM pipelines p WHERE p.merge_request_id = mr.id)
-      ORDER BY mr.gitlab_created_at DESC
+      JOIN pipelines p ON p.merge_request_id = mr.id
+      WHERE mr.gitlab_created_at >= ${since}
+      GROUP BY mr.id
+      ORDER BY SUM(p.duration_seconds) DESC NULLS LAST
       LIMIT ${limit}
     `);
 
@@ -344,6 +347,11 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       status: r.status,
       branchName: r.branch_name,
       pipelineCount: r.pipeline_count,
+      failedCount: r.failed_count,
+      successCount: r.success_count,
+      totalDurationSeconds: r.total_duration_seconds,
+      firstPipelineAt: r.first_pipeline_at ? new Date(r.first_pipeline_at).toISOString() : null,
+      lastPipelineAt: r.last_pipeline_at ? new Date(r.last_pipeline_at).toISOString() : null,
       gitlabCreatedAt: new Date(r.gitlab_created_at).toISOString(),
       mergedAt: r.merged_at ? new Date(r.merged_at).toISOString() : null,
     }));
