@@ -59,15 +59,27 @@
         :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
         preserveAspectRatio="none"
       >
-        <!-- Dependency lines (grouped so overlapping paths don't compound opacity) -->
+        <!-- Normal dependency lines (grouped so overlapping paths don't compound opacity) -->
         <g opacity="0.2">
           <path
-            v-for="(d, i) in depPaths"
+            v-for="(p, i) in normalDepPaths"
             :key="'d-' + i"
-            :d="d"
+            :d="p.d"
             fill="none"
             stroke="#9CA3AF"
             stroke-width="1"
+            vector-effect="non-scaling-stroke"
+          />
+        </g>
+        <!-- Critical path dependency lines -->
+        <g v-if="criticalDepPaths.length > 0">
+          <path
+            v-for="(p, i) in criticalDepPaths"
+            :key="'cd-' + i"
+            :d="p.d"
+            fill="none"
+            stroke="#F59E0B"
+            stroke-width="1.5"
             vector-effect="non-scaling-stroke"
           />
         </g>
@@ -109,13 +121,14 @@
         <div
           v-else
           class="absolute rounded-sm transition-[top,opacity,width] duration-500 ease-out"
+          :class="bar.highlight ? 'ring-2 ring-amber-400' : ''"
           :style="{
             left: bar.startPct + '%',
             width: entered ? Math.max(bar.widthPct, 0.4) + '%' : '0%',
             top: (24 + bar.y + 5) + 'px',
             height: '18px',
             backgroundColor: bar.color,
-            opacity: bar.hidden ? 0 : bar.opacity,
+            opacity: bar.hidden ? 0 : (bar.onCriticalPath === false ? 0.45 : bar.opacity),
             pointerEvents: bar.hidden ? 'none' : 'auto',
           }"
           :title="bar.title"
@@ -182,6 +195,8 @@ interface PositionedBar {
   opacity: number;
   dashed: boolean;
   dot: boolean;
+  highlight: boolean;
+  onCriticalPath: boolean | undefined;
   hidden: boolean;
   title?: string;
   data?: unknown;
@@ -213,6 +228,8 @@ const layout = computed(() => {
           opacity: bar.opacity,
           dashed: bar.dashed ?? false,
           dot: bar.dot ?? false,
+          highlight: bar.highlight ?? false,
+          onCriticalPath: row.onCriticalPath,
           hidden: rowHidden,
           title: bar.title,
           data: bar.data,
@@ -233,10 +250,15 @@ const chartHeight = computed(() => layout.value.height);
 
 // --- Dependency paths (right-angle with rounded corners) ---
 
-const depPaths = computed(() => {
+interface DepPath {
+  d: string;
+  critical: boolean;
+}
+
+const depPathData = computed(() => {
   const w = chartWidth.value;
   const { rowYMap } = layout.value;
-  const paths: string[] = [];
+  const paths: DepPath[] = [];
 
   const rowMap = new Map<string, GanttStage["rows"][0]>();
   for (const stage of props.stages) {
@@ -285,13 +307,18 @@ const depPaths = computed(() => {
         if (r <= 0) continue;
 
         const dy = y2 > y1 ? 1 : -1;
-        paths.push(
-          `M ${x1} ${y1} H ${mx - r} Q ${mx} ${y1}, ${mx} ${y1 + r * dy} V ${y2 - r * dy} Q ${mx} ${y2}, ${mx + r} ${y2} H ${x2}`
-        );
+        const isCritical = row.onCriticalPath === true && depRow.onCriticalPath === true;
+        paths.push({
+          d: `M ${x1} ${y1} H ${mx - r} Q ${mx} ${y1}, ${mx} ${y1 + r * dy} V ${y2 - r * dy} Q ${mx} ${y2}, ${mx + r} ${y2} H ${x2}`,
+          critical: isCritical,
+        });
       }
     }
   }
 
   return paths;
 });
+
+const normalDepPaths = computed(() => depPathData.value.filter((p) => !p.critical));
+const criticalDepPaths = computed(() => depPathData.value.filter((p) => p.critical));
 </script>

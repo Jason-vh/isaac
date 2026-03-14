@@ -64,6 +64,12 @@
           </span>
           <span class="text-ink-faint">{{ hoveredJob.runCount }} runs</span>
         </div>
+        <div v-if="scheduling.criticalPath" class="mt-1 text-xs">
+          <span v-if="scheduling.criticalPath.criticalJobs.has(hoveredJob.name)" class="font-medium text-amber-500">On critical path</span>
+          <span v-else-if="scheduling.criticalPath.slack.has(hoveredJob.name)" class="text-ink-faint">
+            Slack: +{{ fmtDuration(scheduling.criticalPath.slack.get(hoveredJob.name)!) }}
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -74,6 +80,7 @@ import { computed, ref, onMounted, onUnmounted } from "vue";
 import type { JobStats } from "@isaac/shared";
 import GanttChart from "./GanttChart.vue";
 import type { GanttStage, GanttTick, GanttBar, GanttRow } from "./gantt-types";
+import { computeSimulatedCriticalPath } from "../../composables/useCriticalPath";
 
 interface JobTooltipData {
   name: string;
@@ -262,7 +269,21 @@ const scheduling = computed(() => {
     ganttStages.push({ key: stageName, name: stageName, rows });
   }
 
-  return { stages: ganttStages, maxTime: totalDuration };
+  // Compute critical path
+  const cp = computeSimulatedCriticalPath(jobs, startTimes, endTimes, totalDuration);
+
+  // Apply critical path highlighting to stages
+  for (const stage of ganttStages) {
+    for (const row of stage.rows) {
+      const isCritical = cp.criticalJobs.has(row.name);
+      row.onCriticalPath = isCritical;
+      for (const bar of row.bars) {
+        bar.highlight = isCritical;
+      }
+    }
+  }
+
+  return { stages: ganttStages, maxTime: totalDuration, criticalPath: cp };
 });
 
 // --- Apply search filtering (marks non-matching rows as hidden) ---

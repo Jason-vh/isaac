@@ -54,14 +54,25 @@
           <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
             Job Timeline
           </h3>
-          <input
-            v-model="jobSearch"
-            type="text"
-            placeholder="Filter jobs..."
-            class="ml-auto w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
-          />
+          <div class="ml-auto flex items-center gap-3">
+            <button
+              class="rounded border px-2 py-1 text-xs transition-colors"
+              :class="showCriticalPath
+                ? 'border-amber-400 bg-amber-50 text-amber-700'
+                : 'border-border bg-surface text-ink-faint hover:text-ink'"
+              @click="showCriticalPath = !showCriticalPath"
+            >
+              Critical path
+            </button>
+            <input
+              v-model="jobSearch"
+              type="text"
+              placeholder="Filter jobs..."
+              class="w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+            />
+          </div>
         </div>
-        <WaterfallChart :pipeline="detail" :search="jobSearch" />
+        <WaterfallChart :pipeline="detail" :search="jobSearch" :show-critical-path="showCriticalPath" />
       </div>
 
     </template>
@@ -81,6 +92,7 @@ const router = useRouter();
 
 const pipelineId = computed(() => Number(route.params.id));
 const jobSearch = ref("");
+const showCriticalPath = ref(true);
 const detail = ref<PipelineDetail | null>(null);
 const loading = ref(true);
 const error = ref("");

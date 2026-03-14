@@ -6,6 +6,7 @@ export interface GanttBar {
   opacity: number;
   dashed?: boolean;
   dot?: boolean;
+  highlight?: boolean;
   title?: string;
   data?: unknown;
 }
@@ -17,6 +18,7 @@ export interface GanttRow {
   deps: string[];
   dimmed?: boolean;
   hidden?: boolean;
+  onCriticalPath?: boolean;
   labelClass?: string;
   /** Override x% for outgoing dependency lines (default: end of last bar) */
   depFromPct?: number;
