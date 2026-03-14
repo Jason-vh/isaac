@@ -51,6 +51,16 @@ function computeStats(points: PipelineDurationPoint[]) {
 }
 
 const DEFAULT_DAYS = 7;
+const PRESET_DAYS = [7, 30];
+
+function derivePreset(sinceVal: string, untilVal: string): number | null {
+  const today = toDateString(new Date());
+  if (untilVal !== today) return null;
+  for (const days of PRESET_DAYS) {
+    if (sinceVal === daysAgo(days)) return days;
+  }
+  return null;
+}
 
 export function usePipelines() {
   const router = useRouter();
@@ -61,9 +71,7 @@ export function usePipelines() {
   const qUntil = route.query.until as string | undefined;
   const since = ref(qSince || daysAgo(DEFAULT_DAYS));
   const until = ref(qUntil || toDateString(new Date()));
-  const activePreset = ref<number | null>(
-    !qSince && !qUntil ? DEFAULT_DAYS : null
-  );
+  const activePreset = ref<number | null>(derivePreset(since.value, until.value));
   const points = ref<PipelineDurationPoint[]>([]);
   const previousPoints = ref<PipelineDurationPoint[]>([]);
   const jobStats = ref<JobStats[]>([]);

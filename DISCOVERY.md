@@ -109,7 +109,7 @@ Clicking an entry chip opens a slide-over detail panel showing the entry's under
 
 ### Periodically
 - Review OKR progress on the Objectives page — expand objectives to see linked evidence (epics auto-resolve child tickets, MRs, and docs)
-- Track CI/CD health on the Pipelines page — weekly duration trends, slowest jobs, flakiest jobs
+- Track CI/CD health on the Pipelines page — scatter chart of pipeline durations (merge vs train), Gantt chart of p50 job durations with dependency graph, sortable job overview with retry rates. Drill into individual pipeline detail pages for job waterfall timelines.
 - Use accumulated data for performance reviews, brag documents, retrospectives
 
 ### Admin (`/admin` — not in nav)

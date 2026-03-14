@@ -42,7 +42,7 @@ isaac/
 │   │   │   ├── meetings.ts
 │   │   │   ├── wins.ts
 │   │   │   ├── objectives.ts
-│   │   │   ├── pipelines.ts    # Pipeline metrics (weekly stats, slowest/flaky jobs)
+│   │   │   ├── pipelines.ts    # Pipeline duration scatter, job stats, comparison, detail
 │   │   │   ├── share.ts        # POST /share (generate share URL)
 │   │   │   └── wbso.ts
 │   │   ├── sync/
@@ -74,8 +74,7 @@ isaac/
 │       │   ├── useAuth.ts      # Auth state + passkey ceremonies
 │       │   ├── useDashboard.ts  # Dashboard data fetching
 │       │   ├── useObjectives.ts # OKR CRUD + evidence management
-│       │   ├── usePipelines.ts  # Pipeline metrics fetching
-│       │   ├── usePipelineWaterfall.ts # Pipeline waterfall data fetching
+│       │   ├── usePipelines.ts  # Pipeline scatter, job stats, comparison data fetching
 │       │   └── useWbso.ts       # WBSO week data fetching
 │       ├── components/
 │       │   ├── dashboard/
@@ -96,12 +95,12 @@ isaac/
 │       │       ├── EvidencePanel.vue        # Linked evidence items (epics, tickets, MRs, docs)
 │       │       └── EvidencePicker.vue       # Search + add epic evidence to a KR
 │       │   ├── pipelines/
-│       │   │   ├── PipelineStatsCards.vue   # Max/P90 duration + success rate
-│       │   │   ├── DurationTrendChart.vue   # Grouped bar chart with 15m target line
-│       │   │   ├── SlowestJobsList.vue      # Top 10 slowest jobs by avg duration
-│       │   │   ├── FlakyJobsList.vue        # Top 10 flakiest jobs by retry count
-│       │   │   ├── PipelineWaterfallCard.vue # Pipeline list item linking to waterfall
-│       │   │   └── WaterfallChart.vue        # Job timeline bars with DAG dependency lines
+│       │   │   ├── PipelineDurationStats.vue # Period comparison stats (median, p90, count)
+│       │   │   ├── DurationScatterChart.vue # Scatter + rolling avg (merge vs train)
+│       │   │   ├── JobGanttChart.vue        # P50 job durations with DAG arrows + retry coloring
+│       │   │   ├── JobOverview.vue          # Sortable job table with p50, retry rate, comparison
+│       │   │   ├── PipelineList.vue         # Clickable pipeline list linking to detail page
+│       │   │   └── WaterfallChart.vue       # Job timeline bars with DAG dependency lines
 │       │   └── wbso/
 │       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Code Review, Dev Meeting, Dev Misc, Non-Dev, Leave)
 │       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid with stacked category progress bars, entries grouped by epic
@@ -113,7 +112,7 @@ isaac/
 │       │   ├── DashboardView.vue
 │       │   ├── ObjectivesView.vue
 │       │   ├── PipelinesView.vue
-│       │   ├── PipelineWaterfallView.vue
+│       │   ├── PipelineDetailView.vue
 │       │   ├── WbsoView.vue
 │       │   ├── AdminView.vue         # Sync trigger + log (hidden from nav, /admin)
 │       │   └── LoginView.vue
@@ -389,7 +388,7 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Wins:** GET/POST `/wins`, GET/PATCH/DELETE `/wins/:id`, POST `/wins/:id/links`, DELETE `/wins/:id/links/:linkId`
 - **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`, GET `/objectives/epics?q=`, POST `/objectives/seed` (owner-only, idempotent seeder for 2026 OKRs)
 - **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
-- **Pipelines:** GET `/pipelines/metrics?weeks=N`, GET `/pipelines/jobs/slowest?weeks=N`, GET `/pipelines/jobs/flaky?weeks=N`, GET `/pipelines/list?limit=N&source=S`, GET `/pipelines/:id/jobs` (includes `needs` for DAG dependency visualization), GET `/pipelines/merge-requests?limit=N`, GET `/pipelines/merge-requests/:id/pipelines`
+- **Pipelines:** GET `/pipelines/durations?since=&until=` (scatter points for merge/train), GET `/pipelines/job-stats?since=&until=` (p50 duration, retry count, needs per job), GET `/pipelines/comparison?since=&until=&prevSince=&prevUntil=` (period-over-period stats), GET `/pipelines/:id/jobs` (detail with jobs + needs for DAG/waterfall)
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills, per-source concurrency guard), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
