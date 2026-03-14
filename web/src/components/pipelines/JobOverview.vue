@@ -17,7 +17,8 @@
     <!-- Column headers -->
     <div
       v-if="!loading && rows.length > 0"
-      class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
+      class="grid items-center gap-x-2 border-b border-border px-4 py-1.5"
+      :class="gridClass"
     >
       <template v-for="(col, i) in columns" :key="col.key">
         <div v-if="i === 3" class="h-full w-px bg-border" />
@@ -38,7 +39,8 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
+        class="grid items-center gap-x-2 px-4 py-3"
+        :class="gridClass"
       >
         <div>
           <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
@@ -49,6 +51,7 @@
         <div class="h-full w-px bg-border" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
+        <div v-if="criticalPath" class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
       </div>
     </div>
     <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
@@ -58,7 +61,8 @@
       <div
         v-for="row in rows"
         :key="row.name"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
+        class="grid items-center gap-x-2 px-4 py-2.5"
+        :class="gridClass"
       >
         <!-- Job name + runs -->
         <div class="min-w-0">
@@ -103,6 +107,11 @@
           <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
           <p v-else class="text-[10px] text-ink-faint">new</p>
         </div>
+
+        <!-- CP Contribution -->
+        <p v-if="criticalPath" class="text-right text-xs font-mono tabular-nums" :class="row.cpContrib !== null ? (row.cpContrib > 0 ? 'text-red-500' : row.cpContrib < 0 ? 'text-emerald-600' : 'text-ink-faint') : 'text-ink-faint'">
+          {{ row.cpContrib !== null ? fmtContribution(row.cpContrib) : '\u2014' }}
+        </p>
       </div>
     </div>
   </div>
@@ -110,13 +119,32 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { JobStats } from "@isaac/shared";
+import type { JobStats, CriticalPathDecomposition } from "@isaac/shared";
 
 const props = defineProps<{
   jobs: JobStats[];
   prevJobs: JobStats[];
   loading: boolean;
+  criticalPath?: CriticalPathDecomposition | null;
 }>();
+
+// Build a map of job name -> ownContribution for quick lookup
+const cpContribMap = computed(() => {
+  if (!props.criticalPath) return null;
+  const map = new Map<string, number>();
+  for (const seg of props.criticalPath.segments) {
+    map.set(seg.jobName, seg.ownContribution);
+  }
+  return map;
+});
+
+function fmtContribution(seconds: number): string {
+  const abs = Math.abs(seconds);
+  const m = Math.floor(abs / 60);
+  const s = Math.round(abs % 60);
+  const sign = seconds > 0 ? "+" : seconds < 0 ? "-" : "";
+  return `${sign}${m}m ${s}s`;
+}
 
 function fmtDuration(seconds: number | null): string {
   if (seconds == null) return "--";
@@ -127,18 +155,31 @@ function fmtDuration(seconds: number | null): string {
 
 const search = ref("");
 
-type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta";
+type SortKey = "name" | "medianDuration" | "delta" | "cpContrib" | "retryRate" | "retryDelta";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
-const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
-  { key: "name", label: "Job", align: "left" },
-  { key: "medianDuration", label: "P50 Duration", align: "right" },
-  { key: "delta", label: "Δ Duration", align: "right" },
-  // divider column (1px) is not a button — handled in template
-  { key: "retryRate", label: "Retry Rate", align: "right" },
-  { key: "retryDelta", label: "Δ Retries", align: "right" },
-];
+const columns = computed(() => {
+  const cols: { key: SortKey; label: string; align: "left" | "right" }[] = [
+    { key: "name", label: "Job", align: "left" },
+    { key: "medianDuration", label: "P50 Duration", align: "right" },
+    { key: "delta", label: "\u0394 Duration", align: "right" },
+    // divider column (1px) is not a button — handled in template
+    { key: "retryRate", label: "Retry Rate", align: "right" },
+    { key: "retryDelta", label: "\u0394 Retries", align: "right" },
+  ];
+  if (props.criticalPath) {
+    // Insert CP column after the divider position (index 3 visually, but the divider is at i===3)
+    cols.push({ key: "cpContrib", label: "CP", align: "right" });
+  }
+  return cols;
+});
+
+const gridClass = computed(() =>
+  props.criticalPath
+    ? "grid-cols-[1fr_5rem_7rem_1px_5rem_5rem_5rem]"
+    : "grid-cols-[1fr_5rem_7rem_1px_5rem_5rem]"
+);
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -197,6 +238,9 @@ const allRows = computed(() => {
       }
     }
 
+    // CP contribution
+    const cpContrib = cpContribMap.value?.get(j.name) ?? null;
+
     return {
       name: j.name,
       runCount: j.runCount,
@@ -210,6 +254,7 @@ const allRows = computed(() => {
       retryRateDelta,
       retryRateDeltaLabel,
       prevRetryRateLabel,
+      cpContrib,
     };
   });
 });
@@ -237,6 +282,12 @@ const sortedRows = computed(() => {
         if (a.retryRateDelta === null) return 1;
         if (b.retryRateDelta === null) return -1;
         return dir * (a.retryRateDelta - b.retryRateDelta);
+      }
+      case "cpContrib": {
+        if (a.cpContrib === null && b.cpContrib === null) return 0;
+        if (a.cpContrib === null) return 1;
+        if (b.cpContrib === null) return -1;
+        return dir * (a.cpContrib - b.cpContrib);
       }
       default:
         return 0;

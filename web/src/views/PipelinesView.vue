@@ -50,9 +50,14 @@
       <JobGanttChart :jobs="jobStats" :loading="initialLoading" />
     </div>
 
+    <!-- Critical Path Delta -->
+    <div class="mt-6">
+      <CriticalPathDelta :decomposition="criticalPathDecomposition" :loading="initialLoading" />
+    </div>
+
     <!-- Job overview -->
     <div class="mt-6">
-      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :loading="initialLoading" />
+      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :critical-path="criticalPathDecomposition" :loading="initialLoading" />
     </div>
 
     <!-- Pipeline list -->
@@ -75,11 +80,12 @@ import PipelineDurationStats from "../components/pipelines/PipelineDurationStats
 import PipelineList from "../components/pipelines/PipelineList.vue";
 import JobOverview from "../components/pipelines/JobOverview.vue";
 import JobGanttChart from "../components/pipelines/JobGanttChart.vue";
+import CriticalPathDelta from "../components/pipelines/CriticalPathDelta.vue";
 
 const presets = [
   { label: "7d", days: 7 },
   { label: "30d", days: 30 },
 ];
 
-const { since, until, points, comparison, jobStats, prevJobStats, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, jobStats, prevJobStats, criticalPathDecomposition, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
 </script>
