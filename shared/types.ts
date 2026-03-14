@@ -316,6 +316,23 @@ export interface MergeRequestListItem {
   mergedAt: string | null;
 }
 
+export interface MrPipelineSummary {
+  id: number;
+  gitlabIid: number;
+  projectPath: string;
+  title: string;
+  status: string;
+  branchName: string;
+  pipelineCount: number;
+  failedCount: number;
+  successCount: number;
+  totalDurationSeconds: number | null;
+  firstPipelineAt: string | null;
+  lastPipelineAt: string | null;
+  gitlabCreatedAt: string;
+  mergedAt: string | null;
+}
+
 // WBSO
 export type WbsoCategory = "coding" | "code_review" | "dev_meeting" | "dev_misc" | "non_dev" | "leave";
 
