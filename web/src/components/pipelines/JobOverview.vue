@@ -17,7 +17,7 @@
     <!-- Column headers -->
     <div
       v-if="!loading && rows.length > 0"
-      class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
+      class="grid grid-cols-[1fr_9rem_6rem_1px_5rem_5rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
     >
       <template v-for="(col, i) in columns" :key="col.key">
         <div v-if="i === 3" class="h-full w-px bg-border" />
@@ -38,13 +38,16 @@
       <div
         v-for="i in 6"
         :key="i"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
+        class="grid grid-cols-[1fr_9rem_6rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-3"
       >
         <div>
           <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
           <div class="mt-1 h-3 w-16 animate-pulse rounded bg-surface-2" />
         </div>
-        <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
+        <div class="flex flex-col items-end gap-1">
+          <div class="h-5 w-full animate-pulse rounded bg-surface-2" />
+          <div class="h-3 w-12 animate-pulse rounded bg-surface-2" />
+        </div>
         <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-full w-px bg-border" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
@@ -58,18 +61,38 @@
       <div
         v-for="row in rows"
         :key="row.name"
-        class="grid grid-cols-[1fr_5rem_7rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
+        class="grid grid-cols-[1fr_9rem_6rem_1px_5rem_5rem] items-center gap-x-2 px-4 py-2.5"
       >
-        <!-- Job name + runs -->
-        <div class="min-w-0">
-          <p class="truncate text-sm text-ink">{{ row.name }}</p>
-          <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+        <!-- Job name + runs + CV badge -->
+        <div class="min-w-0 flex items-center gap-1.5">
+          <div class="min-w-0">
+            <p class="truncate text-sm text-ink">{{ row.name }}</p>
+            <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+          </div>
+          <span
+            v-if="row.cvBadge === 'amber'"
+            class="shrink-0 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700"
+            title="Moderate variance (CV 10-25%)"
+          >CV {{ row.cv }}%</span>
+          <span
+            v-else-if="row.cvBadge === 'red'"
+            class="shrink-0 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-700"
+            title="High variance (CV > 25%)"
+          >unstable</span>
         </div>
 
-        <!-- Median duration -->
-        <p class="text-right font-mono text-sm tabular-nums text-ink">
-          {{ fmtDuration(row.medianDuration) }}
-        </p>
+        <!-- Distribution bar + p50 number -->
+        <div class="flex flex-col items-end gap-0.5">
+          <JobDistributionBar
+            :p10="row.p10Duration"
+            :p50="row.medianDuration"
+            :p90="row.p90Duration"
+            :domain-max="domainMax"
+          />
+          <p class="text-right font-mono text-xs tabular-nums text-ink">
+            {{ fmtDuration(row.medianDuration) }}
+          </p>
+        </div>
 
         <!-- Duration delta -->
         <div class="text-right">
@@ -111,6 +134,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { JobStats } from "@isaac/shared";
+import JobDistributionBar from "./JobDistributionBar.vue";
 
 const props = defineProps<{
   jobs: JobStats[];
@@ -127,17 +151,17 @@ function fmtDuration(seconds: number | null): string {
 
 const search = ref("");
 
-type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta";
+type SortKey = "name" | "medianDuration" | "delta" | "cv" | "retryRate" | "retryDelta";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
 const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
   { key: "name", label: "Job", align: "left" },
   { key: "medianDuration", label: "P50 Duration", align: "right" },
-  { key: "delta", label: "Δ Duration", align: "right" },
+  { key: "delta", label: "\u0394 Duration", align: "right" },
   // divider column (1px) is not a button — handled in template
   { key: "retryRate", label: "Retry Rate", align: "right" },
-  { key: "retryDelta", label: "Δ Retries", align: "right" },
+  { key: "retryDelta", label: "\u0394 Retries", align: "right" },
 ];
 
 function toggleSort(key: SortKey) {
@@ -197,10 +221,24 @@ const allRows = computed(() => {
       }
     }
 
+    // CV (coefficient of variation)
+    const cv = j.stddevDuration != null && j.avgDuration > 0
+      ? Math.round((j.stddevDuration / j.avgDuration) * 100)
+      : null;
+
+    // CV badge: only show for jobs with >= 5 runs
+    let cvBadge: "amber" | "red" | null = null;
+    if (cv != null && j.runCount >= 5) {
+      if (cv > 25) cvBadge = "red";
+      else if (cv >= 10) cvBadge = "amber";
+    }
+
     return {
       name: j.name,
       runCount: j.runCount,
+      p10Duration: j.p10Duration,
       medianDuration,
+      p90Duration: j.p90Duration,
       prevMedianDuration,
       delta,
       deltaLabel,
@@ -210,9 +248,16 @@ const allRows = computed(() => {
       retryRateDelta,
       retryRateDeltaLabel,
       prevRetryRateLabel,
+      cv,
+      cvBadge,
     };
   });
 });
+
+// domainMax from allRows (pre-filter) so bars don't rescale when searching
+const domainMax = computed(() =>
+  Math.max(...allRows.value.map((r) => r.p90Duration ?? r.medianDuration ?? 0), 1)
+);
 
 const sortedRows = computed(() => {
   const sorted = [...allRows.value];
@@ -229,6 +274,12 @@ const sortedRows = computed(() => {
         if (a.delta === null) return 1;
         if (b.delta === null) return -1;
         return dir * (a.delta - b.delta);
+      }
+      case "cv": {
+        if (a.cv === null && b.cv === null) return 0;
+        if (a.cv === null) return 1;
+        if (b.cv === null) return -1;
+        return dir * (a.cv - b.cv);
       }
       case "retryRate":
         return dir * (a.retryRate - b.retryRate);

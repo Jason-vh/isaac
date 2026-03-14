@@ -265,7 +265,10 @@ export interface JobStats {
   stage: string;
   runCount: number;
   avgDuration: number;
+  p10Duration: number | null;
   p50Duration: number | null;
+  p90Duration: number | null;
+  stddevDuration: number | null;
   retryCount: number;
   needs: string[];
 }
