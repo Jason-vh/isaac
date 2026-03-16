@@ -42,12 +42,12 @@
       <div v-if="error" class="py-20 text-center text-red-500">
         {{ error }}
       </div>
-      <DurationScatterChart v-else :points="points" :loading="initialLoading" @select="onSelectPipeline" />
+      <DurationScatterChart v-else :points="points" :loading="initialLoading" v-model:split-by="splitBy" @select="onSelectPipeline" />
     </div>
 
     <!-- Critical Path Frequency -->
     <div class="mt-6">
-      <CriticalPathFrequency :items="criticalPathFrequency" :loading="initialLoading" />
+      <CriticalPathFrequency :since="since" :until="until" />
     </div>
 
     <!-- Job overview -->
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import type { SplitBy } from "../components/pipelines/DurationScatterChart.vue";
 import { useRouter } from "vue-router";
 import type { MrPipelineSummary } from "@isaac/shared";
 import { usePipelines } from "../composables/usePipelines";
@@ -85,7 +86,8 @@ const presets = [
   { label: "30d", days: 30 },
 ];
 
-const { since, until, points, comparison, jobStats, prevJobStats, criticalPathFrequency, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, jobStats, prevJobStats, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const splitBy = ref<SplitBy>("type");
 
 // MR list data
 const mrList = ref<MrPipelineSummary[]>([]);

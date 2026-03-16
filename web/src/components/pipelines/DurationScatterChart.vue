@@ -1,10 +1,23 @@
 <template>
   <div class="card overflow-hidden">
-    <h3
-      class="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wider text-ink-faint"
-    >
-      Duration Trend
-    </h3>
+    <div class="flex items-center justify-between border-b border-border px-4 py-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
+        Duration Trend
+      </h3>
+      <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+        <button
+          v-for="opt in splitOptions"
+          :key="opt.value"
+          class="rounded-md px-2 py-0.5 text-xs transition-colors"
+          :class="splitBy === opt.value
+            ? 'bg-surface-2 text-ink font-medium'
+            : 'text-ink-muted hover:text-ink'"
+          @click="$emit('update:splitBy', opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+    </div>
     <div v-if="loading" class="p-4">
       <div class="flex items-center justify-center" style="height: 420px">
         <span class="text-sm text-ink-faint animate-pulse">Loading chart...</span>
@@ -41,8 +54,35 @@ use([
   LegendComponent,
 ]);
 
-const props = defineProps<{ points: PipelineDurationPoint[]; loading: boolean }>();
-const emit = defineEmits<{ (e: "select", id: number): void }>();
+export type SplitBy = "type" | "scope";
+
+const splitOptions = [
+  { value: "type" as const, label: "Pipeline type" },
+  { value: "scope" as const, label: "Change scope" },
+];
+
+interface SeriesConfig {
+  key: string;
+  label: string;
+  color: string;
+  filter: (p: PipelineDurationPoint) => boolean;
+}
+
+const SPLIT_CONFIGS: Record<SplitBy, SeriesConfig[]> = {
+  type: [
+    { key: "merge", label: "Merge", color: "#3B82F6", filter: (p) => p.type === "merge" },
+    { key: "train", label: "Train", color: "#7C3AED", filter: (p) => p.type === "train" },
+  ],
+  scope: [
+    { key: "fullstack", label: "Fullstack", color: "#8B5CF6", filter: (p) => p.scope === "fullstack" },
+    { key: "backend", label: "Backend", color: "#10B981", filter: (p) => p.scope === "backend" },
+    { key: "frontend", label: "Frontend", color: "#3B82F6", filter: (p) => p.scope === "frontend" },
+    { key: "neither", label: "Neither", color: "#9CA3AF", filter: (p) => p.scope === "neither" },
+  ],
+};
+
+const props = defineProps<{ points: PipelineDurationPoint[]; loading: boolean; splitBy: SplitBy }>();
+const emit = defineEmits<{ (e: "select", id: number): void; (e: "update:splitBy", value: SplitBy): void }>();
 
 function onChartClick(params: any) {
   if (params.seriesType === "scatter" && params.value?.[2]) {
@@ -50,9 +90,7 @@ function onChartClick(params: any) {
   }
 }
 
-const MERGE_COLOR = "#3B82F6";
-const TRAIN_COLOR = "#7C3AED";
-const ROLLING_WINDOW_MS = 0.5 * 24 * 60 * 60 * 1000; // ±0.5 days
+const ROLLING_WINDOW_MS = 0.5 * 24 * 60 * 60 * 1000;
 
 function toMinutes(seconds: number): number {
   return Math.round((seconds / 60) * 10) / 10;
@@ -66,7 +104,6 @@ function computeRollingAverage(
   const sorted = [...pts].sort((a, b) => a.time - b.time);
   const result: [number, number][] = [];
 
-  // Sample one point per day across the range
   const start = sorted[0].time;
   const end = sorted[sorted.length - 1].time;
   const dayMs = 24 * 60 * 60 * 1000;
@@ -89,30 +126,30 @@ function computeRollingAverage(
 }
 
 const chartOption = computed(() => {
-  const mergeScatter: [number, number, number][] = [];
-  const trainScatter: [number, number, number][] = [];
-  const mergePts: { time: number; value: number }[] = [];
-  const trainPts: { time: number; value: number }[] = [];
+  const configs = SPLIT_CONFIGS[props.splitBy];
   const pointMap = new Map<number, PipelineDurationPoint>();
+
+  // Bucket points by series
+  const buckets = configs.map(() => ({
+    scatter: [] as [number, number, number][],
+    pts: [] as { time: number; value: number }[],
+  }));
 
   for (const p of props.points) {
     pointMap.set(p.id, p);
     const t = new Date(p.createdAt).getTime();
     const v = toMinutes(p.durationSeconds);
-    if (p.type === "merge") {
-      mergeScatter.push([t, v, p.id]);
-      mergePts.push({ time: t, value: v });
-    } else {
-      trainScatter.push([t, v, p.id]);
-      trainPts.push({ time: t, value: v });
+    for (let i = 0; i < configs.length; i++) {
+      if (configs[i].filter(p)) {
+        buckets[i].scatter.push([t, v, p.id]);
+        buckets[i].pts.push({ time: t, value: v });
+        break;
+      }
     }
   }
 
-  const mergeAvg = computeRollingAverage(mergePts);
-  const trainAvg = computeRollingAverage(trainPts);
-
-  // Compute data range to adapt axis
-  const allTimes = [...mergeScatter, ...trainScatter].map((p) => p[0]);
+  // Compute time range
+  const allTimes = props.points.map((p) => new Date(p.createdAt).getTime());
   const rangeMs = allTimes.length > 1
     ? Math.max(...allTimes) - Math.min(...allTimes)
     : 0;
@@ -120,6 +157,35 @@ const chartOption = computed(() => {
   const dayMs = 24 * 60 * 60 * 1000;
   const weekMs = 7 * dayMs;
   const showDaily = rangeDays <= 21;
+
+  // Build series dynamically
+  const series: any[] = [];
+  for (let i = 0; i < configs.length; i++) {
+    const cfg = configs[i];
+    const bucket = buckets[i];
+    series.push({
+      name: cfg.label,
+      type: "scatter",
+      data: bucket.scatter,
+      symbolSize: 5,
+      itemStyle: { color: cfg.color, opacity: 0.3 },
+      cursor: "pointer",
+    });
+    series.push({
+      name: cfg.label,
+      type: "line",
+      data: computeRollingAverage(bucket.pts),
+      smooth: true,
+      showSymbol: false,
+      lineStyle: { color: cfg.color, width: 2 },
+      itemStyle: { color: cfg.color },
+      tooltip: { show: false },
+    });
+  }
+
+  // Color map for tooltip
+  const colorMap = Object.fromEntries(configs.map((c) => [c.key, c.color]));
+  const labelMap = Object.fromEntries(configs.map((c) => [c.key, c.label]));
 
   return {
     animation: true,
@@ -150,12 +216,13 @@ const chartOption = computed(() => {
           hour: "2-digit",
           minute: "2-digit",
         });
-        const typeColor = p.type === "train" ? "#7C3AED" : "#3B82F6";
-        const typeLabel = p.type === "train" ? "train" : "merge";
+        const splitKey = props.splitBy === "type" ? p.type : p.scope;
+        const badgeColor = colorMap[splitKey] ?? "#A3A3A0";
+        const badgeLabel = labelMap[splitKey] ?? splitKey;
         const dur = params.value[1];
         let html = `<div style="display:flex;align-items:baseline;gap:8px">`;
         html += `<span style="font-family:monospace;font-weight:600;font-size:14px">${dur}m</span>`;
-        html += `<span style="color:${typeColor};font-size:10px;font-weight:600;text-transform:uppercase">${typeLabel}</span>`;
+        html += `<span style="color:${badgeColor};font-size:10px;font-weight:600;text-transform:uppercase">${badgeLabel}</span>`;
         html += `</div>`;
         html += `<div style="color:#A3A3A0;font-size:11px;margin-top:2px">${date}</div>`;
         html += `<div style="display:flex;gap:8px;margin-top:4px;font-size:11px;color:#A3A3A0">`;
@@ -171,7 +238,7 @@ const chartOption = computed(() => {
       },
     },
     legend: {
-      data: ["Merge", "Train"],
+      data: configs.map((c) => c.label),
       bottom: 0,
       textStyle: { color: "#6B6B6B", fontSize: 11 },
       itemWidth: 12,
@@ -208,44 +275,7 @@ const chartOption = computed(() => {
       axisLabel: { color: "#A3A3A0", fontSize: 10 },
       splitLine: { lineStyle: { color: "#F5F5F0" } },
     },
-    series: [
-      {
-        name: "Merge",
-        type: "scatter" as const,
-        data: mergeScatter,
-        symbolSize: 5,
-        itemStyle: { color: MERGE_COLOR, opacity: 0.3 },
-        cursor: "pointer",
-      },
-      {
-        name: "Train",
-        type: "scatter" as const,
-        data: trainScatter,
-        symbolSize: 5,
-        itemStyle: { color: TRAIN_COLOR, opacity: 0.3 },
-        cursor: "pointer",
-      },
-      {
-        name: "Merge",
-        type: "line" as const,
-        data: mergeAvg,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { color: MERGE_COLOR, width: 2 },
-        itemStyle: { color: MERGE_COLOR },
-        tooltip: { show: false },
-      },
-      {
-        name: "Train",
-        type: "line" as const,
-        data: trainAvg,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { color: TRAIN_COLOR, width: 2 },
-        itemStyle: { color: TRAIN_COLOR },
-        tooltip: { show: false },
-      },
-    ],
+    series,
   };
 });
 </script>

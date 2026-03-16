@@ -4,13 +4,28 @@
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Critical Path Frequency
       </h3>
-      <button
-        v-if="items.length > 0"
-        class="text-xs text-ink-muted hover:text-ink transition-colors"
-        @click="toggleSort"
-      >
-        Sort by {{ sortBy === 'frequency' ? 'duration' : 'frequency' }}
-      </button>
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+          <button
+            v-for="opt in scopeOptions"
+            :key="opt.value"
+            class="rounded-md px-2 py-0.5 text-xs transition-colors"
+            :class="scope === opt.value
+              ? 'bg-surface-2 text-ink font-medium'
+              : 'text-ink-muted hover:text-ink'"
+            @click="scope = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <button
+          v-if="items.length > 0"
+          class="text-xs text-ink-muted hover:text-ink transition-colors"
+          @click="toggleSort"
+        >
+          Sort by {{ sortBy === 'frequency' ? 'duration' : 'frequency' }}
+        </button>
+      </div>
     </div>
 
     <!-- Loading skeleton -->
@@ -97,16 +112,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import type { CriticalPathFrequencyItem } from "@isaac/shared";
+import { ref, computed, watch } from "vue";
+import type { CriticalPathFrequencyItem, PipelineScope } from "@isaac/shared";
+import { api } from "../../api/client";
 
 const props = defineProps<{
-  items: CriticalPathFrequencyItem[];
-  loading: boolean;
+  since: string;
+  until: string;
 }>();
 
+const scopeOptions: { value: PipelineScope | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "fullstack", label: "Fullstack" },
+  { value: "backend", label: "Backend" },
+  { value: "frontend", label: "Frontend" },
+  { value: "neither", label: "Neither" },
+];
+
+const scope = ref<PipelineScope | "all">("all");
 const sortBy = ref<"frequency" | "contribution">("frequency");
 const expanded = ref<string | null>(null);
+const items = ref<CriticalPathFrequencyItem[]>([]);
+const loading = ref(true);
+
+async function fetchData() {
+  loading.value = true;
+  try {
+    const params = new URLSearchParams({
+      since: new Date(props.since).toISOString(),
+      until: new Date(props.until + "T23:59:59").toISOString(),
+    });
+    if (scope.value !== "all") {
+      params.set("scope", scope.value);
+    }
+    items.value = await api.get<CriticalPathFrequencyItem[]>(
+      `/pipelines/critical-path-frequency?${params}`
+    );
+  } catch {
+    items.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
+
+watch([() => props.since, () => props.until, scope], () => fetchData(), { immediate: true });
 
 function toggleSort() {
   sortBy.value = sortBy.value === "frequency" ? "contribution" : "frequency";
@@ -117,7 +166,7 @@ function toggle(jobName: string) {
 }
 
 const sortedItems = computed(() => {
-  const sorted = [...props.items];
+  const sorted = [...items.value];
   if (sortBy.value === "contribution") {
     sorted.sort((a, b) => b.avgContributionSeconds - a.avgContributionSeconds);
   } else {

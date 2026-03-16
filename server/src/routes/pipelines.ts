@@ -23,7 +23,9 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
           WHERE j.pipeline_id = p.id
             AND j.retried = false
             AND j.duration_seconds IS NOT NULL
-        ) AS job_duration_sum
+        ) AS job_duration_sum,
+        EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false) AS has_backend,
+        EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false) AS has_frontend
       FROM pipelines p
       WHERE p.status = 'success'
         AND p.duration_seconds IS NOT NULL
@@ -34,17 +36,23 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
       ORDER BY p.gitlab_created_at
     `);
 
-    return (rows as any[]).map((r) => ({
-      id: Number(r.id),
-      type: (r.ref as string).endsWith("/train") ? "train" : "merge",
-      durationSeconds: r.duration_seconds,
-      queuedDurationSeconds: r.queued_duration_seconds != null ? Number(r.queued_duration_seconds) : null,
-      createdAt: new Date(r.gitlab_created_at).toISOString(),
-      webUrl: r.web_url,
-      jobCount: r.job_count,
-      retriedJobCount: r.retried_job_count,
-      jobDurationSum: r.job_duration_sum != null ? Number(r.job_duration_sum) : null,
-    }));
+    return (rows as any[]).map((r) => {
+      const hasBackend = r.has_backend;
+      const hasFrontend = r.has_frontend;
+      const scope = hasBackend && hasFrontend ? "fullstack" : hasBackend ? "backend" : hasFrontend ? "frontend" : "neither";
+      return {
+        id: Number(r.id),
+        type: (r.ref as string).endsWith("/train") ? "train" : "merge",
+        scope,
+        durationSeconds: r.duration_seconds,
+        queuedDurationSeconds: r.queued_duration_seconds != null ? Number(r.queued_duration_seconds) : null,
+        createdAt: new Date(r.gitlab_created_at).toISOString(),
+        webUrl: r.web_url,
+        jobCount: r.job_count,
+        retriedJobCount: r.retried_job_count,
+        jobDurationSum: r.job_duration_sum != null ? Number(r.job_duration_sum) : null,
+      };
+    });
   })
 
   // Job stats: average duration per job name for successful merge/train pipelines
@@ -223,15 +231,32 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
     const since = query?.since
       || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const until = query?.until || new Date().toISOString();
+    const scope = query?.scope as string | undefined;
+
+    const scopeFilter = scope
+      ? sql`AND (
+          CASE
+            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
+             AND EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
+            THEN 'fullstack'
+            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
+            THEN 'backend'
+            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
+            THEN 'frontend'
+            ELSE 'neither'
+          END = ${scope}
+        )`
+      : sql``;
 
     const rows = await db.execute(sql`
       WITH pipeline_ids AS (
-        SELECT id FROM pipelines
-        WHERE status = 'success'
-          AND ref LIKE 'refs/merge-requests/%'
-          AND (ref LIKE '%/merge' OR ref LIKE '%/train')
-          AND gitlab_created_at >= ${since} AND gitlab_created_at <= ${until}
-          AND started_at IS NOT NULL AND finished_at IS NOT NULL
+        SELECT p.id FROM pipelines p
+        WHERE p.status = 'success'
+          AND p.ref LIKE 'refs/merge-requests/%'
+          AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+          AND p.gitlab_created_at >= ${since} AND p.gitlab_created_at <= ${until}
+          AND p.started_at IS NOT NULL AND p.finished_at IS NOT NULL
+          ${scopeFilter}
       )
       SELECT p.id AS pipeline_id,
              j.name, j.stage, j.status, j.retried, j.duration_seconds,

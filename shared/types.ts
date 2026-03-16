@@ -258,9 +258,12 @@ export interface VelocityWeek {
 }
 
 // Pipelines
+export type PipelineScope = "frontend" | "backend" | "fullstack" | "neither";
+
 export interface PipelineDurationPoint {
   id: number;
   type: "merge" | "train";
+  scope: PipelineScope;
   durationSeconds: number;
   queuedDurationSeconds: number | null;
   createdAt: string;

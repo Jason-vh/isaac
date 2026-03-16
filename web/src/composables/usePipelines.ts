@@ -1,6 +1,6 @@
 import { ref, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import type { PipelineDurationPoint, JobStats, JobRetryTrend, CriticalPathFrequencyItem } from "@isaac/shared";
+import type { PipelineDurationPoint, JobStats, JobRetryTrend } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 
 function toDateString(date: Date): string {
@@ -86,7 +86,6 @@ export function usePipelines() {
   const jobStats = ref<JobStats[]>([]);
   const prevJobStats = ref<JobStats[]>([]);
   const jobTrends = ref<JobRetryTrend[]>([]);
-  const criticalPathFrequency = ref<CriticalPathFrequencyItem[]>([]);
   const loading = ref(false);
   const initialLoading = ref(true);
   const error = ref("");
@@ -133,20 +132,18 @@ export function usePipelines() {
     loading.value = true;
     error.value = "";
     try {
-      const [current, previous, jobs, prevJobs, trends, cpFreq] = await Promise.all([
+      const [current, previous, jobs, prevJobs, trends] = await Promise.all([
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${queryParams.value}`),
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${prevQueryParams.value}`),
         api.get<JobStats[]>(`/pipelines/job-stats?${queryParams.value}`),
         api.get<JobStats[]>(`/pipelines/job-stats?${prevQueryParams.value}`),
         api.get<JobRetryTrend[]>(`/pipelines/job-retry-trend?until=${untilDate.value.toISOString()}`),
-        api.get<CriticalPathFrequencyItem[]>(`/pipelines/critical-path-frequency?${queryParams.value}`),
       ]);
       points.value = current;
       previousPoints.value = previous;
       jobStats.value = jobs;
       prevJobStats.value = prevJobs;
       jobTrends.value = trends;
-      criticalPathFrequency.value = cpFreq;
     } catch (e: any) {
       if (e instanceof UnauthorizedError) {
         router.push("/login");
@@ -177,5 +174,5 @@ export function usePipelines() {
 
   watch(queryParams, () => fetchAll(), { immediate: true });
 
-  return { since, until, points, comparison, jobStats, prevJobStats, criticalPathFrequency, jobTrends, loading, initialLoading, error, applyPreset, isActivePreset };
+  return { since, until, points, comparison, jobStats, prevJobStats, jobTrends, loading, initialLoading, error, applyPreset, isActivePreset };
 }
