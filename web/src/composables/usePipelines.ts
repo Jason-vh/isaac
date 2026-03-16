@@ -1,6 +1,6 @@
 import { ref, watch, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import type { PipelineDurationPoint, JobStats, JobRetryTrend } from "@isaac/shared";
+import type { PipelineDurationPoint } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 
 function toDateString(date: Date): string {
@@ -83,9 +83,6 @@ export function usePipelines() {
   const activePreset = ref<number | null>(derivePreset(since.value, until.value));
   const points = ref<PipelineDurationPoint[]>([]);
   const previousPoints = ref<PipelineDurationPoint[]>([]);
-  const jobStats = ref<JobStats[]>([]);
-  const prevJobStats = ref<JobStats[]>([]);
-  const jobTrends = ref<JobRetryTrend[]>([]);
   const loading = ref(false);
   const initialLoading = ref(true);
   const error = ref("");
@@ -132,18 +129,12 @@ export function usePipelines() {
     loading.value = true;
     error.value = "";
     try {
-      const [current, previous, jobs, prevJobs, trends] = await Promise.all([
+      const [current, previous] = await Promise.all([
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${queryParams.value}`),
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${prevQueryParams.value}`),
-        api.get<JobStats[]>(`/pipelines/job-stats?${queryParams.value}`),
-        api.get<JobStats[]>(`/pipelines/job-stats?${prevQueryParams.value}`),
-        api.get<JobRetryTrend[]>(`/pipelines/job-retry-trend?until=${untilDate.value.toISOString()}`),
       ]);
       points.value = current;
       previousPoints.value = previous;
-      jobStats.value = jobs;
-      prevJobStats.value = prevJobs;
-      jobTrends.value = trends;
     } catch (e: any) {
       if (e instanceof UnauthorizedError) {
         router.push("/login");
@@ -174,5 +165,5 @@ export function usePipelines() {
 
   watch(queryParams, () => fetchAll(), { immediate: true });
 
-  return { since, until, points, comparison, jobStats, prevJobStats, jobTrends, loading, initialLoading, error, applyPreset, isActivePreset };
+  return { since, until, points, comparison, loading, initialLoading, error, applyPreset, isActivePreset };
 }

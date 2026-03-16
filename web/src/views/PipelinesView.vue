@@ -42,17 +42,12 @@
       <div v-if="error" class="py-20 text-center text-red-500">
         {{ error }}
       </div>
-      <DurationScatterChart v-else :points="points" :loading="initialLoading" v-model:split-by="splitBy" @select="onSelectPipeline" />
-    </div>
-
-    <!-- Critical Path Frequency -->
-    <div class="mt-6">
-      <CriticalPathFrequency :since="since" :until="until" />
+      <DurationScatterChart v-else :points="points" :loading="initialLoading" v-model:split-by="splitBy" v-model:trend-line="trendLine" @select="onSelectPipeline" />
     </div>
 
     <!-- Job overview -->
     <div class="mt-6">
-      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :job-trends="jobTrends" :loading="initialLoading" />
+      <JobOverview :since="since" :until="until" />
     </div>
 
     <!-- Merge requests -->
@@ -64,7 +59,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import type { SplitBy } from "../components/pipelines/DurationScatterChart.vue";
+import type { SplitBy, TrendLine } from "../components/pipelines/DurationScatterChart.vue";
 import { useRouter } from "vue-router";
 import type { MrPipelineSummary } from "@isaac/shared";
 import { usePipelines } from "../composables/usePipelines";
@@ -72,7 +67,6 @@ import { api, UnauthorizedError } from "../api/client";
 import DurationScatterChart from "../components/pipelines/DurationScatterChart.vue";
 import PipelineDurationStats from "../components/pipelines/PipelineDurationStats.vue";
 import JobOverview from "../components/pipelines/JobOverview.vue";
-import CriticalPathFrequency from "../components/pipelines/CriticalPathFrequency.vue";
 import MrPipelineList from "../components/pipelines/MrPipelineList.vue";
 
 const router = useRouter();
@@ -86,8 +80,9 @@ const presets = [
   { label: "30d", days: 30 },
 ];
 
-const { since, until, points, comparison, jobStats, prevJobStats, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
 const splitBy = ref<SplitBy>("type");
+const trendLine = ref<TrendLine>("p50");
 
 // MR list data
 const mrList = ref<MrPipelineSummary[]>([]);

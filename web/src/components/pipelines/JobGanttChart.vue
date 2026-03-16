@@ -125,14 +125,20 @@ function onBarLeave() {
 }
 
 const search = ref("");
-const searchTerms = computed(() =>
-  search.value.toLowerCase().split(/\s+/).filter(Boolean)
-);
+const parsedSearch = computed(() => {
+  const tokens = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const include = tokens.filter((t) => !t.startsWith("-"));
+  const exclude = tokens.filter((t) => t.startsWith("-")).map((t) => t.slice(1)).filter(Boolean);
+  return { include, exclude };
+});
 
 function isMatch(name: string): boolean {
-  if (searchTerms.value.length === 0) return true;
+  const { include, exclude } = parsedSearch.value;
+  if (include.length === 0 && exclude.length === 0) return true;
   const lower = name.toLowerCase();
-  return searchTerms.value.some((term) => lower.includes(term));
+  if (exclude.some((term) => lower.includes(term))) return false;
+  if (include.length === 0) return true;
+  return include.some((term) => lower.includes(term));
 }
 
 function retryColor(retryRate: number): string {

@@ -1,9 +1,26 @@
 import { Elysia } from "elysia";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { pipelines, pipelineJobs } from "../db/schema";
 import { computeCriticalPath, type JobInput } from "../lib/criticalPath";
 import type { CriticalPathFrequencyItem } from "@isaac/shared";
+
+/** Scope filter: requires the pipelines table to be aliased as `p`. */
+function scopeFilterSql(scope: string | undefined): SQL {
+  if (!scope) return sql``;
+  return sql`AND (
+    CASE
+      WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
+       AND EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
+      THEN 'fullstack'
+      WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
+      THEN 'backend'
+      WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
+      THEN 'frontend'
+      ELSE 'neither'
+    END = ${scope}
+  )`;
+}
 
 export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
   // Duration scatter: individual successful merge/train pipelines
@@ -60,15 +77,17 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
     const since = query?.since
       || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const until = query?.until || new Date().toISOString();
+    const scope = query?.scope as string | undefined;
 
     const rows = await db.execute(sql`
       WITH pipeline_ids AS (
-        SELECT id FROM pipelines
-        WHERE status = 'success'
-          AND ref LIKE 'refs/merge-requests/%'
-          AND (ref LIKE '%/merge' OR ref LIKE '%/train')
-          AND gitlab_created_at >= ${since}
-          AND gitlab_created_at <= ${until}
+        SELECT p.id FROM pipelines p
+        WHERE p.status = 'success'
+          AND p.ref LIKE 'refs/merge-requests/%'
+          AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+          AND p.gitlab_created_at >= ${since}
+          AND p.gitlab_created_at <= ${until}
+          ${scopeFilterSql(scope)}
       ),
       duration_stats AS (
         SELECT
@@ -139,6 +158,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
   // Job retry trend: sparkline data (4 weeks)
   .get("/job-retry-trend", async ({ query }) => {
     const until = query?.until || new Date().toISOString();
+    const scope = query?.scope as string | undefined;
 
     const rows = await db.execute(sql`
       WITH bounds AS (
@@ -150,13 +170,14 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
         ) AS gs
       ),
       pipeline_ids AS (
-        SELECT id, date_trunc('week', gitlab_created_at)::date AS week_start
-        FROM pipelines
-        WHERE status = 'success'
-          AND ref LIKE 'refs/merge-requests/%'
-          AND (ref LIKE '%/merge' OR ref LIKE '%/train')
-          AND gitlab_created_at >= date_trunc('week', ${until}::timestamptz) - INTERVAL '3 weeks'
-          AND gitlab_created_at < date_trunc('week', ${until}::timestamptz) + INTERVAL '1 week'
+        SELECT p.id, date_trunc('week', p.gitlab_created_at)::date AS week_start
+        FROM pipelines p
+        WHERE p.status = 'success'
+          AND p.ref LIKE 'refs/merge-requests/%'
+          AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+          AND p.gitlab_created_at >= date_trunc('week', ${until}::timestamptz) - INTERVAL '3 weeks'
+          AND p.gitlab_created_at < date_trunc('week', ${until}::timestamptz) + INTERVAL '1 week'
+          ${scopeFilterSql(scope)}
       ),
       job_runs AS (
         SELECT
@@ -233,21 +254,6 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
     const until = query?.until || new Date().toISOString();
     const scope = query?.scope as string | undefined;
 
-    const scopeFilter = scope
-      ? sql`AND (
-          CASE
-            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
-             AND EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
-            THEN 'fullstack'
-            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND j.name LIKE 'backend_tests%' AND j.retried = false)
-            THEN 'backend'
-            WHEN EXISTS (SELECT 1 FROM pipeline_jobs j WHERE j.pipeline_id = p.id AND (j.name = 'frontend_tests' OR j.name = 'cypress_component_tests') AND j.retried = false)
-            THEN 'frontend'
-            ELSE 'neither'
-          END = ${scope}
-        )`
-      : sql``;
-
     const rows = await db.execute(sql`
       WITH pipeline_ids AS (
         SELECT p.id FROM pipelines p
@@ -256,7 +262,7 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
           AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
           AND p.gitlab_created_at >= ${since} AND p.gitlab_created_at <= ${until}
           AND p.started_at IS NOT NULL AND p.finished_at IS NOT NULL
-          ${scopeFilter}
+          ${scopeFilterSql(scope)}
       )
       SELECT p.id AS pipeline_id,
              j.name, j.stage, j.status, j.retried, j.duration_seconds,
@@ -370,6 +376,131 @@ export const pipelineRoutes = new Elysia({ prefix: "/api/pipelines" })
 
     items.sort((a, b) => b.frequency - a.frequency);
     return items;
+  })
+
+  // Job timeline: per-day duration, retry rate, and critical path % for a single job
+  .get("/job-timeline", async ({ query }) => {
+    const since = query?.since
+      || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const until = query?.until || new Date().toISOString();
+    const jobName = query?.job as string | undefined;
+    const scope = query?.scope as string | undefined;
+
+    if (!jobName) return [];
+
+    // Duration + retry stats per day
+    const statsRows = await db.execute(sql`
+      WITH pipeline_ids AS (
+        SELECT p.id, p.gitlab_created_at::date AS day
+        FROM pipelines p
+        WHERE p.status = 'success'
+          AND p.ref LIKE 'refs/merge-requests/%'
+          AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+          AND p.gitlab_created_at >= ${since} AND p.gitlab_created_at <= ${until}
+          ${scopeFilterSql(scope)}
+      )
+      SELECT
+        pi.day,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY j.duration_seconds::numeric) AS p50_duration,
+        COUNT(*) FILTER (WHERE j.retried = false AND j.duration_seconds IS NOT NULL)::int AS run_count,
+        COUNT(*) FILTER (WHERE j.retried = true)::int AS retry_count
+      FROM pipeline_ids pi
+      JOIN pipeline_jobs j ON j.pipeline_id = pi.id AND j.name = ${jobName}
+      GROUP BY pi.day
+      ORDER BY pi.day
+    `);
+
+    const dayStats = new Map<string, { p50: number; retryRate: number }>();
+    for (const r of statsRows as any[]) {
+      const day = new Date(r.day).toISOString().slice(0, 10);
+      const runCount = Number(r.run_count);
+      const retryCount = Number(r.retry_count);
+      const total = runCount + retryCount;
+      dayStats.set(day, {
+        p50: r.p50_duration != null ? Math.round(Number(r.p50_duration)) : 0,
+        retryRate: total > 0 ? Math.round((retryCount / total) * 1000) / 10 : 0,
+      });
+    }
+
+    // Critical path per day — fetch all pipeline jobs, compute critical path
+    const cpRows = await db.execute(sql`
+      WITH pipeline_ids AS (
+        SELECT p.id, p.gitlab_created_at::date AS day
+        FROM pipelines p
+        WHERE p.status = 'success'
+          AND p.ref LIKE 'refs/merge-requests/%'
+          AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
+          AND p.gitlab_created_at >= ${since} AND p.gitlab_created_at <= ${until}
+          AND p.started_at IS NOT NULL AND p.finished_at IS NOT NULL
+          ${scopeFilterSql(scope)}
+      )
+      SELECT pi.id AS pipeline_id, pi.day,
+             j.name, j.stage, j.retried, j.duration_seconds,
+             j.queued_duration_seconds, j.needs, j.started_at, j.finished_at
+      FROM pipeline_ids pi
+      JOIN pipeline_jobs j ON j.pipeline_id = pi.id
+      WHERE j.stage != 'security' AND j.name != 'pages'
+      ORDER BY pi.id, j.started_at NULLS LAST
+    `);
+
+    const pipelineMap = new Map<number, { day: string; jobs: JobInput[] }>();
+    for (const r of cpRows as any[]) {
+      const pid = Number(r.pipeline_id);
+      if (!pipelineMap.has(pid)) {
+        pipelineMap.set(pid, { day: new Date(r.day).toISOString().slice(0, 10), jobs: [] });
+      }
+      pipelineMap.get(pid)!.jobs.push({
+        name: r.name,
+        stage: r.stage,
+        retried: r.retried,
+        startedAt: r.started_at ? new Date(r.started_at).toISOString() : null,
+        finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+        queuedDurationSeconds: r.queued_duration_seconds != null ? Number(r.queued_duration_seconds) : null,
+        needs: r.needs ?? null,
+      });
+    }
+
+    const dayCritical = new Map<string, { total: number; critical: number }>();
+    for (const [, { day, jobs }] of pipelineMap) {
+      if (!dayCritical.has(day)) dayCritical.set(day, { total: 0, critical: 0 });
+      const dc = dayCritical.get(day)!;
+
+      const hasJob = jobs.some((j) => j.name === jobName && !j.retried);
+      if (!hasJob) continue;
+      dc.total++;
+
+      let startMs = Infinity;
+      let endMs = -Infinity;
+      for (const j of jobs) {
+        if (j.retried || !j.startedAt || !j.finishedAt) continue;
+        let s = new Date(j.startedAt).getTime();
+        if (j.queuedDurationSeconds && j.queuedDurationSeconds > 0) s -= j.queuedDurationSeconds * 1000;
+        if (s < startMs) startMs = s;
+        const f = new Date(j.finishedAt).getTime();
+        if (f > endMs) endMs = f;
+      }
+      if (endMs <= startMs) continue;
+
+      const result = computeCriticalPath(jobs, startMs, endMs);
+      if (result.criticalJobs.has(jobName)) dc.critical++;
+    }
+
+    // Generate full date range so the chart has no gaps
+    const startDate = new Date(since);
+    const endDate = new Date(until);
+    const result = [];
+    for (const d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const day = d.toISOString().slice(0, 10);
+      const stats = dayStats.get(day);
+      const cp = dayCritical.get(day);
+      result.push({
+        date: day,
+        p50Duration: stats?.p50 ?? null,
+        retryRate: stats?.retryRate ?? 0,
+        criticalPercent: cp && cp.total > 0 ? Math.round((cp.critical / cp.total) * 100) : null,
+      });
+    }
+    return result;
   })
 
   // Recent pipelines list

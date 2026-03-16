@@ -4,18 +4,33 @@
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Duration Trend
       </h3>
-      <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
-        <button
-          v-for="opt in splitOptions"
-          :key="opt.value"
-          class="rounded-md px-2 py-0.5 text-xs transition-colors"
-          :class="splitBy === opt.value
-            ? 'bg-surface-2 text-ink font-medium'
-            : 'text-ink-muted hover:text-ink'"
-          @click="$emit('update:splitBy', opt.value)"
-        >
-          {{ opt.label }}
-        </button>
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+          <button
+            v-for="opt in splitOptions"
+            :key="opt.value"
+            class="rounded-md px-2 py-0.5 text-xs transition-colors"
+            :class="splitBy === opt.value
+              ? 'bg-surface-2 text-ink font-medium'
+              : 'text-ink-muted hover:text-ink'"
+            @click="$emit('update:splitBy', opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+        <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+          <button
+            v-for="opt in trendOptions"
+            :key="opt.value"
+            class="rounded-md px-2 py-0.5 text-xs transition-colors"
+            :class="trendLine === opt.value
+              ? 'bg-surface-2 text-ink font-medium'
+              : 'text-ink-muted hover:text-ink'"
+            @click="$emit('update:trendLine', opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
     </div>
     <div v-if="loading" class="p-4">
@@ -55,10 +70,17 @@ use([
 ]);
 
 export type SplitBy = "type" | "scope";
+export type TrendLine = "p50" | "p90" | "p99";
 
 const splitOptions = [
   { value: "type" as const, label: "Pipeline type" },
   { value: "scope" as const, label: "Change scope" },
+];
+
+const trendOptions = [
+  { value: "p50" as const, label: "p50" },
+  { value: "p90" as const, label: "p90" },
+  { value: "p99" as const, label: "p99" },
 ];
 
 interface SeriesConfig {
@@ -81,8 +103,8 @@ const SPLIT_CONFIGS: Record<SplitBy, SeriesConfig[]> = {
   ],
 };
 
-const props = defineProps<{ points: PipelineDurationPoint[]; loading: boolean; splitBy: SplitBy }>();
-const emit = defineEmits<{ (e: "select", id: number): void; (e: "update:splitBy", value: SplitBy): void }>();
+const props = defineProps<{ points: PipelineDurationPoint[]; loading: boolean; splitBy: SplitBy; trendLine: TrendLine }>();
+const emit = defineEmits<{ (e: "select", id: number): void; (e: "update:splitBy", value: SplitBy): void; (e: "update:trendLine", value: TrendLine): void }>();
 
 function onChartClick(params: any) {
   if (params.seriesType === "scatter" && params.value?.[2]) {
@@ -96,8 +118,20 @@ function toMinutes(seconds: number): number {
   return Math.round((seconds / 60) * 10) / 10;
 }
 
-function computeRollingAverage(
-  pts: { time: number; value: number }[]
+const TREND_PERCENTILE: Record<TrendLine, number> = { p50: 0.5, p90: 0.9, p99: 0.99 };
+
+function percentile(values: number[], p: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = p * (sorted.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+function computeRollingTrend(
+  pts: { time: number; value: number }[],
+  pctl: number,
 ): [number, number][] {
   if (pts.length === 0) return [];
 
@@ -109,16 +143,14 @@ function computeRollingAverage(
   const dayMs = 24 * 60 * 60 * 1000;
 
   for (let t = start; t <= end; t += dayMs) {
-    let sum = 0;
-    let count = 0;
+    const window: number[] = [];
     for (const p of sorted) {
       if (Math.abs(p.time - t) <= ROLLING_WINDOW_MS) {
-        sum += p.value;
-        count++;
+        window.push(p.value);
       }
     }
-    if (count > 0) {
-      result.push([t, Math.round((sum / count) * 10) / 10]);
+    if (window.length > 0) {
+      result.push([t, Math.round(percentile(window, pctl) * 10) / 10]);
     }
   }
 
@@ -159,6 +191,7 @@ const chartOption = computed(() => {
   const showDaily = rangeDays <= 21;
 
   // Build series dynamically
+  const pctl = TREND_PERCENTILE[props.trendLine];
   const series: any[] = [];
   for (let i = 0; i < configs.length; i++) {
     const cfg = configs[i];
@@ -174,7 +207,7 @@ const chartOption = computed(() => {
     series.push({
       name: cfg.label,
       type: "line",
-      data: computeRollingAverage(bucket.pts),
+      data: computeRollingTrend(bucket.pts, pctl),
       smooth: true,
       showSymbol: false,
       lineStyle: { color: cfg.color, width: 2 },

@@ -5,6 +5,19 @@
         Time per Job
       </h3>
       <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+          <button
+            v-for="opt in scopeOptions"
+            :key="opt.value"
+            class="rounded-md px-2 py-0.5 text-xs transition-colors"
+            :class="scope === opt.value
+              ? 'bg-surface-2 text-ink font-medium'
+              : 'text-ink-muted hover:text-ink'"
+            @click="scope = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
         <button
           v-if="inconsistentCount > 0"
           class="rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors"
@@ -31,7 +44,7 @@
       :class="gridClass"
     >
       <template v-for="(col, i) in columns" :key="col.key">
-        <div v-if="i === 3" class="h-full w-px bg-border" />
+        <div v-if="i === 4" class="w-2" />
         <button
           class="text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer select-none"
           :class="[
@@ -61,96 +74,130 @@
           <div class="h-3 w-12 animate-pulse rounded bg-surface-2" />
         </div>
         <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="h-full w-px bg-border" />
+        <div class="h-3 w-8 ml-auto animate-pulse rounded bg-surface-2" />
+        <div class="w-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
       </div>
     </div>
     <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
       No job data in this period.
     </div>
     <div v-else class="divide-y divide-border">
-      <div
-        v-for="row in rows"
-        :key="row.name"
-        class="grid items-center gap-x-2 px-4 py-2.5"
-        :class="gridClass"
-      >
-        <!-- Job name + runs + variance warning -->
-        <div class="min-w-0">
-          <div class="flex items-center gap-1.5">
+      <div v-for="row in rows" :key="row.name">
+        <div
+          class="grid items-center gap-x-2 px-4 py-2.5 cursor-pointer hover:bg-surface-1 transition-colors"
+          :class="gridClass"
+          @click="toggleExpand(row.name)"
+        >
+          <!-- Job name + runs -->
+          <div class="min-w-0">
             <p class="truncate text-sm text-ink">{{ row.name }}</p>
-            <div v-if="row.unstable" class="group/badge relative shrink-0 flex items-center">
-              <svg class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
-              <div class="invisible group-hover/badge:visible absolute left-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg">
-                <p class="font-medium text-ink">High duration variance</p>
-                <p class="mt-0.5 text-ink-muted">σ = {{ fmtDuration(row.stddev) }} across {{ row.runCount }} runs</p>
+            <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+          </div>
+
+          <!-- Distribution bar + p50 number -->
+          <div class="group/dist relative flex flex-col items-end gap-0.5">
+            <JobDistributionBar
+              :p10="row.p10Duration"
+              :p50="row.medianDuration"
+              :p90="row.p90Duration"
+              :domain-max="domainMax"
+            />
+            <p class="text-right font-mono text-xs tabular-nums">
+              <span class="text-ink">{{ fmtDuration(row.medianDuration) }}</span>
+              <span v-if="row.stddev != null" :class="row.unstable ? 'text-amber-500' : 'text-ink-faint'"> ± {{ fmtDuration(row.stddev) }}</span>
+            </p>
+            <div
+              v-if="row.p10Duration != null && row.p90Duration != null"
+              class="invisible group-hover/dist:visible absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg"
+            >
+              <div class="flex gap-3 font-mono tabular-nums text-ink-muted">
+                <span>p10 {{ fmtDuration(row.p10Duration) }}</span>
+                <span class="text-ink font-medium">p50 {{ fmtDuration(row.medianDuration) }}</span>
+                <span>p90 {{ fmtDuration(row.p90Duration) }}</span>
               </div>
             </div>
           </div>
-          <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+
+          <!-- Duration delta -->
+          <div class="text-right">
+            <template v-if="row.delta !== null">
+              <p class="text-xs" :class="row.deltaClass">{{ row.deltaLabel }}</p>
+              <p class="text-[10px] text-ink-faint">
+                from {{ fmtDuration(row.prevMedianDuration) }}
+              </p>
+            </template>
+            <p v-else class="text-[10px] text-ink-faint">new</p>
+          </div>
+
+          <!-- Critical path % -->
+          <p
+            class="text-right text-xs font-mono tabular-nums"
+            :class="row.criticalPercent != null && row.criticalPercent > 50
+              ? 'text-red-500 font-medium'
+              : row.criticalPercent != null && row.criticalPercent > 0
+                ? 'text-ink'
+                : 'text-ink-faint'"
+          >
+            {{ row.criticalPercent != null ? `${row.criticalPercent}%` : '--' }}
+          </p>
+
+          <!-- Divider -->
+          <div class="w-2" />
+
+          <!-- Retry rate -->
+          <p class="text-right text-xs tabular-nums" :class="row.retryRate > 0 ? 'text-ink' : 'text-ink-faint'">
+            {{ row.retryRateLabel }}
+          </p>
+
+          <!-- Retry delta -->
+          <div class="text-right">
+            <template v-if="row.retryRateDelta !== null && Math.abs(row.retryRateDelta) >= 1">
+              <p class="text-xs" :class="row.retryRateDelta > 0 ? 'text-red-500' : 'text-emerald-600'">
+                {{ row.retryRateDeltaLabel }}
+              </p>
+              <p class="text-[10px] text-ink-faint">
+                from {{ row.prevRetryRateLabel }}
+              </p>
+            </template>
+            <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
+            <p v-else class="text-[10px] text-ink-faint">new</p>
+          </div>
+
         </div>
 
-        <!-- Distribution bar + p50 number -->
-        <div class="group/dist relative flex flex-col items-end gap-0.5">
-          <JobDistributionBar
-            :p10="row.p10Duration"
-            :p50="row.medianDuration"
-            :p90="row.p90Duration"
-            :domain-max="domainMax"
-          />
-          <p class="text-right font-mono text-xs tabular-nums text-ink">
-            {{ fmtDuration(row.medianDuration) }}
-          </p>
-          <div
-            v-if="row.p10Duration != null && row.p90Duration != null"
-            class="invisible group-hover/dist:visible absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg"
-          >
-            <div class="flex gap-3 font-mono tabular-nums text-ink-muted">
-              <span>p10 {{ fmtDuration(row.p10Duration) }}</span>
-              <span class="text-ink font-medium">p50 {{ fmtDuration(row.medianDuration) }}</span>
-              <span>p90 {{ fmtDuration(row.p90Duration) }}</span>
+        <!-- Expanded detail -->
+        <div v-if="expanded === row.name" class="border-t border-border bg-surface-1 px-4 py-3">
+          <JobTimelineChart :job-name="row.name" :since="since" :until="until" :scope="scope" />
+          <div v-if="row.exampleCritical.length > 0 || row.exampleNonCritical.length > 0" class="mt-3 flex gap-6">
+            <div v-if="row.exampleCritical.length > 0">
+              <span class="text-[10px] uppercase tracking-wider text-ink-faint">Critical in</span>
+              <div class="flex flex-wrap gap-1.5 mt-1">
+                <router-link
+                  v-for="pid in row.exampleCritical"
+                  :key="pid"
+                  :to="{ name: 'pipeline-detail', params: { id: pid }, query: { criticalPath: '1' } }"
+                  class="inline-flex items-center rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-mono text-red-600 hover:bg-red-500/20 transition-colors"
+                >
+                  #{{ pid }}
+                </router-link>
+              </div>
+            </div>
+            <div v-if="row.exampleNonCritical.length > 0">
+              <span class="text-[10px] uppercase tracking-wider text-ink-faint">Not critical in</span>
+              <div class="flex flex-wrap gap-1.5 mt-1">
+                <router-link
+                  v-for="pid in row.exampleNonCritical"
+                  :key="pid"
+                  :to="{ name: 'pipeline-detail', params: { id: pid } }"
+                  class="inline-flex items-center rounded bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-ink-muted hover:bg-surface-3 transition-colors"
+                >
+                  #{{ pid }}
+                </router-link>
+              </div>
             </div>
           </div>
-        </div>
-
-        <!-- Duration delta -->
-        <div class="text-right">
-          <template v-if="row.delta !== null">
-            <p class="text-xs" :class="row.deltaClass">{{ row.deltaLabel }}</p>
-            <p class="text-[10px] text-ink-faint">
-              from {{ fmtDuration(row.prevMedianDuration) }}
-            </p>
-          </template>
-          <p v-else class="text-[10px] text-ink-faint">new</p>
-        </div>
-
-        <!-- Divider -->
-        <div class="h-full w-px bg-border" />
-
-        <!-- Retry rate -->
-        <p class="text-right text-xs tabular-nums" :class="row.retryRate > 0 ? 'text-ink' : 'text-ink-faint'">
-          {{ row.retryRateLabel }}
-        </p>
-
-        <!-- Retry delta -->
-        <div class="text-right">
-          <template v-if="row.retryRateDelta !== null && Math.abs(row.retryRateDelta) >= 1">
-            <p class="text-xs" :class="row.retryRateDelta > 0 ? 'text-red-500' : 'text-emerald-600'">
-              {{ row.retryRateDeltaLabel }}
-            </p>
-            <p class="text-[10px] text-ink-faint">
-              from {{ row.prevRetryRateLabel }}
-            </p>
-          </template>
-          <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
-          <p v-else class="text-[10px] text-ink-faint">new</p>
-        </div>
-
-        <!-- Trend sparkline -->
-        <div class="flex justify-end">
-          <JobSparkline v-if="row.trendWeeks" :weeks="row.trendWeeks" :severity="row.severity!" />
         </div>
       </div>
     </div>
@@ -158,19 +205,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import type { JobStats, JobRetryTrend } from "@isaac/shared";
+import { computed, ref, watch } from "vue";
+import type { JobStats, CriticalPathFrequencyItem, PipelineScope } from "@isaac/shared";
+import { api } from "../../api/client";
 import JobDistributionBar from "./JobDistributionBar.vue";
-import JobSparkline from "./JobSparkline.vue";
+import JobTimelineChart from "./JobTimelineChart.vue";
 
-const props = withDefaults(defineProps<{
-  jobs: JobStats[];
-  prevJobs: JobStats[];
-  jobTrends?: JobRetryTrend[];
-  loading: boolean;
-}>(), {
-  jobTrends: () => [],
-});
+const props = defineProps<{
+  since: string;
+  until: string;
+}>();
 
 function fmtDuration(seconds: number | null): string {
   if (seconds == null) return "--";
@@ -182,27 +226,80 @@ function fmtDuration(seconds: number | null): string {
   return `${sign}${m}m ${s}s`;
 }
 
+// Scope filter
+const scopeOptions: { value: PipelineScope | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "fullstack", label: "Fullstack" },
+  { value: "backend", label: "Backend" },
+  { value: "frontend", label: "Frontend" },
+  { value: "neither", label: "Neither" },
+];
+const scope = ref<PipelineScope | "all">("all");
+
+// Data
+const jobs = ref<JobStats[]>([]);
+const prevJobs = ref<JobStats[]>([]);
+const criticalPathItems = ref<CriticalPathFrequencyItem[]>([]);
+const loading = ref(true);
+
+const sinceDate = computed(() => new Date(props.since));
+const untilDate = computed(() => new Date(props.until + "T23:59:59"));
+const prevSinceDate = computed(() => {
+  const rangeMs = untilDate.value.getTime() - sinceDate.value.getTime();
+  return new Date(sinceDate.value.getTime() - rangeMs);
+});
+
+async function fetchData() {
+  loading.value = true;
+  try {
+    const scopeParam = scope.value !== "all" ? `&scope=${scope.value}` : "";
+    const sinceIso = sinceDate.value.toISOString();
+    const untilIso = untilDate.value.toISOString();
+    const prevSinceIso = prevSinceDate.value.toISOString();
+
+    const [curJobs, prvJobs, cpFreq] = await Promise.all([
+      api.get<JobStats[]>(`/pipelines/job-stats?since=${sinceIso}&until=${untilIso}${scopeParam}`),
+      api.get<JobStats[]>(`/pipelines/job-stats?since=${prevSinceIso}&until=${sinceIso}${scopeParam}`),
+      api.get<CriticalPathFrequencyItem[]>(`/pipelines/critical-path-frequency?since=${sinceIso}&until=${untilIso}${scopeParam}`),
+    ]);
+    jobs.value = curJobs;
+    prevJobs.value = prvJobs;
+    criticalPathItems.value = cpFreq;
+  } catch {
+    jobs.value = [];
+    prevJobs.value = [];
+    criticalPathItems.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
+
+watch([() => props.since, () => props.until, scope], () => fetchData(), { immediate: true });
+
+// UI state
 const search = ref("");
 const filterInconsistent = ref(false);
+const expanded = ref<string | null>(null);
 
-type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta" | "trend";
+function toggleExpand(name: string) {
+  expanded.value = expanded.value === name ? null : name;
+}
+
+type SortKey = "name" | "medianDuration" | "delta" | "criticalPercent" | "retryRate" | "retryDelta";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
-const columns = computed(() => {
-  const cols: { key: SortKey; label: string; align: "left" | "right" }[] = [
-    { key: "name", label: "Job", align: "left" },
-    { key: "medianDuration", label: "P50 Duration", align: "right" },
-    { key: "delta", label: "\u0394 Duration", align: "right" },
-    // divider column (1px) is not a button — handled in template
-    { key: "retryRate", label: "Retry Rate", align: "right" },
-    { key: "retryDelta", label: "\u0394 Retries", align: "right" },
-    { key: "trend", label: "Trend", align: "right" },
-  ];
-  return cols;
-});
+const columns: { key: SortKey; label: string; align: "left" | "right" }[] = [
+  { key: "name", label: "Job", align: "left" },
+  { key: "medianDuration", label: "Duration", align: "right" },
+  { key: "delta", label: "\u0394 Duration", align: "right" },
+  { key: "criticalPercent", label: "Critical %", align: "right" },
+  // divider column (1px) handled in template
+  { key: "retryRate", label: "Retry Rate", align: "right" },
+  { key: "retryDelta", label: "\u0394 Retries", align: "right" },
+];
 
-const gridClass = "grid-cols-[1fr_9rem_6rem_1px_5rem_5rem_3.5rem]";
+const gridClass = "grid-cols-[1fr_9rem_6rem_4rem_0.5rem_5rem_5rem]";
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -213,17 +310,17 @@ function toggleSort(key: SortKey) {
   }
 }
 
-const trendMap = computed(() =>
-  new Map(props.jobTrends.map((t) => [t.name, t]))
+const criticalPathMap = computed(() =>
+  new Map(criticalPathItems.value.map((c) => [c.jobName, c]))
 );
 
 const allRows = computed(() => {
   const prevMap = new Map<string, JobStats>();
-  for (const j of props.prevJobs) {
+  for (const j of prevJobs.value) {
     prevMap.set(j.name, j);
   }
 
-  return props.jobs.map((j) => {
+  return jobs.value.map((j) => {
     const prev = prevMap.get(j.name);
     const medianDuration = j.p50Duration ?? j.avgDuration;
 
@@ -242,6 +339,12 @@ const allRows = computed(() => {
       deltaLabel = `${sign}${fmtDuration(diff)}`;
       deltaClass = diff < -1 ? "text-emerald-600" : diff > 1 ? "text-red-500" : "text-ink-muted";
     }
+
+    // Critical path
+    const cp = criticalPathMap.value.get(j.name);
+    const criticalPercent = cp ? Math.round(cp.frequency * 100) : null;
+    const exampleCritical = cp?.exampleCritical ?? [];
+    const exampleNonCritical = cp?.exampleNonCritical ?? [];
 
     // Retry rate
     const totalRuns = j.runCount + j.retryCount;
@@ -263,10 +366,8 @@ const allRows = computed(() => {
       }
     }
 
-    // Variance flag: only flag when stddev >= 90s (meaningful absolute swing)
+    // Variance flag
     const unstable = j.stddevDuration != null && j.runCount >= 5 && j.stddevDuration >= 90;
-
-    const trend = trendMap.value.get(j.name);
 
     return {
       name: j.name,
@@ -278,6 +379,9 @@ const allRows = computed(() => {
       delta,
       deltaLabel,
       deltaClass,
+      criticalPercent,
+      exampleCritical,
+      exampleNonCritical,
       retryRate,
       retryRateLabel,
       retryRateDelta,
@@ -285,9 +389,6 @@ const allRows = computed(() => {
       prevRetryRateLabel,
       unstable,
       stddev: j.stddevDuration != null ? Math.round(j.stddevDuration) : null,
-      trendWeeks: trend?.weeks ?? null,
-      severity: trend?.severity ?? null,
-      slope: trend?.slope ?? null,
     };
   });
 });
@@ -313,6 +414,11 @@ const sortedRows = computed(() => {
         if (b.delta === null) return -1;
         return dir * (a.delta - b.delta);
       }
+      case "criticalPercent": {
+        const aVal = a.criticalPercent ?? -1;
+        const bVal = b.criticalPercent ?? -1;
+        return dir * (aVal - bVal);
+      }
       case "retryRate":
         return dir * (a.retryRate - b.retryRate);
       case "retryDelta": {
@@ -320,12 +426,6 @@ const sortedRows = computed(() => {
         if (a.retryRateDelta === null) return 1;
         if (b.retryRateDelta === null) return -1;
         return dir * (a.retryRateDelta - b.retryRateDelta);
-      }
-      case "trend": {
-        if (a.slope === null && b.slope === null) return 0;
-        if (a.slope === null) return 1;
-        if (b.slope === null) return -1;
-        return dir * (a.slope - b.slope);
       }
       default:
         return 0;
@@ -335,9 +435,12 @@ const sortedRows = computed(() => {
   return sorted;
 });
 
-const searchTerms = computed(() =>
-  search.value.toLowerCase().split(/\s+/).filter(Boolean)
-);
+const parsedSearch = computed(() => {
+  const tokens = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+  const include = tokens.filter((t) => !t.startsWith("-"));
+  const exclude = tokens.filter((t) => t.startsWith("-")).map((t) => t.slice(1)).filter(Boolean);
+  return { include, exclude };
+});
 
 const inconsistentCount = computed(() =>
   allRows.value.filter((r) => r.unstable).length
@@ -348,10 +451,13 @@ const rows = computed(() => {
   if (filterInconsistent.value) {
     filtered = filtered.filter((r) => r.unstable);
   }
-  if (searchTerms.value.length > 0) {
+  const { include, exclude } = parsedSearch.value;
+  if (include.length > 0 || exclude.length > 0) {
     filtered = filtered.filter((r) => {
       const name = r.name.toLowerCase();
-      return searchTerms.value.some((term) => name.includes(term));
+      if (exclude.some((term) => name.includes(term))) return false;
+      if (include.length === 0) return true;
+      return include.some((term) => name.includes(term));
     });
   }
   return filtered;
