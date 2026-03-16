@@ -10,7 +10,7 @@ import { syncCalendar } from "../sync/calendar";
 import { syncGitLabPipelines } from "../sync/gitlab-pipelines";
 import { runLinker } from "../sync/linker";
 
-const SYNC_FNS: Record<string, (since?: Date) => Promise<void>> = {
+const SYNC_FNS: Record<string, (since?: Date, opts?: { force?: boolean }) => Promise<void>> = {
   jira: syncJira,
   gitlab: syncGitLab,
   confluence: syncConfluence,
@@ -41,9 +41,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
   .post(
   "/trigger",
   async ({ body }) => {
-    const { sources, since } = (body ?? {}) as {
+    const { sources, since, force } = (body ?? {}) as {
       sources?: string[];
       since?: string;
+      force?: boolean;
     };
 
     // Validate sources
@@ -74,7 +75,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
     const results: Record<string, string> = {};
     for (const source of toSync) {
       try {
-        await SYNC_FNS[source](sinceDate);
+        await SYNC_FNS[source](sinceDate, { force: !!force });
         results[source] = "ok";
       } catch (err: any) {
         results[source] = `error: ${err.message}`;

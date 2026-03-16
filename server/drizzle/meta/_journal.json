@@ -85,6 +85,13 @@
       "when": 1773566245860,
       "tag": "0011_windy_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773695030193,
+      "tag": "0012_wealthy_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

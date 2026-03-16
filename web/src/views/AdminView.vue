@@ -60,13 +60,53 @@
         </label>
       </div>
 
+      <!-- Options row -->
+      <div class="mt-4 flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-ink-muted">Since</label>
+          <input
+            v-model="sinceDate"
+            type="date"
+            class="rounded border border-border bg-surface-0 px-2 py-1 text-sm text-ink"
+          />
+          <button
+            v-if="sinceDate"
+            class="text-xs text-ink-faint hover:text-ink transition-colors"
+            @click="sinceDate = ''"
+          >
+            clear
+          </button>
+        </div>
+        <label
+          class="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors"
+          :class="force
+            ? 'border-amber-400 bg-amber-50 text-amber-700'
+            : 'border-border text-ink-muted hover:border-border-strong'"
+        >
+          <input type="checkbox" v-model="force" class="sr-only" />
+          <span
+            class="flex h-4 w-4 items-center justify-center rounded border text-white transition-colors"
+            :class="force ? 'border-amber-500 bg-amber-500' : 'border-border'"
+          >
+            <svg v-if="force" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
+          Force re-sync
+        </label>
+      </div>
+
       <div v-if="syncing" class="mt-4 flex items-center gap-2 text-sm text-ink-muted">
         <div class="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent" />
         Syncing... this may take several minutes.
       </div>
 
       <div v-if="syncResult" class="mt-4 rounded-md border border-border bg-surface-alt p-3">
-        <p class="text-xs font-medium uppercase tracking-wide text-ink-muted">Results <span class="font-normal">(since: {{ syncResult.since }})</span></p>
+        <p class="text-xs font-medium uppercase tracking-wide text-ink-muted">
+          Results
+          <span class="font-normal">(since: {{ syncResult.since }})</span>
+          <span v-if="syncResult.force" class="ml-1 font-normal text-amber-600">(force)</span>
+        </p>
         <div class="mt-2 flex flex-wrap gap-2">
           <span
             v-for="(status, source) in syncResult.results"
@@ -107,7 +147,7 @@
               <th class="pb-2 pr-4 font-medium">Source</th>
               <th class="pb-2 pr-4 font-medium">Status</th>
               <th class="pb-2 pr-4 font-medium">Started</th>
-              <th class="pb-2 pr-4 font-medium">Finished</th>
+              <th class="pb-2 pr-4 font-medium">Duration</th>
               <th class="pb-2 pr-4 font-medium">Items</th>
               <th class="pb-2 font-medium">Error</th>
             </tr>
@@ -125,7 +165,7 @@
                 >{{ entry.status }}</span>
               </td>
               <td class="py-2 pr-4 text-ink-muted">{{ formatTime(entry.startedAt) }}</td>
-              <td class="py-2 pr-4 text-ink-muted">{{ entry.finishedAt ? formatTime(entry.finishedAt) : '—' }}</td>
+              <td class="py-2 pr-4 text-ink-muted">{{ formatDuration(entry.startedAt, entry.finishedAt) }}</td>
               <td class="py-2 pr-4 text-ink-muted">{{ entry.itemsSynced ?? '—' }}</td>
               <td class="py-2 max-w-xs truncate text-red-600">{{ entry.error ?? '' }}</td>
             </tr>
@@ -142,9 +182,11 @@ import { api } from "../api/client";
 
 const sources = ["jira", "gitlab", "confluence", "calendar", "gitlab-pipelines"];
 const selectedSources = ref<string[]>([]);
+const sinceDate = ref("");
+const force = ref(false);
 const syncing = ref(false);
 const error = ref("");
-const syncResult = ref<{ results: Record<string, string>; since: string } | null>(null);
+const syncResult = ref<{ results: Record<string, string>; since: string; force?: boolean } | null>(null);
 
 interface SyncLogEntry {
   id: number;
@@ -190,8 +232,10 @@ async function triggerSync(selected?: string[]) {
   error.value = "";
   syncResult.value = null;
   try {
-    const body: { sources?: string[] } = {};
+    const body: { sources?: string[]; since?: string; force?: boolean } = {};
     if (selected?.length) body.sources = selected;
+    if (sinceDate.value) body.since = sinceDate.value;
+    if (force.value) body.force = true;
     const res = await api.post<{ results: Record<string, string>; since: string } | { error: string }>(
       "/sync/trigger",
       body,
@@ -199,7 +243,7 @@ async function triggerSync(selected?: string[]) {
     if ("error" in res) {
       error.value = res.error;
     } else {
-      syncResult.value = res;
+      syncResult.value = { ...res, force: force.value };
     }
   } catch (e: any) {
     error.value = e.message;
@@ -217,6 +261,16 @@ function formatTime(iso: string): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function formatDuration(startIso: string, endIso: string | null): string {
+  if (!endIso) return "...";
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
 }
 
 onMounted(fetchLog);

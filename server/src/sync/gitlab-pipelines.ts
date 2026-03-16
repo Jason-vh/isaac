@@ -43,6 +43,7 @@ interface GitLabJob {
   name: string;
   stage: string;
   status: string;
+  failure_reason: string | null;
   duration: number | null;
   queued_duration: number | null;
   allow_failure: boolean;
@@ -134,7 +135,8 @@ async function fetchJobNeeds(
 const CONCURRENCY = 6;
 
 export async function syncGitLabPipelines(
-  sinceOverride?: Date
+  sinceOverride?: Date,
+  { force = false }: { force?: boolean } = {}
 ): Promise<void> {
   await runSyncWithLog(
     "gitlab-pipelines",
@@ -165,16 +167,19 @@ export async function syncGitLabPipelines(
 
       if (finished.length === 0) return 0;
 
-      // Step 3: Skip pipelines we've already synced (finished pipelines don't change)
-      const existingIds = new Set(
-        (
-          await db
-            .select({ id: pipelines.id })
-            .from(pipelines)
-            .where(inArray(pipelines.id, finished.map((p) => p.id)))
-        ).map((r) => r.id)
-      );
-      const toSync = finished.filter((p) => !existingIds.has(p.id));
+      // Step 3: Skip pipelines we've already synced (unless force=true)
+      let toSync = finished;
+      if (!force) {
+        const existingIds = new Set(
+          (
+            await db
+              .select({ id: pipelines.id })
+              .from(pipelines)
+              .where(inArray(pipelines.id, finished.map((p) => p.id)))
+          ).map((r) => r.id)
+        );
+        toSync = finished.filter((p) => !existingIds.has(p.id));
+      }
 
       if (toSync.length === 0) return 0;
 
@@ -282,6 +287,7 @@ export async function syncGitLabPipelines(
               name: job.name,
               stage: job.stage,
               status: job.status,
+              failureReason: job.failure_reason ?? null,
               durationSeconds:
                 job.duration != null ? String(job.duration) : null,
               queuedDurationSeconds:
@@ -309,6 +315,7 @@ export async function syncGitLabPipelines(
                 name: sql`excluded.name`,
                 stage: sql`excluded.stage`,
                 status: sql`excluded.status`,
+                failureReason: sql`excluded.failure_reason`,
                 durationSeconds: sql`excluded.duration_seconds`,
                 queuedDurationSeconds: sql`excluded.queued_duration_seconds`,
                 allowFailure: sql`excluded.allow_failure`,

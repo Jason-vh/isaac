@@ -205,6 +205,7 @@ export const pipelineJobs = pgTable("pipeline_jobs", {
   allowFailure: boolean("allow_failure").notNull(),
   retried: boolean("retried").notNull(),
   needs: text("needs").array(),
+  failureReason: text("failure_reason"),
   webUrl: text("web_url").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
