@@ -69,7 +69,7 @@
                 <router-link
                   v-for="pid in item.exampleCritical"
                   :key="pid"
-                  :to="{ name: 'pipeline-detail', params: { id: pid } }"
+                  :to="{ name: 'pipeline-detail', params: { id: pid }, query: { criticalPath: '1' } }"
                   class="inline-flex items-center rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-mono text-red-600 hover:bg-red-500/20 transition-colors"
                 >
                   #{{ pid }}

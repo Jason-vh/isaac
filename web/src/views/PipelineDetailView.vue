@@ -92,7 +92,10 @@ const router = useRouter();
 
 const pipelineId = computed(() => Number(route.params.id));
 const jobSearch = ref("");
-const showCriticalPath = ref(true);
+const showCriticalPath = computed({
+  get: () => route.query.criticalPath === "1",
+  set: (v: boolean) => router.replace({ query: { ...route.query, criticalPath: v ? "1" : undefined } }),
+});
 const detail = ref<PipelineDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
