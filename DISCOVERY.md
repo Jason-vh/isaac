@@ -19,7 +19,7 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 | Source | What we track | Sync method |
 |---|---|---|
 | **Jira** | Tickets created, tickets closed/transitioned, story points, epics | Periodic (hourly) via API |
-| **GitLab** | All project MRs (authored, reviewed, team). "Reviewed" = approved or commented. | Periodic (hourly) via API |
+| **GitLab** | All project MRs (authored, reviewed, team). "Reviewed" = approved or commented. Full comment content stored for quality tracking. | Periodic (hourly) via API |
 | **GitLab Pipelines** | Pipeline durations, per-job timing, retry/flaky rates, DAG dependencies (all pipelines, not just mine) | Periodic (hourly) via REST + GraphQL API |
 | **Confluence** | Documents published, documents commented on (stretch) | Periodic (hourly) via API |
 | **Google Calendar** | Meetings attended, holidays/OOO | Periodic (hourly) via API |
@@ -109,12 +109,12 @@ Clicking an entry chip opens a slide-over detail panel showing the entry's under
 
 ### Periodically
 - Review OKR progress on the Objectives page — expand objectives to see linked evidence (epics auto-resolve child tickets, MRs, and docs)
-- Track CI/CD health on the Pipelines page — scatter chart of pipeline durations (merge vs train), Gantt chart of p50 job durations with dependency graph, sortable job overview with retry rates. Drill into individual pipeline detail pages for job waterfall timelines.
+- Track CI/CD health on the Pipelines page — scatter chart of pipeline durations (split by pipeline type or change scope: frontend/backend/fullstack/neither), with selectable p50/p90/p99 trend line. Job overview with duration variance, critical path %, retry rates, and scope filter. Expand any job for a daily timeline chart (duration, retry rate, critical %). Drill into individual pipeline detail pages for job waterfall timelines. All job filters support `-prefix` exclusion.
 - Use accumulated data for performance reviews, brag documents, retrospectives
 
 ### Admin (`/admin` — not in nav)
-- Trigger manual syncs (all sources or selected subset) — different sources can run in parallel
-- View sync log history and clean up stale running entries from interrupted processes
+- Trigger manual syncs (all sources or selected subset) with optional `since` date and `force` re-sync toggle — different sources can run in parallel
+- View sync log history (with duration) and clean up stale running entries from interrupted processes
 
 ## Technical Decisions
 

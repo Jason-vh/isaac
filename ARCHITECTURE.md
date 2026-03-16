@@ -73,7 +73,7 @@ isaac/
 │       │   ├── useAuth.ts      # Auth state + passkey ceremonies
 │       │   ├── useDashboard.ts  # Dashboard data fetching
 │       │   ├── useObjectives.ts # OKR CRUD + evidence management
-│       │   ├── usePipelines.ts  # Pipeline scatter, job stats, comparison data fetching
+│       │   ├── usePipelines.ts  # Pipeline scatter + comparison data fetching (date range, presets)
 │       │   └── useWbso.ts       # WBSO week data fetching
 │       ├── components/
 │       │   ├── dashboard/
@@ -94,9 +94,10 @@ isaac/
 │       │       └── EvidencePicker.vue       # Search + add epic evidence to a KR
 │       │   ├── pipelines/
 │       │   │   ├── PipelineDurationStats.vue # Period comparison stats (median, p90, count)
-│       │   │   ├── DurationScatterChart.vue # Scatter + rolling avg (merge vs train)
+│       │   │   ├── DurationScatterChart.vue # Scatter + rolling percentile trend (split by type or scope)
 │       │   │   ├── JobGanttChart.vue        # P50 job durations with DAG arrows + retry coloring
-│       │   │   ├── JobOverview.vue          # Sortable job table with p50, retry rate, comparison
+│       │   │   ├── JobOverview.vue          # Self-fetching job table with duration, critical %, retry rate, scope filter, expandable timeline
+│       │   │   ├── JobTimelineChart.vue     # Per-job daily chart (duration/retry/critical %) shown in expanded rows
 │       │   │   ├── PipelineList.vue         # Clickable pipeline list linking to detail page
 │       │   │   └── WaterfallChart.vue       # Job timeline bars with DAG dependency lines
 │       │   └── wbso/
@@ -311,9 +312,23 @@ Individual jobs within a pipeline. Uses GitLab job ID as PK.
 | allow_failure | boolean | |
 | retried | boolean | Superseded runs marked `retried: true` |
 | needs | text[] | Nullable, job names from `needs:` DAG keyword. `null` = default stage ordering, `[]` = no dependencies |
+| failure_reason | text | Nullable. GitLab failure classification: `script_failure`, `runner_system_failure`, `stuck_or_timeout_failure`, etc. |
 | web_url | text | |
 | started_at | timestamptz | Nullable |
 | finished_at | timestamptz | Nullable |
+
+### merge_request_comments
+
+Full comment content from GitLab MR notes. Only the user's own non-system comments are stored. Used for comment quality tracking (e.g. "explained myself well" key result).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | bigint PK | GitLab note ID |
+| merge_request_id | int FK → merge_requests | |
+| body | text | Comment content (markdown) |
+| external_url | text | Link to the comment on GitLab |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
 
 ### passkey_credentials
 
@@ -366,10 +381,10 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Wins:** GET/POST `/wins`, GET/PATCH/DELETE `/wins/:id`, POST `/wins/:id/links`, DELETE `/wins/:id/links/:linkId`
 - **Objectives:** GET `/objectives`, GET `/objectives/:slug`, GET `/objectives/epics?q=`
 - **Key Results:** POST `/key-results/:slug/evidence`, DELETE `/key-results/:slug/evidence/:linkId`
-- **Pipelines:** GET `/pipelines/durations?since=&until=` (scatter points for merge/train), GET `/pipelines/job-stats?since=&until=` (p50 duration, retry count, needs per job), GET `/pipelines/comparison?since=&until=&prevSince=&prevUntil=` (period-over-period stats), GET `/pipelines/:id/jobs` (detail with jobs + needs for DAG/waterfall)
+- **Pipelines:** GET `/pipelines/duration-scatter?since=&until=` (scatter points with type + scope), GET `/pipelines/job-stats?since=&until=&scope=` (p50 duration, retry count, needs per job), GET `/pipelines/critical-path-frequency?since=&until=&scope=` (per-job critical path %), GET `/pipelines/job-timeline?since=&until=&job=&scope=` (daily duration, retry rate, critical % for a single job), GET `/pipelines/:id/jobs` (detail with jobs + needs for DAG/waterfall)
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
-- **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string }` for filtered backfills, per-source concurrency guard), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
+- **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string, force?: boolean }` for filtered backfills — `force` bypasses the "already synced" skip for gitlab-pipelines, enabling backfill of new fields), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
