@@ -156,6 +156,19 @@ export const wins = pgTable("wins", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
+// --- merge_request_comments ---
+
+export const mergeRequestComments = pgTable("merge_request_comments", {
+  id: bigint("id", { mode: "number" }).primaryKey(), // GitLab note ID
+  mergeRequestId: integer("merge_request_id")
+    .notNull()
+    .references(() => mergeRequests.id),
+  body: text("body").notNull(),
+  externalUrl: text("external_url").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
 // --- entity_links ---
 
 export const entityLinks = pgTable("entity_links", {

@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { mergeRequests, mergeRequestEvents, commits } from "../db/schema";
+import { mergeRequests, mergeRequestEvents, mergeRequestComments, commits } from "../db/schema";
+import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, paginateGitLab, runSyncWithLog, dedup } from "./util";
@@ -41,7 +42,9 @@ interface GitLabCommit {
 
 interface GitLabNote {
   id: number;
+  body: string;
   created_at: string;
+  updated_at: string;
   author: { id: number };
   system: boolean;
 }
@@ -102,20 +105,15 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
       );
       const changesCount = parseInt(detail.changes_count ?? "0", 10) || 0;
 
-      // For non-authored MRs, check if I commented
-      let hasMyComments = false;
-      let myNotes: GitLabNote[] = [];
-
-      if (!authoredByMe) {
-        const notes = await paginateGitLab<GitLabNote>(
-          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
-          authHeaders
-        );
-        myNotes = notes.filter(
-          (note) => note.author.id === myUserId && !note.system
-        );
-        hasMyComments = myNotes.length > 0;
-      }
+      // Fetch my comments on this MR (both authored and reviewed)
+      const notes = await paginateGitLab<GitLabNote>(
+        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
+        authHeaders
+      );
+      const myNotes = notes.filter(
+        (note) => note.author.id === myUserId && !note.system
+      );
+      const hasMyComments = myNotes.length > 0;
 
       const reviewedByMe = approvedSet.has(mr.id) || hasMyComments;
 
@@ -242,6 +240,29 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
 
       if (newEvents.length > 0) {
         await db.insert(mergeRequestEvents).values(newEvents);
+      }
+
+      // Upsert comment content
+      if (myNotes.length > 0) {
+        const commentRows = myNotes.map((note) => ({
+          id: note.id,
+          mergeRequestId: mrId,
+          body: note.body,
+          externalUrl: `${mr.web_url}#note_${note.id}`,
+          createdAt: new Date(note.created_at),
+          updatedAt: new Date(note.updated_at),
+        }));
+
+        await db
+          .insert(mergeRequestComments)
+          .values(commentRows)
+          .onConflictDoUpdate({
+            target: mergeRequestComments.id,
+            set: {
+              body: sql`excluded.body`,
+              updatedAt: sql`excluded.updated_at`,
+            },
+          });
       }
     }
 
