@@ -1,2 +1,2 @@
-CREATE INDEX "pipeline_jobs_pipeline_retried_idx" ON "pipeline_jobs" USING btree ("pipeline_id","retried");--> statement-breakpoint
-CREATE INDEX "pipelines_status_created_idx" ON "pipelines" USING btree ("status","gitlab_created_at");
+CREATE INDEX IF NOT EXISTS "pipeline_jobs_pipeline_retried_idx" ON "pipeline_jobs" USING btree ("pipeline_id","retried");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "pipelines_status_created_idx" ON "pipelines" USING btree ("status","gitlab_created_at");

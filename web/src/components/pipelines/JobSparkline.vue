@@ -34,6 +34,7 @@ const color = computed(() => colorMap[props.severity]);
 
 const coords = computed(() => {
   const rates = props.weeks.map((w) => w.retryRate);
+  if (rates.length < 2) return [];
   const maxRate = Math.max(...rates, 10);
   const drawW = width - padX * 2;
   const drawH = height - padY * 2;
@@ -51,6 +52,7 @@ const linePoints = computed(() =>
 
 const areaPoints = computed(() => {
   const pts = coords.value;
+  if (pts.length === 0) return "";
   const bottom = height - padY;
   return [
     `${pts[0].x},${bottom}`,
@@ -59,6 +61,6 @@ const areaPoints = computed(() => {
   ].join(" ");
 });
 
-const dotX = computed(() => coords.value[coords.value.length - 1].x);
-const dotY = computed(() => coords.value[coords.value.length - 1].y);
+const dotX = computed(() => coords.value.length > 0 ? coords.value[coords.value.length - 1].x : 0);
+const dotY = computed(() => coords.value.length > 0 ? coords.value[coords.value.length - 1].y : 0);
 </script>

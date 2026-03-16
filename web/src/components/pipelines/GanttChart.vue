@@ -6,7 +6,7 @@
       <template v-for="item in flatItems" :key="item.key">
         <div
           v-if="item.type === 'stage'"
-          class="overflow-hidden transition-all duration-200"
+          class="overflow-hidden transition-all duration-300"
           :style="{ maxHeight: item.hidden ? '0px' : STAGE_H + 'px', opacity: item.hidden ? 0 : 1 }"
         >
           <div class="flex items-center px-2 pt-3 pb-1">
@@ -17,7 +17,7 @@
         </div>
         <div
           v-else
-          class="overflow-hidden transition-all duration-200"
+          class="overflow-hidden transition-all duration-300"
           :style="{ maxHeight: item.hidden ? '0px' : ROW_H + 'px', opacity: item.hidden ? 0 : 1 }"
         >
           <div
@@ -31,7 +31,7 @@
     </div>
 
     <!-- Chart area -->
-    <div ref="chartRef" class="flex-1 relative min-w-0">
+    <div class="flex-1 relative min-w-0">
       <!-- Time axis -->
       <div class="relative h-6 border-b border-border">
         <div
@@ -47,50 +47,57 @@
       <!-- Row backgrounds -->
       <template v-for="item in flatItems" :key="'bg-' + item.key">
         <div
-          class="overflow-hidden transition-all duration-200"
+          class="overflow-hidden transition-all duration-300"
           :style="{ maxHeight: item.hidden ? '0px' : (item.type === 'stage' ? STAGE_H : ROW_H) + 'px' }"
         />
       </template>
 
-      <!-- SVG overlay: grid lines + dependency lines -->
-      <svg
-        class="absolute left-0 pointer-events-none transition-[height] duration-200"
-        :style="{ top: '24px', width: '100%', height: chartHeight + 'px' }"
-        :viewBox="`0 0 ${chartWidth} ${chartHeight}`"
-        preserveAspectRatio="none"
-      >
-        <!-- Normal dependency lines (grouped so overlapping paths don't compound opacity) -->
-        <g opacity="0.2">
-          <path
-            v-for="(p, i) in normalDepPaths"
-            :key="'d-' + i"
-            :d="p.d"
-            fill="none"
-            stroke="#9CA3AF"
-            stroke-width="1"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-        <!-- Critical path dependency lines -->
-        <g v-if="criticalDepPaths.length > 0">
-          <path
-            v-for="(p, i) in criticalDepPaths"
-            :key="'cd-' + i"
-            :d="p.d"
-            fill="none"
-            stroke="#F59E0B"
-            stroke-width="1.5"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-      </svg>
+      <!-- Dependency lines (HTML divs for smooth transitions) -->
+      <template v-for="dep in depLines" :key="dep.key">
+        <!-- Horizontal from source to midpoint -->
+        <div
+          class="absolute pointer-events-none transition-[top,opacity] duration-300"
+          :style="{
+            left: dep.fromPct + '%',
+            width: (dep.mxPct - dep.fromPct) + '%',
+            top: (24 + dep.y1) + 'px',
+            height: '1px',
+            backgroundColor: '#9CA3AF',
+            opacity: dep.hidden ? 0 : (dep.critical ? 1 : 0.2),
+          }"
+        />
+        <!-- Vertical from source y to target y -->
+        <div
+          class="absolute pointer-events-none transition-[top,height,opacity] duration-300"
+          :style="{
+            left: dep.mxPct + '%',
+            width: '1px',
+            top: (24 + Math.min(dep.y1, dep.y2)) + 'px',
+            height: Math.abs(dep.y2 - dep.y1) + 'px',
+            backgroundColor: '#9CA3AF',
+            opacity: dep.hidden ? 0 : (dep.critical ? 1 : 0.2),
+          }"
+        />
+        <!-- Horizontal from midpoint to target -->
+        <div
+          class="absolute pointer-events-none transition-[top,opacity] duration-300"
+          :style="{
+            left: dep.mxPct + '%',
+            width: (dep.toPct - dep.mxPct) + '%',
+            top: (24 + dep.y2) + 'px',
+            height: '1px',
+            backgroundColor: '#9CA3AF',
+            opacity: dep.hidden ? 0 : (dep.critical ? 1 : 0.2),
+          }"
+        />
+      </template>
 
       <!-- Bars -->
       <template v-for="bar in allBars" :key="bar.key">
         <!-- Dot indicator (jobs without timestamps) -->
         <div
           v-if="bar.dot"
-          class="absolute h-3 w-3 rounded-full border-2 border-gray-400 transition-[top,opacity] duration-200"
+          class="absolute h-3 w-3 rounded-full border-2 border-gray-400 transition-[top,opacity] duration-300"
           :style="{
             left: bar.startPct + '%',
             top: (24 + bar.y + 7) + 'px',
@@ -104,7 +111,7 @@
         <!-- Dashed bar (skipped jobs) -->
         <div
           v-else-if="bar.dashed"
-          class="absolute rounded-sm border border-dashed border-gray-400 transition-[top,opacity,width] duration-500 ease-out"
+          class="absolute rounded-sm border border-dashed border-gray-400 transition-[top,opacity,width] duration-300 ease-out"
           :style="{
             left: bar.startPct + '%',
             width: entered ? Math.max(bar.widthPct, 0.4) + '%' : '0%',
@@ -117,11 +124,27 @@
           @mouseenter="$emit('barEnter', bar.data, $event)"
           @mouseleave="$emit('barLeave')"
         />
+        <!-- Queue bar (thin dashed line) -->
+        <div
+          v-else-if="bar.queue"
+          class="absolute transition-[top,opacity,width] duration-300 ease-out"
+          :style="{
+            left: bar.startPct + '%',
+            width: entered ? Math.max(bar.widthPct, 0.4) + '%' : '0%',
+            top: (24 + bar.y + 14) + 'px',
+            height: '0px',
+            borderTop: '1px dashed ' + bar.color,
+            opacity: bar.hidden ? 0 : (bar.onCriticalPath === false ? 0.3 : bar.opacity),
+            pointerEvents: bar.hidden ? 'none' : 'auto',
+          }"
+          :title="bar.title"
+          @mouseenter="$emit('barEnter', bar.data, $event)"
+          @mouseleave="$emit('barLeave')"
+        />
         <!-- Normal bar -->
         <div
           v-else
-          class="absolute rounded-sm transition-[top,opacity,width] duration-500 ease-out"
-          :class="bar.highlight ? 'ring-2 ring-amber-400' : ''"
+          class="absolute rounded-sm transition-[top,opacity,width] duration-300 ease-out"
           :style="{
             left: bar.startPct + '%',
             width: entered ? Math.max(bar.widthPct, 0.4) + '%' : '0%',
@@ -141,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted } from "vue";
 import type { GanttStage, GanttTick } from "./gantt-types";
 
 const ROW_H = 28;
@@ -163,19 +186,6 @@ onMounted(() => {
   requestAnimationFrame(() => { entered.value = true; });
 });
 
-// --- Resize observer for chart width ---
-const chartRef = ref<HTMLElement>();
-const chartWidth = ref(800);
-
-let observer: ResizeObserver | null = null;
-onMounted(() => {
-  observer = new ResizeObserver((entries) => {
-    chartWidth.value = entries[0].contentRect.width;
-  });
-  if (chartRef.value) observer.observe(chartRef.value);
-});
-onUnmounted(() => observer?.disconnect());
-
 // --- Layout computation ---
 
 interface FlatItem {
@@ -195,7 +205,7 @@ interface PositionedBar {
   opacity: number;
   dashed: boolean;
   dot: boolean;
-  highlight: boolean;
+  queue: boolean;
   onCriticalPath: boolean | undefined;
   hidden: boolean;
   title?: string;
@@ -228,7 +238,7 @@ const layout = computed(() => {
           opacity: bar.opacity,
           dashed: bar.dashed ?? false,
           dot: bar.dot ?? false,
-          highlight: bar.highlight ?? false,
+          queue: bar.queue ?? false,
           onCriticalPath: row.onCriticalPath,
           hidden: rowHidden,
           title: bar.title,
@@ -246,31 +256,33 @@ const layout = computed(() => {
 
 const flatItems = computed(() => layout.value.flat);
 const allBars = computed(() => layout.value.bars);
-const chartHeight = computed(() => layout.value.height);
 
-// --- Dependency paths (right-angle with rounded corners) ---
+// --- Dependency lines (HTML divs that transition with the bars) ---
 
-interface DepPath {
-  d: string;
+interface DepLine {
+  key: string;
+  fromPct: number;
+  toPct: number;
+  mxPct: number;
+  y1: number;
+  y2: number;
   critical: boolean;
+  hidden: boolean;
 }
 
-const depPathData = computed(() => {
-  const w = chartWidth.value;
+const depLines = computed(() => {
   const { rowYMap } = layout.value;
-  const paths: DepPath[] = [];
+  const lines: DepLine[] = [];
 
   const rowMap = new Map<string, GanttStage["rows"][0]>();
   for (const stage of props.stages) {
     for (const row of stage.rows) {
-      if (row.hidden) continue;
       rowMap.set(row.key, row);
     }
   }
 
   for (const stage of props.stages) {
     for (const row of stage.rows) {
-      if (row.hidden) continue;
       if (row.deps.length === 0 || row.bars.length === 0) continue;
       const rowY = rowYMap.get(row.key);
       if (rowY == null) continue;
@@ -278,8 +290,6 @@ const depPathData = computed(() => {
       const toPct =
         row.depToPct ?? Math.min(...row.bars.filter((b) => !b.dot).map((b) => b.startPct));
       if (!isFinite(toPct)) continue;
-      const x2 = (toPct / 100) * w;
-      const y2 = rowY + ROW_H / 2;
 
       for (const depKey of row.deps) {
         const depRow = rowMap.get(depKey);
@@ -291,34 +301,27 @@ const depPathData = computed(() => {
           depRow.depFromPct ??
           Math.max(...depRow.bars.filter((b) => !b.dot).map((b) => b.startPct + b.widthPct));
         if (!isFinite(fromPct)) continue;
-        const x1 = (fromPct / 100) * w;
-        const y1 = depY + ROW_H / 2;
 
-        if (x2 <= x1) continue;
+        if (toPct <= fromPct) continue;
 
-        const pad = 6;
-        const mx = x1 + (x2 - x1) * 0.3;
-        const r = Math.min(
-          4,
-          Math.abs(y2 - y1) / 2,
-          Math.abs(mx - x1 - pad),
-          Math.abs(x2 - mx - pad)
-        );
-        if (r <= 0) continue;
-
-        const dy = y2 > y1 ? 1 : -1;
+        const mxPct = fromPct + (toPct - fromPct) * 0.3;
         const isCritical = row.onCriticalPath === true && depRow.onCriticalPath === true;
-        paths.push({
-          d: `M ${x1} ${y1} H ${mx - r} Q ${mx} ${y1}, ${mx} ${y1 + r * dy} V ${y2 - r * dy} Q ${mx} ${y2}, ${mx + r} ${y2} H ${x2}`,
+        const isHidden = (row.hidden ?? false) || (depRow.hidden ?? false);
+
+        lines.push({
+          key: `dep-${depKey}-${row.key}`,
+          fromPct,
+          toPct,
+          mxPct,
+          y1: depY + ROW_H / 2,
+          y2: rowY + ROW_H / 2,
           critical: isCritical,
+          hidden: isHidden,
         });
       }
     }
   }
 
-  return paths;
+  return lines;
 });
-
-const normalDepPaths = computed(() => depPathData.value.filter((p) => !p.critical));
-const criticalDepPaths = computed(() => depPathData.value.filter((p) => p.critical));
 </script>

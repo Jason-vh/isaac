@@ -1,6 +1,6 @@
 <template>
   <div>
-    <!-- Header (always visible) -->
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-ink">Pipelines</h1>
@@ -32,84 +32,49 @@
       </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="mt-4 flex gap-1 border-b border-border">
-      <button
-        class="relative px-4 py-2 text-sm font-medium transition-colors"
-        :class="tab === 'performance'
-          ? 'text-ink after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-accent'
-          : 'text-ink-faint hover:text-ink'"
-        @click="switchTab('performance')"
-      >
-        Performance
-      </button>
-      <button
-        class="relative px-4 py-2 text-sm font-medium transition-colors"
-        :class="tab === 'mr'
-          ? 'text-ink after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-accent'
-          : 'text-ink-faint hover:text-ink'"
-        @click="switchTab('mr')"
-      >
-        By MR
-      </button>
+    <!-- Stats -->
+    <div class="mt-6">
+      <PipelineDurationStats :comparison="comparison" :loading="initialLoading" />
     </div>
 
-    <!-- Performance tab (default) -->
-    <template v-if="tab === 'performance'">
-      <!-- Stats -->
-      <div class="mt-6">
-        <PipelineDurationStats :comparison="comparison" :loading="initialLoading" />
-      </div>
-
-      <!-- Chart area -->
-      <div class="mt-6">
-        <div v-if="error" class="py-20 text-center text-red-500">
-          {{ error }}
-        </div>
-        <DurationScatterChart v-else :points="points" :loading="initialLoading" @select="onSelectPipeline" />
-      </div>
-
-    <!-- Critical Path Delta -->
+    <!-- Chart area -->
     <div class="mt-6">
-      <CriticalPathDelta :decomposition="criticalPathDecomposition" :loading="initialLoading" />
+      <div v-if="error" class="py-20 text-center text-red-500">
+        {{ error }}
+      </div>
+      <DurationScatterChart v-else :points="points" :loading="initialLoading" @select="onSelectPipeline" />
+    </div>
+
+    <!-- Critical Path Frequency -->
+    <div class="mt-6">
+      <CriticalPathFrequency :items="criticalPathFrequency" :loading="initialLoading" />
     </div>
 
     <!-- Job overview -->
     <div class="mt-6">
-      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :critical-path="criticalPathDecomposition" :job-trends="jobTrends" :loading="initialLoading" />
+      <JobOverview :jobs="jobStats" :prev-jobs="prevJobStats" :job-trends="jobTrends" :loading="initialLoading" />
     </div>
 
-      <!-- Pipeline list -->
-      <div class="mt-6">
-        <PipelineList :points="points" :loading="initialLoading" />
-      </div>
-    </template>
-
-    <!-- By MR tab -->
-    <template v-if="tab === 'mr'">
-      <div class="mt-6">
-        <MrPipelineList :mrs="mrList" :loading="mrLoading" />
-      </div>
-    </template>
+    <!-- Merge requests -->
+    <div class="mt-6">
+      <MrPipelineList :mrs="mrList" :loading="mrLoading" @search="onMrSearch" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
 import type { MrPipelineSummary } from "@isaac/shared";
 import { usePipelines } from "../composables/usePipelines";
 import { api, UnauthorizedError } from "../api/client";
 import DurationScatterChart from "../components/pipelines/DurationScatterChart.vue";
 import PipelineDurationStats from "../components/pipelines/PipelineDurationStats.vue";
-import PipelineList from "../components/pipelines/PipelineList.vue";
 import JobOverview from "../components/pipelines/JobOverview.vue";
-import JobGanttChart from "../components/pipelines/JobGanttChart.vue";
-import CriticalPathDelta from "../components/pipelines/CriticalPathDelta.vue";
+import CriticalPathFrequency from "../components/pipelines/CriticalPathFrequency.vue";
 import MrPipelineList from "../components/pipelines/MrPipelineList.vue";
 
 const router = useRouter();
-const route = useRoute();
 
 function onSelectPipeline(id: number) {
   router.push({ name: "pipeline-detail", params: { id } });
@@ -120,32 +85,25 @@ const presets = [
   { label: "30d", days: 30 },
 ];
 
-const { since, until, points, comparison, jobStats, prevJobStats, criticalPathDecomposition, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, jobStats, prevJobStats, criticalPathFrequency, jobTrends, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
 
-// Tab state
-const tab = ref<"performance" | "mr">((route.query.tab as string) === "mr" ? "mr" : "performance");
-
-function switchTab(newTab: "performance" | "mr") {
-  tab.value = newTab;
-  router.replace({
-    query: { ...route.query, tab: newTab === "performance" ? undefined : newTab },
-  });
-}
-
-// MR tab data
+// MR list data
 const mrList = ref<MrPipelineSummary[]>([]);
 const mrLoading = ref(false);
-let mrFetched = false;
+const mrSearch = ref("");
 
 async function fetchMrList() {
-  if (mrFetched) return;
   mrLoading.value = true;
   try {
-    const sinceParam = new Date(since.value).toISOString();
+    const params = new URLSearchParams({ limit: "50" });
+    if (mrSearch.value) {
+      params.set("search", mrSearch.value);
+    } else {
+      params.set("since", new Date(since.value).toISOString());
+    }
     mrList.value = await api.get<MrPipelineSummary[]>(
-      `/pipelines/merge-requests?since=${sinceParam}&limit=50`
+      `/pipelines/merge-requests?${params}`
     );
-    mrFetched = true;
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       router.push("/login");
@@ -156,16 +114,13 @@ async function fetchMrList() {
   }
 }
 
-// Fetch MR data when switching to the MR tab
-watch(tab, (newTab) => {
-  if (newTab === "mr") fetchMrList();
-}, { immediate: true });
+function onMrSearch(query: string) {
+  mrSearch.value = query;
+  fetchMrList();
+}
 
-// Re-fetch MR data when date range changes while on the MR tab
+// Fetch on load and when date range changes
 watch([since, until], () => {
-  if (tab.value === "mr") {
-    mrFetched = false;
-    fetchMrList();
-  }
-});
+  if (!mrSearch.value) fetchMrList();
+}, { immediate: true });
 </script>

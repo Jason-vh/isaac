@@ -161,34 +161,9 @@ export const wins = pgTable("wins", {
 export const entityLinks = pgTable("entity_links", {
   id: serial("id").primaryKey(),
   sourceType: text("source_type").notNull(),
-  sourceId: integer("source_id").notNull(),
+  sourceId: text("source_id").notNull(),
   targetType: text("target_type").notNull(),
   targetId: text("target_id").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-});
-
-// --- objectives ---
-
-export const objectives = pgTable("objectives", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  year: integer("year").notNull(),
-  status: text("status").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-});
-
-export const keyResults = pgTable("key_results", {
-  id: serial("id").primaryKey(),
-  objectiveId: integer("objective_id")
-    .notNull()
-    .references(() => objectives.id),
-  title: text("title").notNull(),
-  targetValue: decimal("target_value"),
-  currentValue: decimal("current_value"),
-  unit: text("unit"),
-  dataSource: text("data_source"),
-  status: text("status").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 

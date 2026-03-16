@@ -2,8 +2,8 @@ import { ref } from "vue";
 import type {
   ObjectiveWithSummary,
   ObjectiveWithKeyResults,
-  KeyResult,
   EntityLink,
+  TimelineEvent,
 } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
 import { useRouter } from "vue-router";
@@ -35,24 +35,12 @@ export function useObjectives() {
     }
   }
 
-  async function fetchObjective(id: number) {
-    error.value = "";
-    try {
-      selectedObjective.value = await api.get<ObjectiveWithKeyResults>(
-        `/objectives/${id}`
-      );
-    } catch (e) {
-      handleError(e);
-    }
-  }
-
-  async function seed() {
+  async function fetchObjective(slug: string) {
     loading.value = true;
     error.value = "";
     try {
-      objectives.value = await api.post<ObjectiveWithSummary[]>(
-        "/objectives/seed",
-        {}
+      selectedObjective.value = await api.get<ObjectiveWithKeyResults>(
+        `/objectives/${slug}`
       );
     } catch (e) {
       handleError(e);
@@ -61,62 +49,30 @@ export function useObjectives() {
     }
   }
 
-  async function updateObjective(
-    id: number,
-    data: { title?: string; description?: string; status?: string }
-  ) {
-    try {
-      await api.patch(`/objectives/${id}`, data);
-      await fetchObjectives();
-      if (selectedObjective.value?.id === id) {
-        await fetchObjective(id);
-      }
-    } catch (e) {
-      handleError(e);
-    }
-  }
-
-  async function updateKeyResult(
-    id: number,
-    data: { status?: string; currentValue?: number; title?: string }
-  ) {
-    try {
-      await api.patch<KeyResult>(`/key-results/${id}`, data);
-      await fetchObjectives();
-      if (selectedObjective.value) {
-        await fetchObjective(selectedObjective.value.id);
-      }
-    } catch (e) {
-      handleError(e);
-    }
-  }
-
   async function addEvidence(
-    krId: number,
+    krSlug: string,
     targetType: string,
     targetId: string
   ) {
     try {
-      await api.post<EntityLink>(`/key-results/${krId}/evidence`, {
+      await api.post<EntityLink>(`/key-results/${krSlug}/evidence`, {
         targetType,
         targetId,
       });
       if (selectedObjective.value) {
-        await fetchObjective(selectedObjective.value.id);
+        await fetchObjective(selectedObjective.value.slug);
       }
-      await fetchObjectives();
     } catch (e) {
       handleError(e);
     }
   }
 
-  async function removeEvidence(krId: number, linkId: number) {
+  async function removeEvidence(krSlug: string, linkId: number) {
     try {
-      await api.delete(`/key-results/${krId}/evidence/${linkId}`);
+      await api.delete(`/key-results/${krSlug}/evidence/${linkId}`);
       if (selectedObjective.value) {
-        await fetchObjective(selectedObjective.value.id);
+        await fetchObjective(selectedObjective.value.slug);
       }
-      await fetchObjectives();
     } catch (e) {
       handleError(e);
     }
@@ -133,6 +89,32 @@ export function useObjectives() {
     }
   }
 
+  async function fetchTimeline(krSlug: string, since?: string, until?: string) {
+    try {
+      const params = new URLSearchParams();
+      if (since) params.set("since", since);
+      if (until) params.set("until", until);
+      const qs = params.toString();
+      return await api.get<TimelineEvent[]>(
+        `/key-results/${krSlug}/timeline${qs ? `?${qs}` : ""}`
+      );
+    } catch (e) {
+      handleError(e);
+      return [];
+    }
+  }
+
+  async function searchEntities(type: string, q: string) {
+    try {
+      return await api.get<{ id: string; title: string }[]>(
+        `/objectives/search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(q)}`
+      );
+    } catch (e) {
+      handleError(e);
+      return [];
+    }
+  }
+
   return {
     objectives,
     selectedObjective,
@@ -140,11 +122,10 @@ export function useObjectives() {
     error,
     fetchObjectives,
     fetchObjective,
-    seed,
-    updateObjective,
-    updateKeyResult,
     addEvidence,
     removeEvidence,
     searchEpics,
+    fetchTimeline,
+    searchEntities,
   };
 }

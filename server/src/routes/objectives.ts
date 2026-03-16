@@ -1,50 +1,28 @@
 import { Elysia, t } from "elysia";
-import { eq, and, ilike, sql } from "drizzle-orm";
+import { eq, and, ilike, inArray, gte, lte, or } from "drizzle-orm";
 import { db } from "../db";
 import { requireOwner } from "../auth/middleware";
 import {
-  objectives,
-  keyResults,
   entityLinks,
   tickets,
+  ticketEvents,
   mergeRequests,
+  mergeRequestEvents,
   confluenceDocuments,
+  confluenceDocumentEvents,
 } from "../db/schema";
+import { env } from "../env";
+import { OBJECTIVES, getObjective, getKeyResult, getKeyResultsForObjective } from "@isaac/shared/objectives";
 import type {
-  Objective,
-  KeyResult,
   EvidenceItem,
   EvidenceSummary,
   ObjectiveWithKeyResults,
   ObjectiveWithSummary,
   KeyResultWithSummary,
+  KeyResultWithEvidence,
   EntityLink,
+  TimelineEvent,
 } from "@isaac/shared";
-
-function mapObjective(row: typeof objectives.$inferSelect): Objective {
-  return {
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    year: row.year,
-    status: row.status as Objective["status"],
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-function mapKeyResult(row: typeof keyResults.$inferSelect): KeyResult {
-  return {
-    id: row.id,
-    objectiveId: row.objectiveId,
-    title: row.title,
-    targetValue: row.targetValue ? Number(row.targetValue) : null,
-    currentValue: row.currentValue ? Number(row.currentValue) : null,
-    unit: row.unit,
-    dataSource: row.dataSource,
-    status: row.status as KeyResult["status"],
-    createdAt: row.createdAt.toISOString(),
-  };
-}
 
 function mapEntityLink(row: typeof entityLinks.$inferSelect): EntityLink {
   return {
@@ -57,14 +35,14 @@ function mapEntityLink(row: typeof entityLinks.$inferSelect): EntityLink {
   };
 }
 
-async function resolveEvidence(krId: number): Promise<EvidenceItem[]> {
+async function resolveEvidence(krSlug: string): Promise<EvidenceItem[]> {
   const links = await db
     .select()
     .from(entityLinks)
     .where(
       and(
         eq(entityLinks.sourceType, "key_result"),
-        eq(entityLinks.sourceId, krId)
+        eq(entityLinks.sourceId, krSlug)
       )
     );
 
@@ -197,8 +175,8 @@ async function resolveEvidence(krId: number): Promise<EvidenceItem[]> {
   return items;
 }
 
-async function computeEvidenceSummary(krId: number): Promise<EvidenceSummary> {
-  const items = await resolveEvidence(krId);
+async function computeEvidenceSummary(krSlug: string): Promise<EvidenceSummary> {
+  const items = await resolveEvidence(krSlug);
   const summary: EvidenceSummary = {
     epics: 0,
     tickets: 0,
@@ -209,7 +187,6 @@ async function computeEvidenceSummary(krId: number): Promise<EvidenceSummary> {
 
   for (const item of items) {
     if (item.type === "ticket" && item.source === "direct") {
-      // Check if it's an epic by looking if any via_epic items reference it
       const isEpic = items.some(
         (i) => i.epicKey === item.id && i.source === "via_epic"
       );
@@ -229,81 +206,26 @@ async function computeEvidenceSummary(krId: number): Promise<EvidenceSummary> {
   return summary;
 }
 
-const SEED_DATA = [
-  {
-    title: "Define and track feature adoption",
-    description:
-      "Establish practices and tooling to measure how well shipped features are adopted by users.",
-    keyResults: [
-      { title: "Feature launch checklist with adoption metrics", target: null, unit: null },
-      { title: "Automated adoption report for 1 shipped feature", target: null, unit: null },
-      {
-        title:
-          "Integrate Mixpanel into backend, track 1+ previously untrackable event",
-        target: null,
-        unit: null,
-      },
-    ],
-  },
-  {
-    title: "Scale the desk frontend codebase",
-    description:
-      "Establish conventions, structure, and testing patterns that help the frontend codebase scale.",
-    keyResults: [
-      { title: "Document conventions for APIs, components, testing", target: null, unit: null },
-      { title: "Define feature-based folder structure convention", target: null, unit: null },
-      { title: "Establish standardised fixture writing approach", target: null, unit: null },
-    ],
-  },
-  {
-    title: "Shorten the path from code to production",
-    description:
-      "Reduce friction in the development and deployment pipeline.",
-    keyResults: [
-      { title: "Max pipeline duration below 15 minutes", target: 15, unit: "minutes", current: 43, dataSource: "pipeline:max_duration" },
-      { title: "Reduce E2E retry cost to single-test re-run", target: null, unit: null },
-      { title: "Deployment automation proposal with team buy-in", target: null, unit: null },
-    ],
-  },
-  {
-    title: "Invest in my teammates",
-    description:
-      "Grow as a mentor and contributor to the team through reviews, feedback, and documentation.",
-    keyResults: [
-      { title: "Reasoning in >80% of review comments", target: 80, unit: "percent" },
-      { title: "Peer feedback from 2+ teammates", target: 2, unit: "teammates" },
-      { title: "Author 2+ internal docs on frequent MR comment topics", target: 2, unit: "documents" },
-    ],
-  },
-];
-
 export const objectiveRoutes = new Elysia({ prefix: "/api" })
   // List objectives with evidence summaries
   .get("/objectives", async () => {
-    const rows = await db
-      .select()
-      .from(objectives)
-      .orderBy(objectives.id);
-
     const result: ObjectiveWithSummary[] = [];
 
-    for (const obj of rows) {
-      const krRows = await db
-        .select()
-        .from(keyResults)
-        .where(eq(keyResults.objectiveId, obj.id))
-        .orderBy(keyResults.id);
-
+    for (const obj of OBJECTIVES) {
       const krsWithSummary: KeyResultWithSummary[] = [];
-      for (const kr of krRows) {
+      for (const kr of obj.keyResults) {
         krsWithSummary.push({
-          ...mapKeyResult(kr),
-          evidenceSummary: await computeEvidenceSummary(kr.id),
+          slug: kr.slug,
+          objectiveSlug: obj.slug,
+          title: kr.title,
+          evidenceSummary: await computeEvidenceSummary(kr.slug),
         });
       }
 
       result.push({
-        ...mapObjective(obj),
+        slug: obj.slug,
+        title: obj.title,
+        description: obj.description,
         keyResults: krsWithSummary,
       });
     }
@@ -311,33 +233,7 @@ export const objectiveRoutes = new Elysia({ prefix: "/api" })
     return result;
   })
 
-  // Create objective
-  .post(
-    "/objectives",
-    async ({ body }) => {
-      const [row] = await db
-        .insert(objectives)
-        .values({
-          title: body.title,
-          description: body.description ?? null,
-          year: body.year,
-          status: "active",
-          createdAt: new Date(),
-        })
-        .returning();
-      return mapObjective(row);
-    },
-    {
-      beforeHandle: [requireOwner],
-      body: t.Object({
-        title: t.String(),
-        description: t.Optional(t.String()),
-        year: t.Number(),
-      }),
-    }
-  )
-
-  // Get objective detail with full evidence
+  // Epic search — must be before /:slug to avoid route conflict
   .get("/objectives/epics", async ({ query }) => {
     const q = query?.q ?? "";
     const rows = await db
@@ -353,212 +249,80 @@ export const objectiveRoutes = new Elysia({ prefix: "/api" })
     return rows;
   })
 
-  // Seed objectives
-  .post("/objectives/seed", async () => {
-    // Idempotent: check if 2026 objectives exist
-    const existing = await db
-      .select()
-      .from(objectives)
-      .where(eq(objectives.year, 2026));
+  // Search entities for evidence linking — must be before /:slug
+  .get("/objectives/search", async ({ query: q, set }) => {
+    const type = q?.type as string;
+    const search = (q?.q as string) ?? "";
 
-    if (existing.length === 0) {
-      for (const obj of SEED_DATA) {
-        const [row] = await db
-          .insert(objectives)
-          .values({
-            title: obj.title,
-            description: obj.description,
-            year: 2026,
-            status: "active",
-            createdAt: new Date(),
-          })
-          .returning();
-
-        for (const kr of obj.keyResults) {
-          await db.insert(keyResults).values({
-            objectiveId: row.id,
-            title: kr.title,
-            targetValue: kr.target ? String(kr.target) : null,
-            currentValue: "current" in kr && kr.current ? String(kr.current) : null,
-            unit: kr.unit,
-            dataSource: "dataSource" in kr ? (kr as any).dataSource : null,
-            status: "on_track",
-            createdAt: new Date(),
-          });
-        }
-      }
+    if (!type) {
+      set.status = 400;
+      return { error: "type parameter required" };
     }
 
-    // Return the full list
-    const rows = await db
-      .select()
-      .from(objectives)
-      .where(eq(objectives.year, 2026))
-      .orderBy(objectives.id);
-
-    const result: ObjectiveWithSummary[] = [];
-    for (const obj of rows) {
-      const krRows = await db
-        .select()
-        .from(keyResults)
-        .where(eq(keyResults.objectiveId, obj.id))
-        .orderBy(keyResults.id);
-
-      const krsWithSummary: KeyResultWithSummary[] = [];
-      for (const kr of krRows) {
-        krsWithSummary.push({
-          ...mapKeyResult(kr),
-          evidenceSummary: await computeEvidenceSummary(kr.id),
-        });
-      }
-
-      result.push({ ...mapObjective(obj), keyResults: krsWithSummary });
+    if (type === "ticket") {
+      const rows = await db
+        .select({ key: tickets.key, title: tickets.title })
+        .from(tickets)
+        .where(
+          or(
+            ilike(tickets.key, `%${search}%`),
+            ilike(tickets.title, `%${search}%`)
+          )
+        )
+        .limit(20);
+      return rows.map((r) => ({ id: r.key, title: `${r.key} ${r.title}` }));
     }
 
-    return result;
-  }, { beforeHandle: [requireOwner] })
+    if (type === "document") {
+      const rows = await db
+        .select({ confluenceId: confluenceDocuments.confluenceId, title: confluenceDocuments.title })
+        .from(confluenceDocuments)
+        .where(search ? ilike(confluenceDocuments.title, `%${search}%`) : undefined)
+        .limit(20);
+      return rows.map((r) => ({ id: r.confluenceId, title: r.title }));
+    }
 
-  // Get objective detail
-  .get("/objectives/:id", async ({ params, set }) => {
-    const id = Number(params.id);
-    const [obj] = await db
-      .select()
-      .from(objectives)
-      .where(eq(objectives.id, id));
+    set.status = 400;
+    return { error: `Unknown search type: ${type}` };
+  })
+
+  // Get objective detail with full evidence
+  .get("/objectives/:slug", async ({ params, set }) => {
+    const obj = getObjective(params.slug);
 
     if (!obj) {
       set.status = 404;
       return { error: "Not found" };
     }
 
-    const krRows = await db
-      .select()
-      .from(keyResults)
-      .where(eq(keyResults.objectiveId, id))
-      .orderBy(keyResults.id);
-
-    const krsWithEvidence = [];
-    for (const kr of krRows) {
+    const krsWithEvidence: KeyResultWithEvidence[] = [];
+    for (const kr of obj.keyResults) {
       krsWithEvidence.push({
-        ...mapKeyResult(kr),
-        evidence: await resolveEvidence(kr.id),
+        slug: kr.slug,
+        objectiveSlug: obj.slug,
+        title: kr.title,
+        evidence: await resolveEvidence(kr.slug),
       });
     }
 
     const result: ObjectiveWithKeyResults = {
-      ...mapObjective(obj),
+      slug: obj.slug,
+      title: obj.title,
+      description: obj.description,
       keyResults: krsWithEvidence,
     };
     return result;
   })
 
-  // Update objective
-  .patch(
-    "/objectives/:id",
-    async ({ params, body, set }) => {
-      const id = Number(params.id);
-      const updates: Record<string, unknown> = {};
-      if (body.title !== undefined) updates.title = body.title;
-      if (body.description !== undefined) updates.description = body.description;
-      if (body.status !== undefined) updates.status = body.status;
-
-      const [row] = await db
-        .update(objectives)
-        .set(updates)
-        .where(eq(objectives.id, id))
-        .returning();
-
-      if (!row) {
-        set.status = 404;
-        return { error: "Not found" };
-      }
-      return mapObjective(row);
-    },
-    {
-      beforeHandle: [requireOwner],
-      body: t.Object({
-        title: t.Optional(t.String()),
-        description: t.Optional(t.String()),
-        status: t.Optional(t.String()),
-      }),
-    }
-  )
-
-  // Create key result
-  .post(
-    "/objectives/:id/key-results",
-    async ({ params, body }) => {
-      const objectiveId = Number(params.id);
-      const [row] = await db
-        .insert(keyResults)
-        .values({
-          objectiveId,
-          title: body.title,
-          targetValue: body.targetValue ? String(body.targetValue) : null,
-          currentValue: body.currentValue ? String(body.currentValue) : null,
-          unit: body.unit ?? null,
-          status: "on_track",
-          createdAt: new Date(),
-        })
-        .returning();
-      return mapKeyResult(row);
-    },
-    {
-      beforeHandle: [requireOwner],
-      body: t.Object({
-        title: t.String(),
-        targetValue: t.Optional(t.Number()),
-        currentValue: t.Optional(t.Number()),
-        unit: t.Optional(t.String()),
-      }),
-    }
-  )
-
-  // Update key result
-  .patch(
-    "/key-results/:id",
-    async ({ params, body, set }) => {
-      const id = Number(params.id);
-      const updates: Record<string, unknown> = {};
-      if (body.status !== undefined) updates.status = body.status;
-      if (body.currentValue !== undefined)
-        updates.currentValue = String(body.currentValue);
-      if (body.title !== undefined) updates.title = body.title;
-      if (body.dataSource !== undefined) updates.dataSource = body.dataSource;
-
-      const [row] = await db
-        .update(keyResults)
-        .set(updates)
-        .where(eq(keyResults.id, id))
-        .returning();
-
-      if (!row) {
-        set.status = 404;
-        return { error: "Not found" };
-      }
-      return mapKeyResult(row);
-    },
-    {
-      beforeHandle: [requireOwner],
-      body: t.Object({
-        status: t.Optional(t.String()),
-        currentValue: t.Optional(t.Number()),
-        title: t.Optional(t.String()),
-        dataSource: t.Optional(t.Nullable(t.String())),
-      }),
-    }
-  )
-
   // Add evidence link
   .post(
-    "/key-results/:id/evidence",
+    "/key-results/:slug/evidence",
     async ({ params, body }) => {
-      const krId = Number(params.id);
       const [row] = await db
         .insert(entityLinks)
         .values({
           sourceType: "key_result",
-          sourceId: krId,
+          sourceId: params.slug,
           targetType: body.targetType,
           targetId: body.targetId,
           createdAt: new Date(),
@@ -576,9 +340,233 @@ export const objectiveRoutes = new Elysia({ prefix: "/api" })
   )
 
   // Remove evidence link
-  .delete("/key-results/:id/evidence/:linkId", async ({ params }) => {
+  .delete("/key-results/:slug/evidence/:linkId", async ({ params }) => {
     await db
       .delete(entityLinks)
       .where(eq(entityLinks.id, Number(params.linkId)));
     return { ok: true };
-  }, { beforeHandle: [requireOwner] });
+  }, { beforeHandle: [requireOwner] })
+
+  // KR Timeline
+  .get("/key-results/:slug/timeline", async ({ params, query, set }) => {
+    const kr = getKeyResult(params.slug);
+    if (!kr) {
+      set.status = 404;
+      return { error: "Key result not found" };
+    }
+
+    const evidence = await resolveEvidence(params.slug);
+    const events: TimelineEvent[] = [];
+
+    // Collect entity IDs by type
+    const ticketKeys = [...new Set(evidence.filter((e) => e.type === "ticket").map((e) => e.id))];
+    const mrIds = [...new Set(evidence.filter((e) => e.type === "merge_request").map((e) => Number(e.id)))];
+    const docIds = [...new Set(evidence.filter((e) => e.type === "confluence_document").map((e) => e.id))];
+
+    // Build date filters
+    const sinceDate = query?.since ? new Date(query.since as string) : undefined;
+    const untilDate = query?.until ? new Date(query.until as string) : undefined;
+
+    const jiraBaseUrl = env.JIRA_BASE_URL ? env.JIRA_BASE_URL.replace(/\/jira\/?$/, "") : "";
+    const gitlabBaseUrl = env.GITLAB_BASE_URL || "";
+
+    // --- Ticket events ---
+    if (ticketKeys.length > 0) {
+      // Derive ticket_created and ticket_closed from tickets table
+      const ticketRows = await db
+        .select()
+        .from(tickets)
+        .where(inArray(tickets.key, ticketKeys));
+
+      // Build ticket title lookup
+      const ticketTitleMap = new Map<string, string>();
+      for (const t of ticketRows) ticketTitleMap.set(t.key, t.title);
+
+      for (const t of ticketRows) {
+        const epicKey = evidence.find((e) => e.id === t.key)?.epicKey ?? null;
+
+        events.push({
+          id: `ticket_created:${t.key}`,
+          type: "ticket_created",
+          title: "Created",
+          subtitle: t.title,
+          occurredAt: t.jiraCreatedAt.toISOString(),
+          externalUrl: jiraBaseUrl ? `${jiraBaseUrl}/browse/${t.key}` : null,
+          entityType: "ticket",
+          entityId: t.key,
+          parentTicketKey: null,
+          epicKey,
+        });
+      }
+
+      // Status change events — only show closure transitions
+      const teFilters = [inArray(ticketEvents.ticketKey, ticketKeys)];
+      if (sinceDate) teFilters.push(gte(ticketEvents.occurredAt, sinceDate));
+      if (untilDate) teFilters.push(lte(ticketEvents.occurredAt, untilDate));
+
+      const tEvents = await db
+        .select()
+        .from(ticketEvents)
+        .where(and(...teFilters));
+
+      const closedStatuses = new Set(["done", "closed", "resolved"]);
+
+      for (const te of tEvents) {
+        const isClosure = te.toValue ? closedStatuses.has(te.toValue.toLowerCase()) : false;
+        if (!isClosure) continue;
+
+        const epicKey = evidence.find((e) => e.id === te.ticketKey)?.epicKey ?? null;
+        events.push({
+          id: `ticket_event:${te.id}`,
+          type: "ticket_closed",
+          title: "Implemented",
+          subtitle: ticketTitleMap.get(te.ticketKey) ?? te.ticketKey,
+          occurredAt: te.occurredAt.toISOString(),
+          externalUrl: jiraBaseUrl ? `${jiraBaseUrl}/browse/${te.ticketKey}` : null,
+          entityType: "ticket",
+          entityId: te.ticketKey,
+          parentTicketKey: null,
+          epicKey,
+        });
+      }
+    }
+
+    // --- MR events ---
+    if (mrIds.length > 0) {
+      const mrRows = await db
+        .select()
+        .from(mergeRequests)
+        .where(inArray(mergeRequests.id, mrIds));
+
+      for (const mr of mrRows) {
+        const epicKey = evidence.find((e) => e.id === String(mr.id))?.epicKey ?? null;
+        const mrUrl = `${gitlabBaseUrl}/${mr.projectPath}/-/merge_requests/${mr.gitlabIid}`;
+
+        // mr_opened derived from gitlabCreatedAt
+        events.push({
+          id: `mr_opened:${mr.id}`,
+          type: "mr_opened",
+          title: "Opened",
+          subtitle: mr.title,
+          occurredAt: mr.gitlabCreatedAt.toISOString(),
+          externalUrl: mrUrl,
+          entityType: "merge_request",
+          entityId: String(mr.id),
+          parentTicketKey: mr.ticketKey,
+          epicKey,
+        });
+
+        if (mr.mergedAt) {
+          events.push({
+            id: `mr_merged:${mr.id}`,
+            type: "mr_merged",
+            title: "Merged",
+            subtitle: mr.title,
+            occurredAt: mr.mergedAt.toISOString(),
+            externalUrl: mrUrl,
+            entityType: "merge_request",
+            entityId: String(mr.id),
+            parentTicketKey: mr.ticketKey,
+            epicKey,
+          });
+        }
+      }
+
+      // MR events (commented, etc.)
+      const mreFilters = [inArray(mergeRequestEvents.mergeRequestId, mrIds)];
+      if (sinceDate) mreFilters.push(gte(mergeRequestEvents.occurredAt, sinceDate));
+      if (untilDate) mreFilters.push(lte(mergeRequestEvents.occurredAt, untilDate));
+
+      const mrEvts = await db
+        .select()
+        .from(mergeRequestEvents)
+        .where(and(...mreFilters));
+
+      // Build MR lookup for ticket key
+      const mrLookup = new Map<number, typeof mrRows[0]>();
+      for (const mr of mrRows) mrLookup.set(mr.id, mr);
+
+      for (const mre of mrEvts) {
+        const mr = mrLookup.get(mre.mergeRequestId);
+        if (!mr) continue;
+        const epicKey = evidence.find((e) => e.id === String(mr.id))?.epicKey ?? null;
+
+        events.push({
+          id: `mr_event:${mre.id}`,
+          type: "mr_commented",
+          title: "Commented",
+          subtitle: mr.title,
+          occurredAt: mre.occurredAt.toISOString(),
+          externalUrl: mre.externalUrl,
+          entityType: "merge_request",
+          entityId: String(mr.id),
+          parentTicketKey: mr.ticketKey,
+          epicKey,
+        });
+      }
+    }
+
+    // --- Confluence events ---
+    if (docIds.length > 0) {
+      // Fetch docs by confluenceId
+      const docRows = await db
+        .select()
+        .from(confluenceDocuments)
+        .where(inArray(confluenceDocuments.confluenceId, docIds));
+
+      const docIdToRow = new Map<string, typeof docRows[0]>();
+      const dbDocIds: number[] = [];
+      for (const doc of docRows) {
+        docIdToRow.set(doc.confluenceId, doc);
+        dbDocIds.push(doc.id);
+      }
+
+      if (dbDocIds.length > 0) {
+        const cdeFilters = [inArray(confluenceDocumentEvents.documentId, dbDocIds)];
+        if (sinceDate) cdeFilters.push(gte(confluenceDocumentEvents.occurredAt, sinceDate));
+        if (untilDate) cdeFilters.push(lte(confluenceDocumentEvents.occurredAt, untilDate));
+
+        const cEvents = await db
+          .select()
+          .from(confluenceDocumentEvents)
+          .where(and(...cdeFilters));
+
+        // Build reverse lookup: db id -> confluenceId
+        const dbIdToConfId = new Map<number, string>();
+        for (const doc of docRows) dbIdToConfId.set(doc.id, doc.confluenceId);
+
+        for (const ce of cEvents) {
+          const confId = dbIdToConfId.get(ce.documentId);
+          const doc = confId ? docIdToRow.get(confId) : undefined;
+          if (!doc) continue;
+          const epicKey = evidence.find((e) => e.id === doc.confluenceId)?.epicKey ?? null;
+
+          events.push({
+            id: `doc_event:${ce.id}`,
+            type: ce.eventType === "published" ? "confluence_published" : "confluence_updated",
+            title: ce.eventType === "published" ? "Published" : "Updated",
+            subtitle: doc.title,
+            occurredAt: ce.occurredAt.toISOString(),
+            externalUrl: ce.externalUrl,
+            entityType: "confluence_document",
+            entityId: doc.confluenceId,
+            parentTicketKey: null,
+            epicKey,
+          });
+        }
+      }
+    }
+
+    // Apply date filters to derived events (created/closed)
+    const filtered = events.filter((e) => {
+      const d = new Date(e.occurredAt);
+      if (sinceDate && d < sinceDate) return false;
+      if (untilDate && d > untilDate) return false;
+      return true;
+    });
+
+    // Sort descending by occurredAt
+    filtered.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+
+    return filtered;
+  });

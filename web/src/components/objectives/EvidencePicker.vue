@@ -6,7 +6,7 @@
         @input="search"
         @focus="showResults = true"
         type="text"
-        placeholder="Search epics to link..."
+        :placeholder="placeholder ?? 'Search epics to link...'"
         class="w-full rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
       />
     </div>
@@ -32,6 +32,7 @@ import { ref } from "vue";
 
 const props = defineProps<{
   searchFn: (q: string) => Promise<{ key: string; title: string }[]>;
+  placeholder?: string;
 }>();
 
 const emit = defineEmits<{

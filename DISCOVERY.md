@@ -50,7 +50,7 @@ Google Calendar event. Categorised as dev, non-dev, leave, or ignore. Leave dete
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
 
 **Objective**
-Annual objective with Key Results (half-yearly reviews). Key Results are evidenced by tickets, wins, and other activity. KRs can optionally have a `data_source` that auto-updates their `current_value` from live data after each sync (e.g. `pipeline:max_duration` computes the current max pipeline duration in minutes from synced pipeline data).
+Annual objective with Key Results. Objectives and KRs are hardcoded in `shared/objectives.ts` with human-readable slugs (e.g. `code-to-production`, `pipeline-duration`). Key Results are evidenced by tickets, wins, and other activity linked via `entity_links`.
 
 ### Relationships
 

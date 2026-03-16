@@ -110,35 +110,23 @@ export type EntityLinkTargetType =
 export interface EntityLink {
   id: number;
   sourceType: EntityLinkSourceType;
-  sourceId: number;
+  sourceId: string;
   targetType: EntityLinkTargetType;
   targetId: string;
   createdAt: string;
 }
 
 // OKR
-export type ObjectiveStatus = "active" | "completed" | "abandoned";
-export type KeyResultStatus = "on_track" | "at_risk" | "behind" | "completed";
-
 export interface Objective {
-  id: number;
+  slug: string;
   title: string;
-  description: string | null;
-  year: number;
-  status: ObjectiveStatus;
-  createdAt: string;
+  description: string;
 }
 
 export interface KeyResult {
-  id: number;
-  objectiveId: number;
+  slug: string;
+  objectiveSlug: string;
   title: string;
-  targetValue: number | null;
-  currentValue: number | null;
-  unit: string | null;
-  dataSource: string | null;
-  status: KeyResultStatus;
-  createdAt: string;
 }
 
 export interface EvidenceItem {
@@ -173,6 +161,26 @@ export interface ObjectiveWithKeyResults extends Objective {
 
 export interface ObjectiveWithSummary extends Objective {
   keyResults: KeyResultWithSummary[];
+}
+
+// Timeline
+export type TimelineEventType =
+  | "ticket_created" | "ticket_closed" | "ticket_status_changed"
+  | "mr_opened" | "mr_merged" | "mr_commented"
+  | "confluence_published" | "confluence_updated"
+  | "win";
+
+export interface TimelineEvent {
+  id: string;
+  type: TimelineEventType;
+  title: string;
+  subtitle: string | null;
+  occurredAt: string;
+  externalUrl: string | null;
+  entityType: string;
+  entityId: string;
+  parentTicketKey: string | null;
+  epicKey: string | null;
 }
 
 // Auth
@@ -274,7 +282,7 @@ export interface JobStats {
   avgQueuedDuration: number | null;
   p50QueuedDuration: number | null;
   retryCount: number;
-  needs: string[];
+  needs: string[] | null;
 }
 
 // Pipeline Waterfall
@@ -436,24 +444,16 @@ export interface WbsoWeekData {
   unlinkedMRs: WbsoUnlinkedMR[];
 }
 
-// Critical Path Decomposition
-export interface CriticalPathSegment {
+// Critical Path Frequency
+export interface CriticalPathFrequencyItem {
   jobName: string;
   stage: string;
-  currentEndTime: number;
-  prevEndTime: number | null;
-  ownContribution: number; // seconds, signed
-  cumulativeTotal: number;
-}
-
-export interface CriticalPathDecomposition {
-  totalDeltaSeconds: number;
-  currentMaxTime: number;
-  prevMaxTime: number | null;
-  segments: CriticalPathSegment[]; // ordered by execution
-  pathChanged: boolean;
-  newJobs: string[];
-  droppedJobs: string[];
+  frequency: number;              // 0-1
+  pipelinesAnalyzed: number;
+  pipelinesCritical: number;
+  avgContributionSeconds: number;  // avg execution duration when critical
+  exampleCritical: number[];      // pipeline IDs where job was critical (up to 3)
+  exampleNonCritical: number[];   // pipeline IDs where job was not critical (up to 3)
 }
 
 // Job Retry Trends

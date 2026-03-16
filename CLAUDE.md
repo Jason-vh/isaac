@@ -13,7 +13,8 @@ Personal impact tracker and WBSO hour estimation tool for FareHarbor.
 - **Dev server:** `bun run dev:server` (Elysia on port 3000)
 - **Dev frontend:** `bun run dev:web` (Vite on port 5173, proxies `/api` to server)
 - **Generate migration:** `bun run --filter server db:generate` (after changing `server/src/db/schema.ts`)
-- **Run migration locally:** `DATABASE_URL=<url> bun run --filter server db:migrate`
+- **Run migration locally:** `cd server && bun run db:migrate` (the `.env` file in `server/` has `DATABASE_URL`)
+- Always run migrations locally after generating them — don't leave unapplied migrations.
 - Migrations run automatically on deploy via Railway pre-deploy command.
 - Pushing to `main` triggers auto-deploy on Railway.
 
@@ -24,7 +25,7 @@ Personal impact tracker and WBSO hour estimation tool for FareHarbor.
 - **Connect to prod DB:** `railway service isaac-db && railway run psql` (uses internal URL, won't work outside Railway). Use the public URL instead: get it with `railway variables --json | grep DATABASE_PUBLIC_URL`, then `psql <url>`.
 - **Trigger production sync:** Same curl as local but against `https://isaac.vhtm.eu/api/sync/trigger`. Generate a JWT first (see below).
 - **Synced tables** (safe to truncate for re-sync): `tickets`, `ticket_events`, `merge_requests`, `merge_request_events`, `commits`, `confluence_documents`, `confluence_document_events`, `meetings`, `pipelines`, `pipeline_jobs`, `sync_log`
-- **Preserved tables** (manually entered data): `wins`, `objectives`, `key_results`, `entity_links`, `passkey_credentials`
+- **Preserved tables** (manually entered data): `wins`, `entity_links`, `passkey_credentials`
 
 ## Testing & Debugging
 

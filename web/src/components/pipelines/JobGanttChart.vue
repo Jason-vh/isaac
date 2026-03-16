@@ -162,6 +162,7 @@ const scheduling = computed(() => {
   for (const s of stageSet) stageEdges.set(s, new Set());
 
   for (const j of jobs) {
+    if (j.needs === null) continue; // stage-ordered jobs handled after stage order is known
     for (const dep of j.needs) {
       const depJob = jobMap.get(dep);
       if (depJob && depJob.stage !== j.stage) {
@@ -202,10 +203,31 @@ const scheduling = computed(() => {
     byStage.get(j.stage)!.push(j);
   }
 
-  // Resolve deps (filter to known jobs only)
+  // Resolve deps: explicit needs filtered to known jobs, or inferred stage deps
+  const stageIdx = new Map(stageOrder.map((s, i) => [s, i]));
+  const jobsByStage = new Map<string, string[]>();
+  for (const j of jobs) {
+    if (!jobsByStage.has(j.stage)) jobsByStage.set(j.stage, []);
+    jobsByStage.get(j.stage)!.push(j.name);
+  }
+
   const resolvedDeps = new Map<string, string[]>();
   for (const j of jobs) {
-    resolvedDeps.set(j.name, j.needs.filter((n) => jobMap.has(n)));
+    if (j.needs === null) {
+      // Stage-based ordering: depends on all jobs in prior stages
+      const myIdx = stageIdx.get(j.stage) ?? 0;
+      const deps: string[] = [];
+      for (const [stage, idx] of stageIdx) {
+        if (idx < myIdx) {
+          for (const depName of jobsByStage.get(stage) || []) {
+            deps.push(depName);
+          }
+        }
+      }
+      resolvedDeps.set(j.name, deps);
+    } else {
+      resolvedDeps.set(j.name, j.needs.filter((n) => jobMap.has(n)));
+    }
   }
 
   // Simulate scheduling: compute start/end times from P50 durations
@@ -272,14 +294,10 @@ const scheduling = computed(() => {
   // Compute critical path
   const cp = computeSimulatedCriticalPath(jobs, startTimes, endTimes, totalDuration);
 
-  // Apply critical path highlighting to stages
+  // Mark critical path on rows
   for (const stage of ganttStages) {
     for (const row of stage.rows) {
-      const isCritical = cp.criticalJobs.has(row.name);
-      row.onCriticalPath = isCritical;
-      for (const bar of row.bars) {
-        bar.highlight = isCritical;
-      }
+      row.onCriticalPath = cp.criticalJobs.has(row.name);
     }
   }
 

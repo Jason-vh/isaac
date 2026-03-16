@@ -6,7 +6,7 @@ export interface GanttBar {
   opacity: number;
   dashed?: boolean;
   dot?: boolean;
-  highlight?: boolean;
+  queue?: boolean;
   title?: string;
   data?: unknown;
 }

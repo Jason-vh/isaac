@@ -4,12 +4,22 @@
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Time per Job
       </h3>
-      <div class="ml-auto w-48">
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          v-if="inconsistentCount > 0"
+          class="rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors"
+          :class="filterInconsistent
+            ? 'bg-amber-500 text-white'
+            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'"
+          @click="filterInconsistent = !filterInconsistent"
+        >
+          {{ inconsistentCount }} inconsistent
+        </button>
         <input
           v-model="search"
           type="text"
           placeholder="Filter jobs..."
-          class="w-full rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+          class="w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
         />
       </div>
     </div>
@@ -21,7 +31,7 @@
       :class="gridClass"
     >
       <template v-for="(col, i) in columns" :key="col.key">
-        <div v-if="i === 4" class="h-full w-px bg-border" />
+        <div v-if="i === 3" class="h-full w-px bg-border" />
         <button
           class="text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer select-none"
           :class="[
@@ -51,11 +61,9 @@
           <div class="h-3 w-12 animate-pulse rounded bg-surface-2" />
         </div>
         <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-full w-px bg-border" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
-        <div v-if="criticalPath" class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         <div class="h-4 w-14 ml-auto animate-pulse rounded bg-surface-2" />
       </div>
     </div>
@@ -69,26 +77,23 @@
         class="grid items-center gap-x-2 px-4 py-2.5"
         :class="gridClass"
       >
-        <!-- Job name + runs + CV badge -->
-        <div class="min-w-0 flex items-center gap-1.5">
-          <div class="min-w-0">
+        <!-- Job name + runs + variance warning -->
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
             <p class="truncate text-sm text-ink">{{ row.name }}</p>
-            <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+            <div v-if="row.unstable" class="group/badge relative shrink-0 flex items-center">
+              <svg class="h-3.5 w-3.5 text-amber-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" /></svg>
+              <div class="invisible group-hover/badge:visible absolute left-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg">
+                <p class="font-medium text-ink">High duration variance</p>
+                <p class="mt-0.5 text-ink-muted">σ = {{ fmtDuration(row.stddev) }} across {{ row.runCount }} runs</p>
+              </div>
+            </div>
           </div>
-          <span
-            v-if="row.cvBadge === 'amber'"
-            class="shrink-0 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700"
-            title="Moderate variance (CV 10-25%)"
-          >CV {{ row.cv }}%</span>
-          <span
-            v-else-if="row.cvBadge === 'red'"
-            class="shrink-0 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-medium text-red-700"
-            title="High variance (CV > 25%)"
-          >unstable</span>
+          <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
         </div>
 
         <!-- Distribution bar + p50 number -->
-        <div class="flex flex-col items-end gap-0.5">
+        <div class="group/dist relative flex flex-col items-end gap-0.5">
           <JobDistributionBar
             :p10="row.p10Duration"
             :p50="row.medianDuration"
@@ -98,6 +103,16 @@
           <p class="text-right font-mono text-xs tabular-nums text-ink">
             {{ fmtDuration(row.medianDuration) }}
           </p>
+          <div
+            v-if="row.p10Duration != null && row.p90Duration != null"
+            class="invisible group-hover/dist:visible absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg"
+          >
+            <div class="flex gap-3 font-mono tabular-nums text-ink-muted">
+              <span>p10 {{ fmtDuration(row.p10Duration) }}</span>
+              <span class="text-ink font-medium">p50 {{ fmtDuration(row.medianDuration) }}</span>
+              <span>p90 {{ fmtDuration(row.p90Duration) }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- Duration delta -->
@@ -110,11 +125,6 @@
           </template>
           <p v-else class="text-[10px] text-ink-faint">new</p>
         </div>
-
-        <!-- P50 Queue -->
-        <p class="text-right font-mono text-xs tabular-nums" :class="row.p50Queue != null ? 'text-amber-600' : 'text-ink-faint'">
-          {{ row.p50Queue != null ? fmtDuration(row.p50Queue) : '--' }}
-        </p>
 
         <!-- Divider -->
         <div class="h-full w-px bg-border" />
@@ -138,11 +148,6 @@
           <p v-else class="text-[10px] text-ink-faint">new</p>
         </div>
 
-        <!-- CP Contribution -->
-        <p v-if="criticalPath" class="text-right text-xs font-mono tabular-nums" :class="row.cpContrib !== null ? (row.cpContrib > 0 ? 'text-red-500' : row.cpContrib < 0 ? 'text-emerald-600' : 'text-ink-faint') : 'text-ink-faint'">
-          {{ row.cpContrib !== null ? fmtContribution(row.cpContrib) : '\u2014' }}
-        </p>
-
         <!-- Trend sparkline -->
         <div class="flex justify-end">
           <JobSparkline v-if="row.trendWeeks" :weeks="row.trendWeeks" :severity="row.severity!" />
@@ -154,7 +159,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { JobStats, CriticalPathDecomposition, JobRetryTrend } from "@isaac/shared";
+import type { JobStats, JobRetryTrend } from "@isaac/shared";
 import JobDistributionBar from "./JobDistributionBar.vue";
 import JobSparkline from "./JobSparkline.vue";
 
@@ -163,39 +168,24 @@ const props = withDefaults(defineProps<{
   prevJobs: JobStats[];
   jobTrends?: JobRetryTrend[];
   loading: boolean;
-  criticalPath?: CriticalPathDecomposition | null;
 }>(), {
   jobTrends: () => [],
 });
 
-// Build a map of job name -> ownContribution for quick lookup
-const cpContribMap = computed(() => {
-  if (!props.criticalPath) return null;
-  const map = new Map<string, number>();
-  for (const seg of props.criticalPath.segments) {
-    map.set(seg.jobName, seg.ownContribution);
-  }
-  return map;
-});
-
-function fmtContribution(seconds: number): string {
+function fmtDuration(seconds: number | null): string {
+  if (seconds == null) return "--";
   const abs = Math.abs(seconds);
   const m = Math.floor(abs / 60);
   const s = Math.round(abs % 60);
-  const sign = seconds > 0 ? "+" : seconds < 0 ? "-" : "";
+  const sign = seconds < 0 ? "-" : "";
+  if (m === 0) return `${sign}${s}s`;
   return `${sign}${m}m ${s}s`;
 }
 
-function fmtDuration(seconds: number | null): string {
-  if (seconds == null) return "--";
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return `${m}m ${s}s`;
-}
-
 const search = ref("");
+const filterInconsistent = ref(false);
 
-type SortKey = "name" | "medianDuration" | "delta" | "p50Queue" | "cv" | "cpContrib" | "retryRate" | "retryDelta" | "trend";
+type SortKey = "name" | "medianDuration" | "delta" | "retryRate" | "retryDelta" | "trend";
 const sortKey = ref<SortKey>("delta");
 const sortDir = ref<"asc" | "desc">("desc");
 
@@ -204,23 +194,15 @@ const columns = computed(() => {
     { key: "name", label: "Job", align: "left" },
     { key: "medianDuration", label: "P50 Duration", align: "right" },
     { key: "delta", label: "\u0394 Duration", align: "right" },
-    { key: "p50Queue", label: "P50 Queue", align: "right" },
     // divider column (1px) is not a button — handled in template
     { key: "retryRate", label: "Retry Rate", align: "right" },
     { key: "retryDelta", label: "\u0394 Retries", align: "right" },
+    { key: "trend", label: "Trend", align: "right" },
   ];
-  if (props.criticalPath) {
-    cols.push({ key: "cpContrib", label: "CP", align: "right" });
-  }
-  cols.push({ key: "trend", label: "Trend", align: "right" });
   return cols;
 });
 
-const gridClass = computed(() =>
-  props.criticalPath
-    ? "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem_5rem_3.5rem]"
-    : "grid-cols-[1fr_9rem_6rem_5rem_1px_5rem_5rem_3.5rem]"
-);
+const gridClass = "grid-cols-[1fr_9rem_6rem_1px_5rem_5rem_3.5rem]";
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) {
@@ -253,14 +235,12 @@ const allRows = computed(() => {
 
     if (prev) {
       const prevMedian = prev.p50Duration ?? prev.avgDuration;
-      if (prevMedian > 0) {
-        prevMedianDuration = prevMedian;
-        const pct = Math.round(((medianDuration - prevMedian) / prevMedian) * 100);
-        delta = pct;
-        const sign = pct > 0 ? "+" : "";
-        deltaLabel = `${sign}${pct}%`;
-        deltaClass = pct < 0 ? "text-emerald-600" : pct > 0 ? "text-red-500" : "text-ink-muted";
-      }
+      prevMedianDuration = prevMedian;
+      const diff = medianDuration - prevMedian;
+      delta = diff;
+      const sign = diff > 0 ? "+" : "";
+      deltaLabel = `${sign}${fmtDuration(diff)}`;
+      deltaClass = diff < -1 ? "text-emerald-600" : diff > 1 ? "text-red-500" : "text-ink-muted";
     }
 
     // Retry rate
@@ -283,20 +263,8 @@ const allRows = computed(() => {
       }
     }
 
-    // CP contribution
-    const cpContrib = cpContribMap.value?.get(j.name) ?? null;
-
-    // CV (coefficient of variation)
-    const cv = j.stddevDuration != null && j.avgDuration > 0
-      ? Math.round((j.stddevDuration / j.avgDuration) * 100)
-      : null;
-
-    // CV badge: only show for jobs with >= 5 runs
-    let cvBadge: "amber" | "red" | null = null;
-    if (cv != null && j.runCount >= 5) {
-      if (cv > 25) cvBadge = "red";
-      else if (cv >= 10) cvBadge = "amber";
-    }
+    // Variance flag: only flag when stddev >= 90s (meaningful absolute swing)
+    const unstable = j.stddevDuration != null && j.runCount >= 5 && j.stddevDuration >= 90;
 
     const trend = trendMap.value.get(j.name);
 
@@ -310,15 +278,13 @@ const allRows = computed(() => {
       delta,
       deltaLabel,
       deltaClass,
-      p50Queue: j.p50QueuedDuration,
       retryRate,
       retryRateLabel,
       retryRateDelta,
       retryRateDeltaLabel,
       prevRetryRateLabel,
-      cpContrib,
-      cv,
-      cvBadge,
+      unstable,
+      stddev: j.stddevDuration != null ? Math.round(j.stddevDuration) : null,
       trendWeeks: trend?.weeks ?? null,
       severity: trend?.severity ?? null,
       slope: trend?.slope ?? null,
@@ -347,18 +313,6 @@ const sortedRows = computed(() => {
         if (b.delta === null) return -1;
         return dir * (a.delta - b.delta);
       }
-      case "p50Queue": {
-        if (a.p50Queue == null && b.p50Queue == null) return 0;
-        if (a.p50Queue == null) return 1;
-        if (b.p50Queue == null) return -1;
-        return dir * (a.p50Queue - b.p50Queue);
-      }
-      case "cv": {
-        if (a.cv === null && b.cv === null) return 0;
-        if (a.cv === null) return 1;
-        if (b.cv === null) return -1;
-        return dir * (a.cv - b.cv);
-      }
       case "retryRate":
         return dir * (a.retryRate - b.retryRate);
       case "retryDelta": {
@@ -366,12 +320,6 @@ const sortedRows = computed(() => {
         if (a.retryRateDelta === null) return 1;
         if (b.retryRateDelta === null) return -1;
         return dir * (a.retryRateDelta - b.retryRateDelta);
-      }
-      case "cpContrib": {
-        if (a.cpContrib === null && b.cpContrib === null) return 0;
-        if (a.cpContrib === null) return 1;
-        if (b.cpContrib === null) return -1;
-        return dir * (a.cpContrib - b.cpContrib);
       }
       case "trend": {
         if (a.slope === null && b.slope === null) return 0;
@@ -391,11 +339,21 @@ const searchTerms = computed(() =>
   search.value.toLowerCase().split(/\s+/).filter(Boolean)
 );
 
+const inconsistentCount = computed(() =>
+  allRows.value.filter((r) => r.unstable).length
+);
+
 const rows = computed(() => {
-  if (searchTerms.value.length === 0) return sortedRows.value;
-  return sortedRows.value.filter((r) => {
-    const name = r.name.toLowerCase();
-    return searchTerms.value.some((term) => name.includes(term));
-  });
+  let filtered = sortedRows.value;
+  if (filterInconsistent.value) {
+    filtered = filtered.filter((r) => r.unstable);
+  }
+  if (searchTerms.value.length > 0) {
+    filtered = filtered.filter((r) => {
+      const name = r.name.toLowerCase();
+      return searchTerms.value.some((term) => name.includes(term));
+    });
+  }
+  return filtered;
 });
 </script>

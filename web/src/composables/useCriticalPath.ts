@@ -5,7 +5,11 @@ export interface CriticalPathResult {
   slack: Map<string, number>; // seconds of slack per job name
 }
 
-const EPSILON_MS = 500;
+// Proportional epsilon: 1% of pipeline duration (min 1s) to absorb runner
+// queue time and GitLab scheduling latency between dependent jobs.
+function computeEpsilon(totalMs: number): number {
+  return Math.max(1000, totalMs * 0.01);
+}
 
 /**
  * Compute the critical path for a single pipeline's real job timestamps.
@@ -33,23 +37,69 @@ export function computeCriticalPath(
   }
 
   // Step 2: forward pass – EST and EFT in ms relative to pipelineStart
+  // Use queue-adjusted start (startedAt - queuedDurationSeconds) so that runner
+  // queue time doesn't appear as slack on predecessor jobs. Also use the earliest
+  // start across ALL attempts (including retries) so that retry time is captured.
+  const earliestStart = new Map<string, number>();
+  for (const j of jobs) {
+    if (!j.startedAt) continue;
+    let start = new Date(j.startedAt).getTime();
+    if (j.queuedDurationSeconds && j.queuedDurationSeconds > 0) {
+      start -= j.queuedDurationSeconds * 1000;
+    }
+    const cur = earliestStart.get(j.name);
+    if (cur === undefined || start < cur) earliestStart.set(j.name, start);
+  }
+
   const est = new Map<string, number>();
   const eft = new Map<string, number>();
 
   for (const [name, job] of jobMap) {
-    est.set(name, new Date(job.startedAt!).getTime() - pipelineStart);
+    const adjStart = earliestStart.get(name) ?? new Date(job.startedAt!).getTime();
+    est.set(name, adjStart - pipelineStart);
     eft.set(name, new Date(job.finishedAt!).getTime() - pipelineStart);
   }
 
   // Step 3: build consumer map (name → names that list it in needs)
+  // For jobs with needs === null (stage-based ordering), infer deps from stage order
   const consumers = new Map<string, string[]>();
   for (const [name] of jobMap) consumers.set(name, []);
 
+  // Determine stage order from earliest start times
+  const stageStarts = new Map<string, number>();
   for (const [name, job] of jobMap) {
-    if (!job.needs) continue;
-    for (const dep of job.needs) {
-      if (jobMap.has(dep)) {
-        consumers.get(dep)!.push(name);
+    const start = est.get(name)!;
+    const cur = stageStarts.get(job.stage);
+    if (cur === undefined || start < cur) stageStarts.set(job.stage, start);
+  }
+  const orderedStages = [...stageStarts.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([stage]) => stage);
+  const stageIndex = new Map(orderedStages.map((s, i) => [s, i]));
+
+  // Group jobs by stage
+  const jobsByStage = new Map<string, string[]>();
+  for (const [name, job] of jobMap) {
+    if (!jobsByStage.has(job.stage)) jobsByStage.set(job.stage, []);
+    jobsByStage.get(job.stage)!.push(name);
+  }
+
+  for (const [name, job] of jobMap) {
+    if (job.needs === null) {
+      // Stage-based ordering: depends on all jobs in prior stages
+      const myIdx = stageIndex.get(job.stage) ?? 0;
+      for (const [stage, idx] of stageIndex) {
+        if (idx < myIdx) {
+          for (const depName of jobsByStage.get(stage) || []) {
+            consumers.get(depName)!.push(name);
+          }
+        }
+      }
+    } else {
+      for (const dep of job.needs) {
+        if (jobMap.has(dep)) {
+          consumers.get(dep)!.push(name);
+        }
       }
     }
   }
@@ -73,7 +123,14 @@ export function computeCriticalPath(
 
   // Recursive resolve for backward pass
   function resolveLFT(name: string): number {
-    if (lft.has(name) && lst.has(name)) return lft.get(name)!;
+    if (lft.has(name)) return lft.get(name)!;
+
+    // Job not in jobMap (e.g. skipped/manual) — treat as unconstrained
+    if (!est.has(name)) {
+      lft.set(name, totalMs);
+      lst.set(name, totalMs);
+      return totalMs;
+    }
 
     const jobConsumers = consumers.get(name) || [];
     let latestFinish: number;
@@ -103,13 +160,14 @@ export function computeCriticalPath(
   }
 
   // Step 5: compute slack
+  const epsilonMs = computeEpsilon(totalMs);
   const slack = new Map<string, number>();
   const criticalJobs = new Set<string>();
 
   for (const [name] of jobMap) {
     const s = (lst.get(name)! - est.get(name)!);
     slack.set(name, s / 1000); // convert to seconds for display
-    if (Math.abs(s) < EPSILON_MS) {
+    if (Math.abs(s) < epsilonMs) {
       criticalJobs.add(name);
     }
   }
@@ -133,14 +191,43 @@ export function computeSimulatedCriticalPath(
 
   const jobMap = new Map(jobs.map((j) => [j.name, j]));
 
-  // Build consumer map
+  // Build consumer map, inferring stage deps for stage-ordered jobs
   const consumers = new Map<string, string[]>();
   for (const j of jobs) consumers.set(j.name, []);
 
+  // Determine stage order from start times
+  const stageStarts = new Map<string, number>();
   for (const j of jobs) {
-    for (const dep of j.needs) {
-      if (consumers.has(dep)) {
-        consumers.get(dep)!.push(j.name);
+    const start = startTimes.get(j.name) ?? 0;
+    const cur = stageStarts.get(j.stage);
+    if (cur === undefined || start < cur) stageStarts.set(j.stage, start);
+  }
+  const orderedStages = [...stageStarts.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .map(([stage]) => stage);
+  const stageIndex = new Map(orderedStages.map((s, i) => [s, i]));
+
+  const jobsByStage = new Map<string, string[]>();
+  for (const j of jobs) {
+    if (!jobsByStage.has(j.stage)) jobsByStage.set(j.stage, []);
+    jobsByStage.get(j.stage)!.push(j.name);
+  }
+
+  for (const j of jobs) {
+    if (j.needs === null) {
+      const myIdx = stageIndex.get(j.stage) ?? 0;
+      for (const [stage, idx] of stageIndex) {
+        if (idx < myIdx) {
+          for (const depName of jobsByStage.get(stage) || []) {
+            consumers.get(depName)!.push(j.name);
+          }
+        }
+      }
+    } else {
+      for (const dep of j.needs) {
+        if (consumers.has(dep)) {
+          consumers.get(dep)!.push(j.name);
+        }
       }
     }
   }

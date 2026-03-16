@@ -6,8 +6,6 @@
     class="block"
     preserveAspectRatio="none"
   >
-    <title>p10: {{ fmtDuration(p10) }} / p50: {{ fmtDuration(p50) }} / p90: {{ fmtDuration(p90) }}</title>
-
     <!-- Full-width background track -->
     <rect x="0" :y="8" width="100%" height="4" rx="2" fill="#e5e7eb" />
 
@@ -56,11 +54,4 @@ const rangeW = computed(() => {
   return `${end - start}%`;
 });
 const tickX = computed(() => pct(props.p50 ?? 0));
-
-function fmtDuration(seconds: number | null): string {
-  if (seconds == null) return "--";
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return `${m}m ${s}s`;
-}
 </script>

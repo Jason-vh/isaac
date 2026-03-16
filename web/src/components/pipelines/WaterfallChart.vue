@@ -17,8 +17,8 @@
       <p class="text-xs text-ink-muted">{{ hoveredBarKind === 'queue' ? 'queued' : hoveredJob.stage }}</p>
       <div class="mt-1 flex items-center gap-3 text-xs">
         <template v-if="hoveredBarKind === 'queue'">
-          <span class="font-mono text-amber-500">
-            Queued: {{ formatDuration(hoveredJob.queuedDurationSeconds!) }}
+          <span class="font-mono text-ink-muted">
+            {{ formatDuration(hoveredJob.queuedDurationSeconds!) }}
           </span>
         </template>
         <template v-else>
@@ -26,10 +26,10 @@
           <span v-if="hoveredJob.durationSeconds != null" class="font-mono text-ink-muted">
             {{ formatDuration(hoveredJob.durationSeconds) }}
           </span>
-          <span v-if="hoveredJob.queuedDurationSeconds" class="font-mono text-amber-500">
+          <span v-if="hoveredJob.queuedDurationSeconds" class="font-mono text-ink-muted">
             +{{ formatDuration(hoveredJob.queuedDurationSeconds) }} queued
           </span>
-          <span v-if="hoveredJob.retried" class="text-amber-500">retried</span>
+          <span v-if="hoveredJob.retried" class="text-ink-muted">retried</span>
         </template>
       </div>
       <div v-if="criticalPath && !hoveredJob.retried && hoveredJob.durationSeconds != null" class="mt-1 text-xs">
@@ -267,15 +267,16 @@ const stages = computed<GanttStage[]>(() => {
             });
             continue;
           }
-          // Queue bar (before execution)
+          // Queue bar (before execution) — thin dashed line
           if (job.queuedDurationSeconds && job.queuedDurationSeconds > 0) {
             const queueStart = jobStart(job) - job.queuedDurationSeconds;
             bars.push({
               key: `queue-${job.id}`,
               startPct: (queueStart / dur) * 100,
               widthPct: (job.queuedDurationSeconds / dur) * 100,
-              color: "#F59E0B",
-              opacity: 0.5,
+              color: "#9CA3AF",
+              opacity: 0.4,
+              queue: true,
               data: { kind: "queue" as const, job },
             });
           }
@@ -289,7 +290,6 @@ const stages = computed<GanttStage[]>(() => {
             color: job.retried ? "#FBBF24" : statusToColor(job.status),
             opacity: 1,
             dashed: job.status === "skipped",
-            highlight: isCritical === true && !job.retried,
             data: { kind: "execution" as const, job },
           });
         }
@@ -306,12 +306,11 @@ const stages = computed<GanttStage[]>(() => {
             nonRetried?.startedAt && nonRetried?.finishedAt
               ? ((jobStart(nonRetried) + jobDuration(nonRetried)) / dur) * 100
               : undefined,
-          depToPct:
-            nonRetried?.startedAt
-              ? (jobStart(nonRetried) / dur) * 100
-              : undefined,
         };
-      }).map((row) => ({ ...row, hidden: !isMatch(row.name) })),
+      }).map((row) => ({
+        ...row,
+        hidden: !isMatch(row.name) || (props.showCriticalPath && row.onCriticalPath === false),
+      })),
     };
   });
 });

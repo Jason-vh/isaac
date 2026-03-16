@@ -44,8 +44,17 @@ export const router = createRouter({
     },
     {
       path: "/objectives",
-      name: "objectives",
-      component: () => import("../views/ObjectivesView.vue"),
+      children: [
+        {
+          path: "",
+          redirect: "/objectives/feature-adoption",
+        },
+        {
+          path: ":slug",
+          name: "objective-detail",
+          component: () => import("../views/ObjectiveDetailView.vue"),
+        },
+      ],
     },
 {
       path: "/pipelines",

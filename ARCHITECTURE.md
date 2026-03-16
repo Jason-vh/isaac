@@ -52,8 +52,7 @@ isaac/
 │   │   │   ├── gitlab-pipelines.ts  # Pipeline + job sync (all pipelines, not just mine)
 │   │   │   ├── confluence.ts
 │   │   │   ├── calendar.ts     # Calls Apps Script endpoint
-│   │   │   ├── linker.ts       # Infers links between entities
-│   │   │   └── kr-updater.ts   # Auto-updates KRs with data_source from live data
+│   │   │   └── linker.ts       # Infers links between entities
 │   │   ├── slack/
 │   │   │   └── handler.ts
 │   │   └── wbso/
@@ -91,7 +90,6 @@ isaac/
 │       │   ├── objectives/
 │       │       ├── ObjectiveCard.vue        # Expandable objective with KR list
 │       │       ├── KeyResultRow.vue         # Single KR with status badge + progress
-│       │       ├── StatusBadge.vue          # on_track/at_risk/behind/completed pill
 │       │       ├── EvidencePanel.vue        # Linked evidence items (epics, tickets, MRs, docs)
 │       │       └── EvidencePicker.vue       # Search + add epic evidence to a KR
 │       │   ├── pipelines/
@@ -120,7 +118,8 @@ isaac/
 │           └── client.ts       # Typed API client
 └── shared/
     ├── package.json
-    └── types.ts                # Shared TS types
+    ├── types.ts                # Shared TS types
+    └── objectives.ts           # Hardcoded objective/KR definitions with slugs
 ```
 
 ## Database Schema
@@ -266,35 +265,14 @@ Generic linking table for wins and KR evidence. No FK constraints (polymorphic t
 |---|---|---|
 | id | serial PK | |
 | source_type | text | win, key_result |
-| source_id | int | |
+| source_id | text | KR slug or stringified win ID |
 | target_type | text | ticket, merge_request, confluence_document, meeting, objective, key_result |
 | target_id | text | Text to accommodate ticket keys |
 | created_at | timestamptz | |
 
-### objectives
+### objectives & key_results (no tables)
 
-| Column | Type | Notes |
-|---|---|---|
-| id | serial PK | |
-| title | text | |
-| description | text | Nullable |
-| year | int | |
-| status | text | active, completed, abandoned |
-| created_at | timestamptz | |
-
-### key_results
-
-| Column | Type | Notes |
-|---|---|---|
-| id | serial PK | |
-| objective_id | int FK → objectives | |
-| title | text | |
-| target_value | decimal | Nullable |
-| current_value | decimal | Nullable |
-| unit | text | Nullable, e.g. "tickets", "percent", "hours" |
-| data_source | text | Nullable, auto-update source identifier (e.g. "pipeline:max_duration") |
-| status | text | on_track, at_risk, behind, completed |
-| created_at | timestamptz | |
+Objectives and key results are hardcoded in `shared/objectives.ts` with human-readable slugs. No database tables — evidence linking uses `entity_links` with the KR slug as `source_id`.
 
 ### pipelines
 
@@ -386,8 +364,8 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **Confluence docs:** GET `/confluence-documents`, GET `/confluence-documents/:id`, PATCH `/confluence-documents/:id`
 - **Meetings:** GET `/meetings`, GET `/meetings/:id`, PATCH `/meetings/:id`
 - **Wins:** GET/POST `/wins`, GET/PATCH/DELETE `/wins/:id`, POST `/wins/:id/links`, DELETE `/wins/:id/links/:linkId`
-- **Objectives:** GET/POST `/objectives`, GET/PATCH `/objectives/:id`, GET `/objectives/epics?q=`, POST `/objectives/seed` (owner-only, idempotent seeder for 2026 OKRs)
-- **Key Results:** POST `/objectives/:id/key-results`, GET/PATCH `/key-results/:id`, POST `/key-results/:id/evidence`, DELETE `/key-results/:id/evidence/:evidenceId`
+- **Objectives:** GET `/objectives`, GET `/objectives/:slug`, GET `/objectives/epics?q=`
+- **Key Results:** POST `/key-results/:slug/evidence`, DELETE `/key-results/:slug/evidence/:linkId`
 - **Pipelines:** GET `/pipelines/durations?since=&until=` (scatter points for merge/train), GET `/pipelines/job-stats?since=&until=` (p50 duration, retry count, needs per job), GET `/pipelines/comparison?since=&until=&prevSince=&prevUntil=` (period-over-period stats), GET `/pipelines/:id/jobs` (detail with jobs + needs for DAG/waterfall)
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
@@ -404,8 +382,7 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 3. Runs each source sync in sequence (Jira → GitLab → Confluence → Calendar → GitLab Pipelines)
 4. All sync functions accept an optional `sinceOverride` parameter for backfill support
 5. Runs the linker to infer relationships (branch name → ticket, meeting title → category/leave, etc.), skipping rows where `*_inferred = false`. The linker fetches missing tickets from Jira when branch names reference tickets not yet in the DB (common for reviewed MRs authored by others). The linker also resolves `epic_key` for any ticket that has `parent_key` but no `epic_key`, fetching missing parent tickets from Jira if needed.
-6. Runs the KR updater to auto-update key results that have a `data_source` set
-7. Logs results to `sync_log`
+6. Logs results to `sync_log`
 
 Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars. Pipeline sync uses both the REST API (for pipeline/job details) and the GraphQL API (for job `needs` DAG dependencies, which aren't exposed via REST).
 

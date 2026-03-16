@@ -6,7 +6,7 @@
       Duration Trend
     </h3>
     <div v-if="loading" class="p-4">
-      <div class="flex items-center justify-center" style="height: 300px">
+      <div class="flex items-center justify-center" style="height: 420px">
         <span class="text-sm text-ink-faint animate-pulse">Loading chart...</span>
       </div>
     </div>
@@ -14,7 +14,7 @@
       No data yet.
     </div>
     <div v-else class="p-4">
-      <v-chart :option="chartOption" autoresize style="height: 300px" @click="onChartClick" />
+      <v-chart :option="chartOption" autoresize style="height: 420px" @click="onChartClick" />
     </div>
   </div>
 </template>
@@ -52,7 +52,6 @@ function onChartClick(params: any) {
 
 const MERGE_COLOR = "#3B82F6";
 const TRAIN_COLOR = "#7C3AED";
-const QUEUE_COLOR = "#F59E0B";
 const ROLLING_WINDOW_MS = 0.5 * 24 * 60 * 60 * 1000; // ±0.5 days
 
 function toMinutes(seconds: number): number {
@@ -92,12 +91,8 @@ function computeRollingAverage(
 const chartOption = computed(() => {
   const mergeScatter: [number, number, number][] = [];
   const trainScatter: [number, number, number][] = [];
-  const queueMergeScatter: [number, number, number][] = [];
-  const queueTrainScatter: [number, number, number][] = [];
   const mergePts: { time: number; value: number }[] = [];
   const trainPts: { time: number; value: number }[] = [];
-  const queueMergePts: { time: number; value: number }[] = [];
-  const queueTrainPts: { time: number; value: number }[] = [];
   const pointMap = new Map<number, PipelineDurationPoint>();
 
   for (const p of props.points) {
@@ -111,22 +106,10 @@ const chartOption = computed(() => {
       trainScatter.push([t, v, p.id]);
       trainPts.push({ time: t, value: v });
     }
-    if (p.queuedDurationSeconds != null) {
-      const qv = toMinutes(p.queuedDurationSeconds);
-      if (p.type === "merge") {
-        queueMergeScatter.push([t, qv, p.id]);
-        queueMergePts.push({ time: t, value: qv });
-      } else {
-        queueTrainScatter.push([t, qv, p.id]);
-        queueTrainPts.push({ time: t, value: qv });
-      }
-    }
   }
 
   const mergeAvg = computeRollingAverage(mergePts);
   const trainAvg = computeRollingAverage(trainPts);
-  const queueMergeAvg = computeRollingAverage(queueMergePts);
-  const queueTrainAvg = computeRollingAverage(queueTrainPts);
 
   // Compute data range to adapt axis
   const allTimes = [...mergeScatter, ...trainScatter].map((p) => p[0]);
@@ -167,26 +150,28 @@ const chartOption = computed(() => {
           hour: "2-digit",
           minute: "2-digit",
         });
-        const type = p.type === "train" ? "Merge Train" : "Merged Results";
+        const typeColor = p.type === "train" ? "#7C3AED" : "#3B82F6";
+        const typeLabel = p.type === "train" ? "train" : "merge";
         const dur = params.value[1];
-        let html = `<div style="font-weight:500">#${id}</div>`;
-        html += `<div style="color:#6B6B6B;margin-top:2px">${date}</div>`;
-        html += `<div style="margin-top:6px;display:flex;gap:12px">`;
-        html += `<span style="font-family:monospace">${dur}m</span>`;
-        html += `<span style="color:#6B6B6B">${p.jobCount} jobs</span>`;
+        let html = `<div style="display:flex;align-items:baseline;gap:8px">`;
+        html += `<span style="font-family:monospace;font-weight:600;font-size:14px">${dur}m</span>`;
+        html += `<span style="color:${typeColor};font-size:10px;font-weight:600;text-transform:uppercase">${typeLabel}</span>`;
+        html += `</div>`;
+        html += `<div style="color:#A3A3A0;font-size:11px;margin-top:2px">${date}</div>`;
+        html += `<div style="display:flex;gap:8px;margin-top:4px;font-size:11px;color:#A3A3A0">`;
+        html += `<span>${p.jobCount} jobs</span>`;
         if (p.retriedJobCount > 0) {
           html += `<span style="color:#D97706">${p.retriedJobCount} retried</span>`;
         }
         if (p.queuedDurationSeconds != null) {
-          html += `<span style="color:#F59E0B;font-family:monospace">Queue: ${toMinutes(p.queuedDurationSeconds)}m</span>`;
+          html += `<span>queued for ${Math.round(p.queuedDurationSeconds)}s</span>`;
         }
         html += `</div>`;
-        html += `<div style="margin-top:2px;color:${p.type === "train" ? "#7C3AED" : "#3B82F6"};font-size:10px;font-weight:600;text-transform:uppercase">${type}</div>`;
         return html;
       },
     },
     legend: {
-      data: ["Merge", "Train", "Queue (Merge)", "Queue (Train)"],
+      data: ["Merge", "Train"],
       bottom: 0,
       textStyle: { color: "#6B6B6B", fontSize: 11 },
       itemWidth: 12,
@@ -258,42 +243,6 @@ const chartOption = computed(() => {
         showSymbol: false,
         lineStyle: { color: TRAIN_COLOR, width: 2 },
         itemStyle: { color: TRAIN_COLOR },
-        tooltip: { show: false },
-      },
-      {
-        name: "Queue (Merge)",
-        type: "scatter" as const,
-        data: queueMergeScatter,
-        symbolSize: 5,
-        itemStyle: { color: QUEUE_COLOR, opacity: 0.3 },
-        cursor: "pointer",
-      },
-      {
-        name: "Queue (Train)",
-        type: "scatter" as const,
-        data: queueTrainScatter,
-        symbolSize: 5,
-        itemStyle: { color: QUEUE_COLOR, opacity: 0.3 },
-        cursor: "pointer",
-      },
-      {
-        name: "Queue (Merge)",
-        type: "line" as const,
-        data: queueMergeAvg,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { color: QUEUE_COLOR, width: 2 },
-        itemStyle: { color: QUEUE_COLOR },
-        tooltip: { show: false },
-      },
-      {
-        name: "Queue (Train)",
-        type: "line" as const,
-        data: queueTrainAvg,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { color: QUEUE_COLOR, width: 2, type: "dashed" as const },
-        itemStyle: { color: QUEUE_COLOR },
         tooltip: { show: false },
       },
     ],

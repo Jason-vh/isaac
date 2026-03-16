@@ -78,6 +78,13 @@
       "when": 1773434068331,
       "tag": "0010_minor_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1773566245860,
+      "tag": "0011_windy_molly_hayes",
+      "breakpoints": true
     }
   ]
 }
