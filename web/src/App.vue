@@ -66,8 +66,10 @@ const shareButtonText = ref("Share");
 
 async function share() {
   try {
-    const { url } = await api.post<{ url: string; expiresAt: string }>("/share", {});
-    await navigator.clipboard.writeText(url);
+    const { token } = await api.post<{ token: string; expiresAt: string }>("/share", {});
+    const shareUrl = new URL(window.location.origin + router.currentRoute.value.fullPath);
+    shareUrl.searchParams.set("s", token);
+    await navigator.clipboard.writeText(shareUrl.toString());
     shareButtonText.value = "Copied!";
     setTimeout(() => (shareButtonText.value = "Share"), 2000);
   } catch {

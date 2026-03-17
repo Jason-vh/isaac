@@ -13,17 +13,6 @@ export const router = createRouter({
       meta: { public: true },
     },
     {
-      path: "/share/:token",
-      name: "share",
-      component: { template: "<div />" },
-      meta: { public: true },
-      beforeEnter(to) {
-        const token = to.params.token as string;
-        localStorage.setItem("share_token", token);
-        return { name: "dashboard" };
-      },
-    },
-    {
       path: "/admin",
       name: "admin",
       component: () => import("../views/AdminView.vue"),
@@ -80,6 +69,12 @@ export const router = createRouter({
 });
 
 router.beforeEach((to) => {
+  const shareToken = to.query.s as string | undefined;
+  if (shareToken) {
+    localStorage.setItem("share_token", shareToken);
+    const { s, ...rest } = to.query;
+    return { path: to.path, query: rest, params: to.params };
+  }
   if (!to.meta.public && !isAuthenticated.value) {
     return { name: "login" };
   }

@@ -330,6 +330,16 @@ Full comment content from GitLab MR notes. Only the user's own non-system commen
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
+### share_tokens
+
+Short-lived share tokens for read-only access. Replaces JWT-based share tokens.
+
+| Column | Type | Notes |
+|---|---|---|
+| token | text PK | 16-char base64url random string |
+| expires_at | timestamptz | 24h from creation |
+| created_at | timestamptz | |
+
 ### passkey_credentials
 
 For WebAuthn passkey auth.
@@ -364,14 +374,14 @@ WBSO estimates are computed on the fly from activity data (tickets, MRs, meeting
 
 ## API Design
 
-All routes under `/api`, JWT-protected except auth and Slack endpoints. Two JWT token types:
+All routes under `/api`, JWT-protected except auth and Slack endpoints. Two token types:
 
-- **Owner token** (subject: `isaac-owner`, 7d expiry) — full read/write access, issued via passkey login
-- **Share token** (subject: `isaac-share`, 24h expiry) — read-only access, issued via `POST /api/share`
+- **Owner token** (JWT, subject: `isaac-owner`, 7d expiry) — full read/write access, issued via passkey login
+- **Share token** (random 16-char base64url string, 24h expiry) — read-only access, stored in `share_tokens` table, issued via `POST /api/share`
 
 Write endpoints (POST/PATCH/DELETE on objectives, key results, evidence, sync, share) require an owner token (403 for share tokens). The frontend hides write controls in share mode.
 
-Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` route stores the token in localStorage and redirects to dashboard.
+Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router strips the `?s=` param, stores the token in localStorage, and renders the current page in read-only mode.
 
 - **Auth:** GET `/auth/status`, POST `/auth/register/options`, POST `/auth/register/verify`, POST `/auth/authenticate/options`, POST `/auth/authenticate/verify`, POST `/auth/refresh`
 - **Tickets:** GET `/tickets`, GET `/tickets/:key`, PATCH `/tickets/:key`
@@ -385,7 +395,7 @@ Share URL format: `https://isaac.vhtm.eu/share/<jwt>` — the `/share/:token` ro
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string, force?: boolean }` for filtered backfills — `force` bypasses the "already synced" skip for gitlab-pipelines, enabling backfill of new fields), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
-- **Share:** POST `/share` → `{ url, expiresAt }` (owner-only, generates 24h share link)
+- **Share:** POST `/share` → `{ token, expiresAt }` (owner-only, generates 24h share token)
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
 ## Sync Architecture

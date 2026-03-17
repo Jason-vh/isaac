@@ -238,6 +238,14 @@ export const passkeyCredentials = pgTable("passkey_credentials", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
+// --- share_tokens ---
+
+export const shareTokens = pgTable("share_tokens", {
+  token: text("token").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
 // --- sync_log ---
 
 export const syncLog = pgTable("sync_log", {

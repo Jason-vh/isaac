@@ -1,13 +1,18 @@
 import { Elysia } from "elysia";
-import { signShareToken } from "../auth/jwt";
-import { env } from "../env";
+import { randomBytes } from "crypto";
+import { db } from "../db";
+import { shareTokens } from "../db/schema";
 
 export const shareRoutes = new Elysia({ prefix: "/api" }).post(
   "/share",
   async () => {
-    const token = await signShareToken();
-    const url = `${env.WEBAUTHN_ORIGIN}/share/${token}`;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    return { url, expiresAt };
+    const token = randomBytes(12).toString("base64url"); // 16 chars, URL-safe
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.insert(shareTokens).values({
+      token,
+      expiresAt,
+      createdAt: new Date(),
+    });
+    return { token, expiresAt: expiresAt.toISOString() };
   }
 );
