@@ -12,7 +12,7 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 - **Store facts, derive meaning.** Isaac records raw events ("commented on MR !432", "attended meeting X"). Interpretations like "reviewed" or WBSO categories are derived at report time, not at ingestion.
 - **Infer links, allow manual override.** Automate linking where possible (e.g. MR branch name → ticket), but always allow manual correction.
 - **Propose, then automate.** WBSO estimates start as suggestions I review and adjust. Over time, Isaac fills them in autonomously.
-- **Single user, shareable.** No multi-tenancy. Everything is behind a passkey login, just for me. Read-only views can be shared via expiring links (24h JWT).
+- **Single user, shareable.** No multi-tenancy. Everything is behind a passkey login, just for me. Read-only views can be shared via expiring links (24h DB-backed token, scoped to the page section that was shared).
 
 ## Data Sources
 

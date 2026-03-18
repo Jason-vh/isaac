@@ -242,6 +242,7 @@ export const passkeyCredentials = pgTable("passkey_credentials", {
 
 export const shareTokens = pgTable("share_tokens", {
   token: text("token").primaryKey(),
+  path: text("path").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });

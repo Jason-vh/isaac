@@ -3,7 +3,7 @@
     <nav v-if="isAuthenticated" class="sticky top-0 z-30 border-b border-border bg-surface-0/80 backdrop-blur-md">
       <div class="mx-auto max-w-[1400px] px-6">
         <div class="flex h-14 items-center justify-between">
-          <router-link to="/" class="text-lg font-bold tracking-tight text-ink">
+          <router-link :to="isShareMode && shareSection ? `/${shareSection}` : '/'" class="text-lg font-bold tracking-tight text-ink">
             Isaac
           </router-link>
           <div class="flex items-center gap-1">
@@ -45,28 +45,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide } from "vue";
+import { ref, computed, provide } from "vue";
 import { useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth";
 import { api } from "./api/client";
 
 const router = useRouter();
-const { isAuthenticated, isShareMode, logout: doLogout } = useAuth();
+const { isAuthenticated, isShareMode, shareSection, logout: doLogout } = useAuth();
 
 provide("isShareMode", isShareMode);
 
-const navLinks = [
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/wbso", label: "WBSO" },
-  { to: "/objectives", label: "Objectives" },
-  { to: "/pipelines", label: "Pipelines" },
+const allNavLinks = [
+  { to: "/dashboard", label: "Dashboard", section: "dashboard" },
+  { to: "/wbso", label: "WBSO", section: "wbso" },
+  { to: "/objectives", label: "Objectives", section: "objectives" },
+  { to: "/pipelines", label: "Pipelines", section: "pipelines" },
 ];
+
+const navLinks = computed(() => {
+  if (isShareMode.value && shareSection.value) {
+    return allNavLinks.filter((l) => l.section === shareSection.value);
+  }
+  return allNavLinks;
+});
 
 const shareButtonText = ref("Share");
 
 async function share() {
   try {
-    const { token } = await api.post<{ token: string; expiresAt: string }>("/share", {});
+    const { token } = await api.post<{ token: string; expiresAt: string }>("/share", { path: router.currentRoute.value.fullPath });
     const shareUrl = new URL(window.location.origin + router.currentRoute.value.fullPath);
     shareUrl.searchParams.set("s", token);
     await navigator.clipboard.writeText(shareUrl.toString());

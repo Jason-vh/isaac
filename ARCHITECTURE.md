@@ -332,11 +332,12 @@ Full comment content from GitLab MR notes. Only the user's own non-system commen
 
 ### share_tokens
 
-Short-lived share tokens for read-only access. Replaces JWT-based share tokens.
+Short-lived share tokens for read-only access, scoped to a page section. Each token stores the path it was created from (e.g. `/pipelines`, `/dashboard/2026-W12`). The backend extracts the first path segment as the section and restricts API access to matching prefixes (e.g. section `pipelines` → only `/api/pipelines/*`). The frontend hides nav links for other sections and blocks cross-section navigation.
 
 | Column | Type | Notes |
 |---|---|---|
 | token | text PK | 16-char base64url random string |
+| path | text | Frontend path the token is scoped to |
 | expires_at | timestamptz | 24h from creation |
 | created_at | timestamptz | |
 
@@ -381,7 +382,7 @@ All routes under `/api`, JWT-protected except auth and Slack endpoints. Two toke
 
 Write endpoints (POST/PATCH/DELETE on objectives, key results, evidence, sync, share) require an owner token (403 for share tokens). The frontend hides write controls in share mode.
 
-Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router strips the `?s=` param, stores the token in localStorage, and renders the current page in read-only mode.
+Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router strips the `?s=` param, stores the token and scoped path in localStorage, and renders the current page in read-only mode. Share tokens are scoped to the page section they were created from — viewers can only access that section's API endpoints and UI.
 
 - **Auth:** GET `/auth/status`, POST `/auth/register/options`, POST `/auth/register/verify`, POST `/auth/authenticate/options`, POST `/auth/authenticate/verify`, POST `/auth/refresh`
 - **Tickets:** GET `/tickets`, GET `/tickets/:key`, PATCH `/tickets/:key`

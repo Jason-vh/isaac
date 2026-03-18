@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { isAuthenticated } from "../composables/useAuth";
+import { isAuthenticated, isShareMode, shareSection, useAuth } from "../composables/useAuth";
 import DashboardView from "../views/DashboardView.vue";
 import LoginView from "../views/LoginView.vue";
 
@@ -69,13 +69,25 @@ export const router = createRouter({
 });
 
 router.beforeEach((to) => {
-  const shareToken = to.query.s as string | undefined;
-  if (shareToken) {
-    localStorage.setItem("share_token", shareToken);
+  const shareTokenParam = to.query.s as string | undefined;
+  if (shareTokenParam) {
+    const auth = useAuth();
+    auth.shareToken.value = shareTokenParam;
+    localStorage.setItem("share_token", shareTokenParam);
+    auth.setSharePath(to.path);
     const { s, ...rest } = to.query;
     return { path: to.path, query: rest, params: to.params };
   }
+
   if (!to.meta.public && !isAuthenticated.value) {
     return { name: "login" };
+  }
+
+  // Block cross-section navigation in share mode
+  if (isShareMode.value && shareSection.value) {
+    const targetSection = to.path.split("/").filter(Boolean)[0];
+    if (targetSection && targetSection !== shareSection.value) {
+      return false;
+    }
   }
 });
