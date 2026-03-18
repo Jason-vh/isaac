@@ -415,9 +415,10 @@ const sortedRows = computed(() => {
         return dir * (a.delta - b.delta);
       }
       case "criticalPercent": {
-        const aVal = a.criticalPercent ?? -1;
-        const bVal = b.criticalPercent ?? -1;
-        return dir * (aVal - bVal);
+        if (a.criticalPercent == null && b.criticalPercent == null) return 0;
+        if (a.criticalPercent == null) return 1;
+        if (b.criticalPercent == null) return -1;
+        return dir * (a.criticalPercent - b.criticalPercent);
       }
       case "retryRate":
         return dir * (a.retryRate - b.retryRate);
