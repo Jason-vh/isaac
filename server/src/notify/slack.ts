@@ -40,7 +40,7 @@ function stripTicketKeys(title: string): string {
   return title.replace(TICKET_KEY_RE, "").replace(/\s+/g, " ").trim();
 }
 
-function buildHeadline(action: ActionType, data: EnrichedData): string {
+function buildMessage(action: ActionType, data: EnrichedData): string {
   const verb = ACTION_VERB[action];
   const prefix = PREFIX[action] ? `${PREFIX[action]} ` : "";
   const cleanTitle = stripTicketKeys(data.title);
@@ -48,41 +48,14 @@ function buildHeadline(action: ActionType, data: EnrichedData): string {
     ? `<${data.externalUrl}|${cleanTitle}>`
     : cleanTitle;
 
-  let actionLine: string;
+  let text: string;
   if (action === "pipeline_success" || action === "pipeline_failure") {
-    actionLine = `${prefix}${verb}`;
+    text = `${prefix}${verb} ${mrRef}`;
   } else {
-    actionLine = `${prefix}${resolveActor(data.actor)} ${verb}`;
+    text = `${prefix}${resolveActor(data.actor)} ${verb} ${mrRef}`;
   }
 
-  return `${actionLine}\n${mrRef}`;
-}
-
-function buildPayload(
-  action: ActionType,
-  data: EnrichedData,
-): Record<string, unknown> {
-  let text = buildHeadline(action, data);
-
-  // Comment body for comments/mentions
-  const isCursor = resolveActor(data.actor) === "Cursor";
-  if (
-    data.body &&
-    !isCursor &&
-    (action === "gitlab_comment" || action === "mentioned")
-  ) {
-    const quoted = data.body
-      .split("\n")
-      .slice(0, 5)
-      .map((line) => `> ${line}`)
-      .join("\n");
-    text += `\n${quoted}`;
-  }
-
-  const blocks: object[] = [
-    { type: "section", text: { type: "mrkdwn", text } },
-  ];
-
+  // Failed jobs
   if (action === "pipeline_failure" && data.failedJobs.length > 0) {
     const MAX_JOBS = 3;
     const shown = data.failedJobs.slice(0, MAX_JOBS);
@@ -91,15 +64,25 @@ function buildPayload(
       .map((job) => `<${job.webUrl}|${job.name}>`)
       .join(", ");
     if (rest > 0) jobLinks += ` (+${rest} more)`;
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: `Failed: ${jobLinks}` }],
-    });
+    text += `\n> Failed: ${jobLinks}`;
   }
 
-  blocks.push({ type: "divider" });
+  // Comment body
+  const isCursor = resolveActor(data.actor) === "Cursor";
+  if (
+    data.body &&
+    !isCursor &&
+    (action === "gitlab_comment" || action === "mentioned")
+  ) {
+    const quoted = data.body
+      .split("\n")
+      .slice(0, 3)
+      .map((line) => `> ${line}`)
+      .join("\n");
+    text += `\n${quoted}`;
+  }
 
-  return { text, blocks, unfurl_links: false };
+  return text;
 }
 
 export async function sendSlackNotification(
@@ -133,7 +116,7 @@ export async function sendSlackNotification(
 
   const token = env.SLACK_BOT_TOKEN;
   const channelId = env.SLACK_CHANNEL_ID;
-  const payload = buildPayload(action, data);
+  const text = buildMessage(action, data);
 
   const res = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
@@ -141,7 +124,7 @@ export async function sendSlackNotification(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ channel: channelId, ...payload }),
+    body: JSON.stringify({ channel: channelId, text, unfurl_links: false }),
   });
 
   if (!res.ok) {
