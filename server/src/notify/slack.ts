@@ -27,6 +27,15 @@ const PREFIX: Partial<Record<ActionType, string>> = {
 
 const TICKET_KEY_RE = /\[?[A-Z][A-Z0-9]+-\d+\]?\s*/gi;
 
+const ACTOR_ALIASES: Record<string, string> = {
+  "****": "Cursor",
+};
+
+function resolveActor(actor: string | null): string | null {
+  if (!actor) return null;
+  return ACTOR_ALIASES[actor] ?? actor;
+}
+
 function stripTicketKeys(title: string): string {
   return title.replace(TICKET_KEY_RE, "").replace(/\s+/g, " ").trim();
 }
@@ -50,7 +59,7 @@ function buildHeadline(action: ActionType, data: EnrichedData): string {
   if (action === "pipeline_success" || action === "pipeline_failure") {
     actionLine = `${prefix}${verb}`;
   } else {
-    actionLine = `${prefix}${data.actor} ${verb}`;
+    actionLine = `${prefix}${resolveActor(data.actor)} ${verb}`;
   }
 
   return `${actionLine}\n${mrRef}`;
