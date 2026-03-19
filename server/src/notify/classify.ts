@@ -163,7 +163,15 @@ export function buildSourceId(
 }
 
 export function classifyEmail(email: Email): ClassifiedEmail | null {
-  let body = email.body;
+  const rawBody = email.body;
+
+  // Extract identifiers from raw body BEFORE stripping HTML,
+  // since URLs with #note_ID and /pipelines/ID live inside <a href="..."> tags
+  const mrUrl = extractMrUrl(rawBody);
+  const noteId = extractNoteId(rawBody);
+  const pipelineId = extractPipelineId(rawBody);
+
+  let body = rawBody;
   if (/<[^>]+>/.test(body)) {
     body = stripHtml(body);
   }
@@ -173,9 +181,6 @@ export function classifyEmail(email: Email): ClassifiedEmail | null {
 
   const { mrTitle } = parseSubject(email.subject);
   const mrIid = extractMrIid(email.subject);
-  const mrUrl = extractMrUrl(body);
-  const noteId = extractNoteId(body);
-  const pipelineId = extractPipelineId(body);
   const actor = email.from
     .replace(/\s+via\s+GitLab$/i, "")
     .split(" ")[0] || email.from;
