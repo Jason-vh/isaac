@@ -24,48 +24,63 @@ const PREFIX: Partial<Record<ActionType, string>> = {
   marked_ready: ":white_check_mark:",
 };
 
-function buildMessage(
-  action: ActionType,
-  data: EnrichedData,
-): string {
-  const verb = ACTION_VERB[action];
-  const prefix = PREFIX[action] ? `${PREFIX[action]} ` : "";
-
-  // Build MR reference with link
-  const mrRef = data.externalUrl
+function buildMrRef(data: EnrichedData): string {
+  return data.externalUrl
     ? `<${data.externalUrl}|${data.title}>`
     : data.title;
+}
 
-  // Build ticket context
-  let ticketContext = "";
-  if (data.ticketKey) {
-    const jiraBase = env.JIRA_BASE_URL;
-    const ticketLink = `<${jiraBase}/browse/${data.ticketKey}|${data.ticketKey}>`;
-    ticketContext = ` · ${ticketLink}`;
+function buildTicketContext(data: EnrichedData): string {
+  if (!data.ticketKey) return "";
+  const jiraBase = env.JIRA_BASE_URL;
+  const ticketLink = `<${jiraBase}/browse/${data.ticketKey}|${data.ticketKey}>`;
+  let ctx = ` · ${ticketLink}`;
 
-    // Add epic name and story points
-    const parts: string[] = [];
-    if (data.epicName) parts.push(data.epicName);
-    if (data.storyPoints) parts.push(`${data.storyPoints} SP`);
-    if (parts.length > 0) ticketContext += ` (${parts.join(", ")})`;
+  const parts: string[] = [];
+  if (data.epicName) parts.push(data.epicName);
+  if (data.storyPoints) parts.push(`${data.storyPoints} SP`);
+  if (parts.length > 0) ctx += ` (${parts.join(", ")})`;
+  return ctx;
+}
+
+function buildHeadline(action: ActionType, data: EnrichedData): string {
+  const verb = ACTION_VERB[action];
+  const prefix = PREFIX[action] ? `${PREFIX[action]} ` : "";
+  const mrRef = buildMrRef(data);
+  const ticketContext = buildTicketContext(data);
+
+  if (action === "pipeline_success" || action === "pipeline_failure") {
+    return `${prefix}${verb} ${mrRef}${ticketContext}`;
+  }
+  return `${prefix}${data.actor} ${verb} ${mrRef}${ticketContext}`;
+}
+
+function buildPayload(
+  action: ActionType,
+  data: EnrichedData,
+): Record<string, unknown> {
+  const headline = buildHeadline(action, data);
+
+  // Pipeline failures: use Block Kit for structured job list
+  if (action === "pipeline_failure" && data.failedJobs.length > 0) {
+    const blocks: unknown[] = [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: headline },
+      },
+      {
+        type: "context",
+        elements: data.failedJobs.map((job) => ({
+          type: "mrkdwn",
+          text: `:x:  <${job.webUrl}|${job.name}>${job.duration ? `  _(${job.duration})_` : ""}`,
+        })),
+      },
+    ];
+
+    return { text: headline, blocks, unfurl_links: false };
   }
 
-  let text: string;
-  if (
-    action === "pipeline_success" ||
-    action === "pipeline_failure"
-  ) {
-    text = `${prefix}${verb} ${mrRef}${ticketContext}`;
-  } else {
-    text = `${prefix}${data.actor} ${verb} ${mrRef}${ticketContext}`;
-  }
-
-  // Add failed job summary for pipeline failures
-  if (action === "pipeline_failure" && data.failedJobSummary) {
-    text += `\n> Failed: ${data.failedJobSummary}`;
-  }
-
-  // Add comment body
+  // Comments / mentions: include quoted body
   if (
     data.body &&
     (action === "gitlab_comment" || action === "mentioned")
@@ -75,10 +90,10 @@ function buildMessage(
       .slice(0, 5)
       .map((line) => `> ${line}`)
       .join("\n");
-    text += `\n${quoted}`;
+    return { text: `${headline}\n${quoted}`, unfurl_links: false };
   }
 
-  return text;
+  return { text: headline, unfurl_links: false };
 }
 
 export async function sendSlackNotification(
@@ -89,7 +104,7 @@ export async function sendSlackNotification(
   const token = env.SLACK_BOT_TOKEN;
   const channelId = env.SLACK_CHANNEL_ID;
 
-  const text = buildMessage(action, data);
+  const payload = buildPayload(action, data);
 
   const res = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
@@ -97,11 +112,7 @@ export async function sendSlackNotification(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      channel: channelId,
-      text,
-      unfurl_links: false,
-    }),
+    body: JSON.stringify({ channel: channelId, ...payload }),
   });
 
   if (!res.ok) {

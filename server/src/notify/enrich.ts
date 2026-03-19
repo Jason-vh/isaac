@@ -66,6 +66,12 @@ interface GitLabProject {
   path_with_namespace: string;
 }
 
+export interface FailedJob {
+  name: string;
+  duration: string | null;
+  webUrl: string;
+}
+
 export interface EnrichedData {
   title: string;
   body: string | null;
@@ -77,7 +83,7 @@ export interface EnrichedData {
   occurredAt: Date;
   mergeRequestId: number | null;
   pipelineId: number | null;
-  failedJobSummary: string | null;
+  failedJobs: FailedJob[];
 }
 
 async function gitlabFetch<T>(path: string): Promise<T | null> {
@@ -311,20 +317,16 @@ async function upsertPipelineData(
   }
 }
 
-function buildFailedJobSummary(jobs: GitLabJob[]): string | null {
-  const failed = jobs.filter(
-    (j) => j.status === "failed" && !j.allow_failure,
-  );
-  if (failed.length === 0) return null;
-
-  return failed
-    .map((j) => {
-      const dur = j.duration
+function getFailedJobs(jobs: GitLabJob[]): FailedJob[] {
+  return jobs
+    .filter((j) => j.status === "failed" && !j.allow_failure)
+    .map((j) => ({
+      name: j.name,
+      duration: j.duration
         ? `${Math.floor(j.duration / 60)}m ${Math.round(j.duration % 60)}s`
-        : "";
-      return `${j.name}${dur ? ` (${dur})` : ""}`;
-    })
-    .join(", ");
+        : null,
+      webUrl: j.web_url,
+    }));
 }
 
 export async function enrich(
@@ -347,7 +349,7 @@ export async function enrich(
   let occurredAt = new Date(email.receivedAt);
   let mergeRequestId: number | null = null;
   let enrichedPipelineId: number | null = null;
-  let failedJobSummary: string | null = null;
+  let failedJobs: FailedJob[] = [];
 
   try {
     if (
@@ -374,7 +376,7 @@ export async function enrich(
           await upsertPipelineData(pipeline, jobs);
 
           if (action === "pipeline_failure") {
-            failedJobSummary = buildFailedJobSummary(jobs);
+            failedJobs = getFailedJobs(jobs);
           }
 
           // Resolve MR from pipeline ref
@@ -471,7 +473,7 @@ export async function enrich(
     occurredAt,
     mergeRequestId,
     pipelineId: enrichedPipelineId,
-    failedJobSummary,
+    failedJobs,
   };
 }
 
