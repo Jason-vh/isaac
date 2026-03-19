@@ -47,6 +47,10 @@
         </span>
       </div>
 
+      <div class="mt-6">
+        <TrainDebugCard :attempts="trainAttempts" :loading="trainDebugLoading" />
+      </div>
+
       <!-- Pipeline history timeline -->
       <div class="mt-6">
         <MrPipelineHistory :pipelines="pipelines" :first-success-index="firstSuccessIndex" />
@@ -58,9 +62,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { PipelineListItem } from "@isaac/shared";
+import type { PipelineListItem, TrainDebugAttempt } from "@isaac/shared";
 import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from "@heroicons/vue/20/solid";
 import MrPipelineHistory from "../components/pipelines/MrPipelineHistory.vue";
+import TrainDebugCard from "../components/pipelines/TrainDebugCard.vue";
 import { api, UnauthorizedError } from "../api/client";
 
 interface MrMeta {
@@ -75,7 +80,9 @@ const router = useRouter();
 
 const mrId = computed(() => Number(route.params.id));
 const pipelines = ref<PipelineListItem[]>([]);
+const trainAttempts = ref<TrainDebugAttempt[]>([]);
 const loading = ref(true);
+const trainDebugLoading = ref(true);
 const error = ref("");
 
 // Read MR metadata from history.state (passed by MrPipelineList)
@@ -97,6 +104,19 @@ onMounted(async () => {
     pipelines.value = await api.get<PipelineListItem[]>(
       `/pipelines/merge-requests/${mrId.value}/pipelines`
     );
+
+    try {
+      trainAttempts.value = await api.get<TrainDebugAttempt[]>(
+        `/pipelines/merge-requests/${mrId.value}/train-debug`
+      );
+    } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        throw e;
+      }
+      trainAttempts.value = [];
+    } finally {
+      trainDebugLoading.value = false;
+    }
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       router.push("/login");
@@ -104,6 +124,7 @@ onMounted(async () => {
     }
     error.value = (e as Error).message;
   } finally {
+    trainDebugLoading.value = false;
     loading.value = false;
   }
 });

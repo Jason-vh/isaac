@@ -351,6 +351,64 @@ export interface MrPipelineSummary {
   mergedAt: string | null;
 }
 
+export type TrainAttemptPosition =
+  | "front_of_train"
+  | "behind_other_mr"
+  | "unknown";
+
+export type TrainAttemptOutcome =
+  | "merged"
+  | "superseded"
+  | "active"
+  | "completed";
+
+export type TrainInvalidationKind =
+  | "none"
+  | "upstream_failed"
+  | "upstream_merged"
+  | "train_rebuilt"
+  | "unknown";
+
+export interface TrainDebugBase {
+  kind: "main" | "merge_request" | "unknown";
+  sha: string | null;
+  onMain: boolean | null;
+  mrIid: number | null;
+  title: string | null;
+}
+
+export interface TrainDebugBlockingJob {
+  name: string | null;
+  failureReason: string | null;
+  webUrl: string | null;
+}
+
+export interface TrainDebugInvalidation {
+  kind: TrainInvalidationKind;
+  summary: string;
+  upstreamMrIid: number | null;
+  upstreamTitle: string | null;
+  upstreamPipelineId: number | null;
+  upstreamPipelineStatus: string | null;
+  upstreamPipelineWebUrl: string | null;
+  blockingJob: TrainDebugBlockingJob | null;
+}
+
+export interface TrainDebugAttempt {
+  pipelineId: number;
+  status: string;
+  webUrl: string;
+  createdAt: string;
+  durationSeconds: number | null;
+  sha: string | null;
+  parentSha: string | null;
+  position: TrainAttemptPosition;
+  basedOn: TrainDebugBase;
+  outcome: TrainAttemptOutcome;
+  supersededByPipelineId: number | null;
+  invalidation: TrainDebugInvalidation | null;
+}
+
 // WBSO
 export type WbsoCategory = "coding" | "code_review" | "dev_meeting" | "dev_misc" | "non_dev" | "leave";
 
