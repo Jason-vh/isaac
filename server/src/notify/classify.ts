@@ -110,6 +110,8 @@ function detectAction(
   if (lower.includes("marked") && lower.includes("as ready")) return "marked_ready";
   if (lower.includes("requested") && lower.includes("review"))
     return "review_request";
+  if (lower.includes("added as reviewer"))
+    return "review_request";
   if (lower.includes("mentioned you")) return "mentioned";
 
   // Re: subjects are usually comments, but check body isn't just a resolution notice
