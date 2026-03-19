@@ -111,6 +111,8 @@ function buildPayload(
   const ticketBlock = buildTicketContextBlock(data);
   if (ticketBlock) blocks.push(ticketBlock);
 
+  blocks.push({ type: "divider" });
+
   return { text, blocks, unfurl_links: false };
 }
 
