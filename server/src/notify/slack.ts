@@ -99,12 +99,12 @@ function buildPayload(
   ];
 
   if (action === "pipeline_failure" && data.failedJobs.length > 0) {
+    const jobLinks = data.failedJobs
+      .map((job) => `<${job.webUrl}|${job.name}>`)
+      .join(", ");
     blocks.push({
       type: "context",
-      elements: data.failedJobs.map((job) => ({
-        type: "mrkdwn",
-        text: `:x:  <${job.webUrl}|${job.name}>${job.duration ? `  _(${job.duration})_` : ""}`,
-      })),
+      elements: [{ type: "mrkdwn", text: `Failed: ${jobLinks}` }],
     });
   }
 
