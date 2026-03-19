@@ -80,6 +80,13 @@ export function extractCommentText(body: string): string | null {
   return text;
 }
 
+function isDiscussionResolved(text: string): boolean {
+  return (
+    (text.includes("resolved") && (text.includes("discussion") || text.includes("thread"))) ||
+    (text.includes("resolve all") || text.includes("resolved all"))
+  );
+}
+
 function detectAction(
   subject: string,
   body: string,
@@ -96,18 +103,23 @@ function detectAction(
   if (lower.includes("merged")) return "gitlab_merge";
   if (lower.includes("pushed") && lower.includes("commit"))
     return "commits_pushed";
-  if (
-    lower.includes("resolved all") &&
-    (lower.includes("discussions") || lower.includes("threads"))
-  )
-    return null; // skip discussions_resolved
+  if (isDiscussionResolved(lower)) return null;
   if (lower.includes("requested") && lower.includes("review"))
     return "review_request";
   if (lower.includes("mentioned you")) return "mentioned";
-  if (subject.startsWith("Re:")) return "gitlab_comment";
+
+  // Re: subjects are usually comments, but check body isn't just a resolution notice
+  if (subject.startsWith("Re:")) {
+    const comment = extractCommentText(body);
+    if (comment && isDiscussionResolved(comment.toLowerCase())) return null;
+    return "gitlab_comment";
+  }
 
   const comment = extractCommentText(body);
-  if (comment) return "gitlab_comment";
+  if (comment) {
+    if (isDiscussionResolved(comment.toLowerCase())) return null;
+    return "gitlab_comment";
+  }
 
   return null;
 }
