@@ -7,7 +7,7 @@ import {
 } from "./jmap";
 import type { Email, JmapSession } from "./jmap";
 import { classifyEmail } from "./classify";
-import { enrich, isDuplicate } from "./enrich";
+import { enrich } from "./enrich";
 import { sendSlackNotification } from "./slack";
 
 async function main() {
@@ -39,12 +39,6 @@ async function main() {
     console.log(
       `[notify] ${classified.action}: ${classified.mrTitle ?? email.subject}`,
     );
-
-    // DB dedup check
-    if (await isDuplicate(classified.sourceId)) {
-      console.log(`[notify] Skipping (duplicate): ${classified.sourceId}`);
-      return;
-    }
 
     try {
       const data = await enrich(classified);

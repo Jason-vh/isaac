@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { activityItems } from "../db/schema";
 import { env } from "../env";
@@ -121,9 +122,31 @@ export async function sendSlackNotification(
   data: EnrichedData,
   sourceId: string,
 ): Promise<void> {
+  // Claim the source_id BEFORE sending to Slack to prevent race condition
+  // where two SSE events for the same email both pass isDuplicate() check
+  const [inserted] = await db
+    .insert(activityItems)
+    .values({
+      sourceType: action,
+      sourceId,
+      mergeRequestId: data.mergeRequestId,
+      pipelineId: data.pipelineId,
+      ticketKey: data.ticketKey,
+      actor: data.actor,
+      title: data.title,
+      body: data.body,
+      externalUrl: data.externalUrl,
+      notifiedAt: null, // set after successful Slack send
+      occurredAt: data.occurredAt,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: activityItems.sourceId })
+    .returning({ id: activityItems.id });
+
+  if (!inserted) return; // already claimed by another concurrent process
+
   const token = env.SLACK_BOT_TOKEN;
   const channelId = env.SLACK_CHANNEL_ID;
-
   const payload = buildPayload(action, data);
 
   const res = await fetch("https://slack.com/api/chat.postMessage", {
@@ -144,22 +167,8 @@ export async function sendSlackNotification(
     throw new Error(`Slack API error: ${result.error}`);
   }
 
-  // Insert activity item after successful notification
   await db
-    .insert(activityItems)
-    .values({
-      sourceType: action,
-      sourceId,
-      mergeRequestId: data.mergeRequestId,
-      pipelineId: data.pipelineId,
-      ticketKey: data.ticketKey,
-      actor: data.actor,
-      title: data.title,
-      body: data.body,
-      externalUrl: data.externalUrl,
-      notifiedAt: new Date(),
-      occurredAt: data.occurredAt,
-      createdAt: new Date(),
-    })
-    .onConflictDoNothing({ target: activityItems.sourceId });
+    .update(activityItems)
+    .set({ notifiedAt: new Date() })
+    .where(eq(activityItems.id, inserted.id));
 }
