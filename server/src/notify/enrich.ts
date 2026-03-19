@@ -79,7 +79,6 @@ export interface EnrichedData {
   actor: string | null;
   ticketKey: string | null;
   epicName: string | null;
-  storyPoints: string | null;
   occurredAt: Date;
   mergeRequestId: number | null;
   pipelineId: number | null;
@@ -154,16 +153,14 @@ async function resolveTicketKey(
 ): Promise<{
   ticketKey: string | null;
   epicName: string | null;
-  storyPoints: string | null;
 }> {
   const match = branchName.match(TICKET_KEY_RE);
-  if (!match) return { ticketKey: null, epicName: null, storyPoints: null };
+  if (!match) return { ticketKey: null, epicName: null };
 
   const key = match[1].toUpperCase();
   const [ticket] = await db
     .select({
       key: tickets.key,
-      storyPoints: tickets.storyPoints,
       epicKey: tickets.epicKey,
     })
     .from(tickets)
@@ -171,7 +168,7 @@ async function resolveTicketKey(
     .limit(1);
 
   if (!ticket)
-    return { ticketKey: key, epicName: null, storyPoints: null };
+    return { ticketKey: key, epicName: null };
 
   let epicName: string | null = null;
   if (ticket.epicKey) {
@@ -186,7 +183,6 @@ async function resolveTicketKey(
   return {
     ticketKey: key,
     epicName,
-    storyPoints: ticket.storyPoints,
   };
 }
 
@@ -345,7 +341,6 @@ export async function enrich(
       : classified.actor;
   let ticketKey: string | null = null;
   let epicName: string | null = null;
-  let storyPoints: string | null = null;
   let occurredAt = new Date(email.receivedAt);
   let mergeRequestId: number | null = null;
   let enrichedPipelineId: number | null = null;
@@ -396,7 +391,6 @@ export async function enrich(
               );
               ticketKey = resolved.ticketKey;
               epicName = resolved.epicName;
-              storyPoints = resolved.storyPoints;
             }
           }
         }
@@ -469,7 +463,6 @@ export async function enrich(
     actor,
     ticketKey,
     epicName,
-    storyPoints,
     occurredAt,
     mergeRequestId,
     pipelineId: enrichedPipelineId,

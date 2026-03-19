@@ -49,14 +49,7 @@ function buildTicketContextBlock(data: EnrichedData): object | null {
   });
 
   if (data.epicName) {
-    elements.push({
-      type: "mrkdwn",
-      text: data.storyPoints
-        ? `${data.epicName}  ·  ${data.storyPoints} SP`
-        : data.epicName,
-    });
-  } else if (data.storyPoints) {
-    elements.push({ type: "mrkdwn", text: `${data.storyPoints} SP` });
+    elements.push({ type: "mrkdwn", text: data.epicName });
   }
 
   return { type: "context", elements };
