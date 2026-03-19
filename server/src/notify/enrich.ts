@@ -173,7 +173,7 @@ async function resolveTicketKey(
     .limit(1);
 
   if (!ticket)
-    return { ticketKey: key, ticketTitle: null, epicKey: null, epicName: null };
+    return { ticketKey: null, ticketTitle: null, epicKey: null, epicName: null };
 
   let epicKey: string | null = ticket.epicKey;
   let epicName: string | null = null;
