@@ -436,9 +436,13 @@ export async function enrich(
             `/projects/${projectId}/merge_requests/${mrIid}/notes/${noteId}`,
           );
           if (note) {
-            body = note.body.length > 200
-              ? note.body.slice(0, 197) + "..."
-              : note.body;
+            let noteBody = note.body
+              .replace(/^.*commented on a discussion.*\n?/m, "")
+              .replace(/^https?:\/\/\S+\n?/m, "")
+              .trim();
+            body = noteBody.length > 200
+              ? noteBody.slice(0, 197) + "..."
+              : noteBody;
             actor = note.author.name.split(" ")[0];
             occurredAt = new Date(note.created_at);
             externalUrl = `${mr.web_url}#note_${noteId}`;

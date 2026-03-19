@@ -73,7 +73,10 @@ export function extractCommentText(body: string): string | null {
   text = text
     .replace(/^.*wrote:.*$/m, "")
     .replace(/^.*created a new comment.*$/m, "")
+    .replace(/^.*commented on a discussion.*$/m, "")
+    .replace(/^.*commented on a commit.*$/m, "")
     .replace(/^.*mentioned you.*$/m, "")
+    .replace(/^https?:\/\/\S+$/m, "")
     .trim();
 
   if (!text) return null;
