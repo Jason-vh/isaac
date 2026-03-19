@@ -532,6 +532,43 @@ export interface JobRetryTrend {
   severity: "healthy" | "improving" | "worsening" | "chronic";
 }
 
+// Activity Items
+export type ActivitySourceType =
+  | "gitlab_comment"
+  | "gitlab_approval"
+  | "gitlab_merge"
+  | "pipeline_success"
+  | "pipeline_failure"
+  | "review_request"
+  | "commits_pushed"
+  | "mentioned";
+
+export interface ActivityItem {
+  id: number;
+  sourceType: ActivitySourceType;
+  sourceId: string;
+  ticketKey: string | null;
+  epicName: string | null;
+  actor: string | null;
+  title: string;
+  body: string | null;
+  externalUrl: string;
+  notifiedAt: string | null;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface ActivityDay {
+  date: string;
+  items: ActivityItem[];
+}
+
+export interface ActivityData {
+  days: ActivityDay[];
+  total: number;
+  jiraBrowseUrl: string;
+}
+
 // Sync
 export type SyncSource =
   | "jira"
