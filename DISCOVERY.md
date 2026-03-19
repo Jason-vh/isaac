@@ -24,6 +24,7 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 | **Confluence** | Documents published, documents commented on (stretch) | Periodic (hourly) via API |
 | **Google Calendar** | Meetings attended, holidays/OOO | Periodic (hourly) via API |
 | **Slack bot** | Wins logged manually (shorthand, enriched later on web) | Real-time via Slack app |
+| **GitLab emails** | MR comments, approvals, merges, pipeline results, review requests, mentions | Real-time via JMAP EventSource (isaac-notify service) — emails parsed for identifiers, enriched via GitLab API, persisted as activity items |
 
 Identity is consistent across systems (same email, API tokens scoped to me).
 

@@ -24,7 +24,8 @@ Personal impact tracker and WBSO hour estimation tool for FareHarbor.
 - **Railway CLI:** `railway` — project is `isaac`, environment is `production`
 - **Connect to prod DB:** `railway service isaac-db && railway run psql` (uses internal URL, won't work outside Railway). Use the public URL instead: get it with `railway variables --json | grep DATABASE_PUBLIC_URL`, then `psql <url>`.
 - **Trigger production sync:** Same curl as local but against `https://isaac.vhtm.eu/api/sync/trigger`. Generate a JWT first (see below).
-- **Synced tables** (safe to truncate for re-sync): `tickets`, `ticket_events`, `merge_requests`, `merge_request_events`, `merge_request_comments`, `commits`, `confluence_documents`, `confluence_document_events`, `meetings`, `pipelines`, `pipeline_jobs`, `sync_log`
+- **Dev notify:** `bun run server/src/notify/run.ts` (requires FASTMAIL_TOKEN, FASTMAIL_FILTER_TO, SLACK_BOT_TOKEN, SLACK_CHANNEL_ID, GITLAB_*, JIRA_BASE_URL)
+- **Synced tables** (safe to truncate for re-sync): `tickets`, `ticket_events`, `merge_requests`, `merge_request_events`, `merge_request_comments`, `commits`, `confluence_documents`, `confluence_document_events`, `meetings`, `pipelines`, `pipeline_jobs`, `sync_log`, `activity_items`
 - **Preserved tables** (manually entered data): `wins`, `entity_links`, `passkey_credentials`
 
 ## Testing & Debugging

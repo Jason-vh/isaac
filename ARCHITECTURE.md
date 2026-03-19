@@ -53,6 +53,12 @@ isaac/
 │   │   │   ├── confluence.ts
 │   │   │   ├── calendar.ts     # Calls Apps Script endpoint
 │   │   │   └── linker.ts       # Infers links between entities
+│   │   ├── notify/
+│   │   │   ├── run.ts          # Notify service entry point (JMAP EventSource SSE)
+│   │   │   ├── jmap.ts         # JMAP protocol layer (session, query, EventSource)
+│   │   │   ├── classify.ts     # Email parsing and action classification
+│   │   │   ├── enrich.ts       # GitLab API enrichment + lightweight DB sync
+│   │   │   └── slack.ts        # Rich Slack notifications with ticket/epic context
 │   │   ├── slack/
 │   │   │   └── handler.ts
 │   │   └── wbso/
@@ -355,6 +361,26 @@ For WebAuthn passkey auth.
 | transports | text | Nullable, JSON-serialized AuthenticatorTransport[] |
 | created_at | timestamptz | |
 
+### activity_items
+
+Notifications from GitLab emails, enriched via API and deduped. Powers the notify service and a future activity page.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | serial PK | |
+| source_type | text | gitlab_comment, gitlab_approval, gitlab_merge, pipeline_success, pipeline_failure, review_request, commits_pushed, mentioned |
+| source_id | text unique | Dedup key (e.g. `note:98765`, `merge:432`, `pipeline:12345:success`) |
+| merge_request_id | int FK → merge_requests | Nullable |
+| pipeline_id | int FK → pipelines | Nullable |
+| ticket_key | text | Nullable, soft reference (no FK — ticket may not be synced yet) |
+| actor | text | Nullable (null for pipeline events) |
+| title | text | MR title or email subject |
+| body | text | Nullable, comment text |
+| external_url | text | Link to GitLab |
+| notified_at | timestamptz | Nullable (null = not yet notified) |
+| occurred_at | timestamptz | Event timestamp from API or email |
+| created_at | timestamptz | |
+
 ### sync_log
 
 Track sync job runs.
@@ -440,6 +466,7 @@ curl -X POST https://isaac.vhtm.eu/api/sync/trigger \
 |---|---|---|
 | **isaac-web** | Elysia API server + Vue SPA static files | `bun run server/src/index.ts` (from root `package.json` `start` script) |
 | **isaac-cron** | Sync cron job | `bun run server/src/sync/run.ts` (via `RAILWAY_START_COMMAND`) |
+| **isaac-notify** | GitLab email → Slack notifications | `bun run server/src/notify/run.ts` (persistent JMAP EventSource SSE process) |
 
 Both `isaac-web` and `isaac-cron` have sync env vars so the web service can trigger syncs via the API.
 | **isaac-db** | PostgreSQL database | Managed by Railway |
@@ -480,3 +507,14 @@ Validated at startup via `server/src/env.ts`. Core vars are required at boot —
 - `CALENDAR_SCRIPT_SECRET` — Shared secret for Apps Script auth
 - `SLACK_SIGNING_SECRET` — For verifying Slack requests
 - `SLACK_BOT_TOKEN` — For sending Slack responses
+
+### Notify (required by isaac-notify service)
+
+- `FASTMAIL_TOKEN` — FastMail API token for JMAP access
+- `FASTMAIL_FILTER_TO` — Email address to filter notifications (e.g. GitLab notification alias)
+- `SLACK_BOT_TOKEN` — Same as above, for posting notifications
+- `SLACK_CHANNEL_ID` — Slack channel ID for notifications
+- `GITLAB_BASE_URL` — Same as sync
+- `GITLAB_API_TOKEN` — Same as sync
+- `GITLAB_PROJECT_ID` — Same as sync
+- `JIRA_BASE_URL` — For constructing ticket links in Slack messages

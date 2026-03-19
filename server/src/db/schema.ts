@@ -247,6 +247,31 @@ export const shareTokens = pgTable("share_tokens", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
+// --- activity_items ---
+
+export const activityItems = pgTable("activity_items", {
+  id: serial("id").primaryKey(),
+  sourceType: text("source_type").notNull(),
+  sourceId: text("source_id").notNull().unique(),
+  mergeRequestId: integer("merge_request_id").references(
+    () => mergeRequests.id
+  ),
+  pipelineId: bigint("pipeline_id", { mode: "number" }).references(
+    () => pipelines.id
+  ),
+  ticketKey: text("ticket_key"),
+  actor: text("actor"),
+  title: text("title").notNull(),
+  body: text("body"),
+  externalUrl: text("external_url").notNull(),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  index("activity_items_occurred_at_idx").on(t.occurredAt),
+  index("activity_items_source_type_idx").on(t.sourceType),
+]);
+
 // --- sync_log ---
 
 export const syncLog = pgTable("sync_log", {
