@@ -109,9 +109,13 @@ function buildPayload(
   ];
 
   if (action === "pipeline_failure" && data.failedJobs.length > 0) {
-    const jobLinks = data.failedJobs
+    const MAX_JOBS = 3;
+    const shown = data.failedJobs.slice(0, MAX_JOBS);
+    const rest = data.failedJobs.length - MAX_JOBS;
+    let jobLinks = shown
       .map((job) => `<${job.webUrl}|${job.name}>`)
       .join(", ");
+    if (rest > 0) jobLinks += ` (+${rest} more)`;
     blocks.push({
       type: "context",
       elements: [{ type: "mrkdwn", text: `Failed: ${jobLinks}` }],
