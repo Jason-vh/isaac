@@ -99,7 +99,8 @@ function detectAction(
     if (lower.includes("failed") || lower.includes("failure"))
       return "pipeline_failure";
   }
-  if (lower.includes("approved this merge request")) return "gitlab_approval";
+  if (lower.includes("approved this merge request") || lower.includes("was approved by"))
+    return "gitlab_approval";
   if (lower.includes("merged")) return "gitlab_merge";
   if (lower.includes("pushed") && lower.includes("commit"))
     return "commits_pushed";
