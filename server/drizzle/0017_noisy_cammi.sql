@@ -1,0 +1,1 @@
+ALTER TABLE "activity_items" ADD COLUMN "raw_email_body" text;

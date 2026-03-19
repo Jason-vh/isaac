@@ -149,6 +149,7 @@ export async function sendSlackNotification(
       title: data.title,
       body: data.body,
       externalUrl: data.externalUrl,
+      rawEmailBody: data.rawEmailBody,
       notifiedAt: null, // set after successful Slack send
       occurredAt: data.occurredAt,
       createdAt: new Date(),

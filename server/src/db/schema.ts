@@ -264,6 +264,7 @@ export const activityItems = pgTable("activity_items", {
   title: text("title").notNull(),
   body: text("body"),
   externalUrl: text("external_url").notNull(),
+  rawEmailBody: text("raw_email_body"),
   notifiedAt: timestamp("notified_at", { withTimezone: true }),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

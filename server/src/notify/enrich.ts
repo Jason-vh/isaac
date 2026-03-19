@@ -85,6 +85,7 @@ export interface EnrichedData {
   mergeRequestId: number | null;
   pipelineId: number | null;
   failedJobs: FailedJob[];
+  rawEmailBody: string;
 }
 
 async function gitlabFetch<T>(path: string): Promise<T | null> {
@@ -486,6 +487,7 @@ export async function enrich(
     mergeRequestId,
     pipelineId: enrichedPipelineId,
     failedJobs,
+    rawEmailBody: email.body,
   };
 }
 
