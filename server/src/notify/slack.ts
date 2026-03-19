@@ -31,10 +31,14 @@ function buildHeadline(action: ActionType, data: EnrichedData): string {
     ? `<${data.externalUrl}|${data.title}>`
     : data.title;
 
+  let actionLine: string;
   if (action === "pipeline_success" || action === "pipeline_failure") {
-    return `${prefix}${verb} ${mrRef}`;
+    actionLine = `${prefix}${verb}`;
+  } else {
+    actionLine = `${prefix}${data.actor} ${verb}`;
   }
-  return `${prefix}${data.actor} ${verb} ${mrRef}`;
+
+  return `${actionLine}\n${mrRef}`;
 }
 
 function buildTicketContextBlock(data: EnrichedData): object | null {
