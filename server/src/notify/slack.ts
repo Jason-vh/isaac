@@ -24,12 +24,26 @@ const PREFIX: Partial<Record<ActionType, string>> = {
   marked_ready: ":white_check_mark:",
 };
 
+const TICKET_KEY_RE = /\[?[A-Z][A-Z0-9]+-\d+\]?\s*/gi;
+
+function stripTicketKeys(title: string): string {
+  return title.replace(TICKET_KEY_RE, "").replace(/\s+/g, " ").trim();
+}
+
+function jiraBrowseUrl(key: string): string {
+  const base = env.JIRA_BASE_URL;
+  // JIRA_BASE_URL may be "https://x.atlassian.net/jira" — browse lives at the root
+  const origin = base.replace(/\/jira\/?$/, "");
+  return `${origin}/browse/${key}`;
+}
+
 function buildHeadline(action: ActionType, data: EnrichedData): string {
   const verb = ACTION_VERB[action];
   const prefix = PREFIX[action] ? `${PREFIX[action]} ` : "";
+  const cleanTitle = stripTicketKeys(data.title);
   const mrRef = data.externalUrl
-    ? `<${data.externalUrl}|${data.title}>`
-    : data.title;
+    ? `<${data.externalUrl}|${cleanTitle}>`
+    : cleanTitle;
 
   let actionLine: string;
   if (action === "pipeline_success" || action === "pipeline_failure") {
@@ -43,20 +57,22 @@ function buildHeadline(action: ActionType, data: EnrichedData): string {
 
 function buildTicketContextBlock(data: EnrichedData): object | null {
   if (!data.ticketKey) return null;
-  const jiraBase = env.JIRA_BASE_URL;
 
-  const elements: object[] = [];
+  const ticketLabel = data.ticketTitle ?? data.ticketKey;
+  const ticketUrl = jiraBrowseUrl(data.ticketKey);
+  let text = `<${ticketUrl}|${ticketLabel}>`;
 
-  elements.push({
-    type: "mrkdwn",
-    text: `<${jiraBase}/browse/${data.ticketKey}|:jira: ${data.ticketKey}>`,
-  });
-
-  if (data.epicName) {
-    elements.push({ type: "mrkdwn", text: data.epicName });
+  if (data.epicName && data.epicKey) {
+    const epicUrl = jiraBrowseUrl(data.epicKey);
+    text += ` (<${epicUrl}|${data.epicName}>)`;
+  } else if (data.epicName) {
+    text += ` (${data.epicName})`;
   }
 
-  return { type: "context", elements };
+  return {
+    type: "context",
+    elements: [{ type: "mrkdwn", text }],
+  };
 }
 
 function buildPayload(

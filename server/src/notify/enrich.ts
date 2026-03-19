@@ -78,6 +78,8 @@ export interface EnrichedData {
   externalUrl: string;
   actor: string | null;
   ticketKey: string | null;
+  ticketTitle: string | null;
+  epicKey: string | null;
   epicName: string | null;
   occurredAt: Date;
   mergeRequestId: number | null;
@@ -152,15 +154,18 @@ async function resolveTicketKey(
   branchName: string,
 ): Promise<{
   ticketKey: string | null;
+  ticketTitle: string | null;
+  epicKey: string | null;
   epicName: string | null;
 }> {
   const match = branchName.match(TICKET_KEY_RE);
-  if (!match) return { ticketKey: null, epicName: null };
+  if (!match) return { ticketKey: null, ticketTitle: null, epicKey: null, epicName: null };
 
   const key = match[1].toUpperCase();
   const [ticket] = await db
     .select({
       key: tickets.key,
+      title: tickets.title,
       epicKey: tickets.epicKey,
     })
     .from(tickets)
@@ -168,8 +173,9 @@ async function resolveTicketKey(
     .limit(1);
 
   if (!ticket)
-    return { ticketKey: key, epicName: null };
+    return { ticketKey: key, ticketTitle: null, epicKey: null, epicName: null };
 
+  let epicKey: string | null = ticket.epicKey;
   let epicName: string | null = null;
   if (ticket.epicKey) {
     const [epic] = await db
@@ -182,6 +188,8 @@ async function resolveTicketKey(
 
   return {
     ticketKey: key,
+    ticketTitle: ticket.title,
+    epicKey,
     epicName,
   };
 }
@@ -340,6 +348,8 @@ export async function enrich(
       ? null
       : classified.actor;
   let ticketKey: string | null = null;
+  let ticketTitle: string | null = null;
+  let epicKey: string | null = null;
   let epicName: string | null = null;
   let occurredAt = new Date(email.receivedAt);
   let mergeRequestId: number | null = null;
@@ -390,6 +400,8 @@ export async function enrich(
                 mr.source_branch,
               );
               ticketKey = resolved.ticketKey;
+              ticketTitle = resolved.ticketTitle;
+              epicKey = resolved.epicKey;
               epicName = resolved.epicName;
             }
           }
@@ -407,8 +419,9 @@ export async function enrich(
 
         const resolved = await resolveTicketKey(mr.source_branch);
         ticketKey = resolved.ticketKey;
+        ticketTitle = resolved.ticketTitle;
+        epicKey = resolved.epicKey;
         epicName = resolved.epicName;
-        storyPoints = resolved.storyPoints;
 
         if (action === "gitlab_merge" && mr.merged_at) {
           occurredAt = new Date(mr.merged_at);
@@ -462,6 +475,8 @@ export async function enrich(
     externalUrl: externalUrl || `https://gitlab.com`,
     actor,
     ticketKey,
+    ticketTitle,
+    epicKey,
     epicName,
     occurredAt,
     mergeRequestId,
