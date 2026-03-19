@@ -74,20 +74,11 @@ function buildPayload(
     text += `\n${quoted}`;
   }
 
-  const ticketBlock = buildTicketContextBlock(data);
-  const hasFailedJobs =
-    action === "pipeline_failure" && data.failedJobs.length > 0;
-
-  // Only use blocks when we have structured content underneath
-  if (!ticketBlock && !hasFailedJobs) {
-    return { text, unfurl_links: false };
-  }
-
   const blocks: object[] = [
     { type: "section", text: { type: "mrkdwn", text } },
   ];
 
-  if (hasFailedJobs) {
+  if (action === "pipeline_failure" && data.failedJobs.length > 0) {
     blocks.push({
       type: "context",
       elements: data.failedJobs.map((job) => ({
@@ -97,6 +88,7 @@ function buildPayload(
     });
   }
 
+  const ticketBlock = buildTicketContextBlock(data);
   if (ticketBlock) blocks.push(ticketBlock);
 
   return { text, blocks, unfurl_links: false };
