@@ -112,6 +112,9 @@ function detectAction(
   if (isDiscussionResolved(lower)) return null;
   if (lower.includes("marked") && lower.includes("as draft")) return null;
   if (lower.includes("marked") && lower.includes("as ready")) return "marked_ready";
+  if (lower.includes("reassigned merge request")) return null;
+  if (lower.includes("added as an assignee")) return null;
+  if (lower.includes("removed from reviewer")) return null;
   if (lower.includes("requested") && lower.includes("review"))
     return "review_request";
   if (lower.includes("added as reviewer"))
