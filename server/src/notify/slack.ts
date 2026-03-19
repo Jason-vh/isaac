@@ -40,13 +40,6 @@ function stripTicketKeys(title: string): string {
   return title.replace(TICKET_KEY_RE, "").replace(/\s+/g, " ").trim();
 }
 
-function jiraBrowseUrl(key: string): string {
-  const base = env.JIRA_BASE_URL;
-  // JIRA_BASE_URL may be "https://x.atlassian.net/jira" — browse lives at the root
-  const origin = base.replace(/\/jira\/?$/, "");
-  return `${origin}/browse/${key}`;
-}
-
 function buildHeadline(action: ActionType, data: EnrichedData): string {
   const verb = ACTION_VERB[action];
   const prefix = PREFIX[action] ? `${PREFIX[action]} ` : "";
@@ -63,26 +56,6 @@ function buildHeadline(action: ActionType, data: EnrichedData): string {
   }
 
   return `${actionLine}\n${mrRef}`;
-}
-
-function buildTicketContextBlock(data: EnrichedData): object | null {
-  if (!data.ticketKey) return null;
-
-  const ticketLabel = data.ticketTitle ?? data.ticketKey;
-  const ticketUrl = jiraBrowseUrl(data.ticketKey);
-  let text = `<${ticketUrl}|${ticketLabel}>`;
-
-  if (data.epicName && data.epicKey) {
-    const epicUrl = jiraBrowseUrl(data.epicKey);
-    text += ` • epic: <${epicUrl}|${data.epicName}>`;
-  } else if (data.epicName) {
-    text += ` • epic: ${data.epicName}`;
-  }
-
-  return {
-    type: "context",
-    elements: [{ type: "mrkdwn", text }],
-  };
 }
 
 function buildPayload(
@@ -123,9 +96,6 @@ function buildPayload(
       elements: [{ type: "mrkdwn", text: `Failed: ${jobLinks}` }],
     });
   }
-
-  const ticketBlock = buildTicketContextBlock(data);
-  if (ticketBlock) blocks.push(ticketBlock);
 
   blocks.push({ type: "divider" });
 
