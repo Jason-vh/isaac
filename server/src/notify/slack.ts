@@ -13,6 +13,7 @@ const ACTION_VERB: Record<ActionType, string> = {
   review_request: "requested review on",
   commits_pushed: "pushed commits to",
   mentioned: "mentioned you on",
+  marked_ready: "marked as ready",
 };
 
 const PREFIX: Partial<Record<ActionType, string>> = {
@@ -20,6 +21,7 @@ const PREFIX: Partial<Record<ActionType, string>> = {
   gitlab_merge: ":merged:",
   pipeline_failure: ":hellmo:",
   pipeline_success: ":tada:",
+  marked_ready: ":white_check_mark:",
 };
 
 function buildMessage(

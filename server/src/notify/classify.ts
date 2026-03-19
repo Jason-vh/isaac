@@ -8,7 +8,8 @@ export type ActionType =
   | "pipeline_failure"
   | "review_request"
   | "commits_pushed"
-  | "mentioned";
+  | "mentioned"
+  | "marked_ready";
 
 export interface ClassifiedEmail {
   action: ActionType | null;
@@ -105,6 +106,8 @@ function detectAction(
   if (lower.includes("pushed") && lower.includes("commit"))
     return "commits_pushed";
   if (isDiscussionResolved(lower)) return null;
+  if (lower.includes("marked") && lower.includes("as draft")) return null;
+  if (lower.includes("marked") && lower.includes("as ready")) return "marked_ready";
   if (lower.includes("requested") && lower.includes("review"))
     return "review_request";
   if (lower.includes("mentioned you")) return "mentioned";
@@ -149,6 +152,8 @@ export function buildSourceId(
       return `push:${mrIid}:${emailId}`;
     case "mentioned":
       return noteId ? `mention:${noteId}` : `mention:${emailId}`;
+    case "marked_ready":
+      return `ready:${mrIid}:${emailId}`;
   }
 }
 

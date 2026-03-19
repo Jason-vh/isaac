@@ -158,6 +158,8 @@ function emoji(type: ActivitySourceType): string {
       return "👀";
     case "commits_pushed":
       return "📦";
+    case "marked_ready":
+      return "✅";
   }
 }
 
@@ -178,6 +180,8 @@ function iconBg(type: ActivitySourceType): string {
       return "bg-blue-50";
     case "commits_pushed":
       return "bg-amber-50";
+    case "marked_ready":
+      return "bg-green-50";
   }
 }
 
@@ -199,6 +203,8 @@ function verb(type: ActivitySourceType): string {
       return "pushed commits to";
     case "mentioned":
       return "mentioned you on";
+    case "marked_ready":
+      return "marked as ready";
   }
 }
 

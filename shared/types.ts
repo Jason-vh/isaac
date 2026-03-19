@@ -541,7 +541,8 @@ export type ActivitySourceType =
   | "pipeline_failure"
   | "review_request"
   | "commits_pushed"
-  | "mentioned";
+  | "mentioned"
+  | "marked_ready";
 
 export interface ActivityItem {
   id: number;
