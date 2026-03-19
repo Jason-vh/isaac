@@ -92,8 +92,10 @@ function buildPayload(
   let text = buildHeadline(action, data);
 
   // Comment body for comments/mentions
+  const isCursor = resolveActor(data.actor) === "Cursor";
   if (
     data.body &&
+    !isCursor &&
     (action === "gitlab_comment" || action === "mentioned")
   ) {
     const quoted = data.body
