@@ -59,14 +59,7 @@ function buildPayload(
   action: ActionType,
   data: EnrichedData,
 ): Record<string, unknown> {
-  const headline = buildHeadline(action, data);
-  const blocks: object[] = [];
-
-  // Main message
-  const headlineBlock = {
-    type: "section",
-    text: { type: "mrkdwn", text: headline },
-  };
+  let text = buildHeadline(action, data);
 
   // Comment body for comments/mentions
   if (
@@ -78,13 +71,23 @@ function buildPayload(
       .slice(0, 5)
       .map((line) => `> ${line}`)
       .join("\n");
-    headlineBlock.text.text += `\n${quoted}`;
+    text += `\n${quoted}`;
   }
 
-  blocks.push(headlineBlock);
+  const ticketBlock = buildTicketContextBlock(data);
+  const hasFailedJobs =
+    action === "pipeline_failure" && data.failedJobs.length > 0;
 
-  // Failed jobs for pipeline failures
-  if (action === "pipeline_failure" && data.failedJobs.length > 0) {
+  // Only use blocks when we have structured content underneath
+  if (!ticketBlock && !hasFailedJobs) {
+    return { text, unfurl_links: false };
+  }
+
+  const blocks: object[] = [
+    { type: "section", text: { type: "mrkdwn", text } },
+  ];
+
+  if (hasFailedJobs) {
     blocks.push({
       type: "context",
       elements: data.failedJobs.map((job) => ({
@@ -94,11 +97,9 @@ function buildPayload(
     });
   }
 
-  // Ticket context
-  const ticketBlock = buildTicketContextBlock(data);
   if (ticketBlock) blocks.push(ticketBlock);
 
-  return { text: headline, blocks, unfurl_links: false };
+  return { text, blocks, unfurl_links: false };
 }
 
 export async function sendSlackNotification(
