@@ -74,9 +74,9 @@ function buildTicketContextBlock(data: EnrichedData): object | null {
 
   if (data.epicName && data.epicKey) {
     const epicUrl = jiraBrowseUrl(data.epicKey);
-    text += ` (<${epicUrl}|${data.epicName}>)`;
+    text += ` • epic: <${epicUrl}|${data.epicName}>`;
   } else if (data.epicName) {
-    text += ` (${data.epicName})`;
+    text += ` • epic: ${data.epicName}`;
   }
 
   return {
