@@ -210,54 +210,93 @@ function buildEventSourceUrl(session: JmapSession): string {
     .replace("{ping}", "60");
 }
 
+const HEARTBEAT_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes (expects 60s pings)
+
 export function connectEventSource(
   session: JmapSession,
   token: string,
   onEmailChange: () => void,
-): Promise<void> {
+): Promise<never> {
   const url = buildEventSourceUrl(session);
   const account = accountId(session);
 
   return new Promise((_resolve, reject) => {
-    const es = new EventSource(url, {
-      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
-        fetch(input, {
-          ...init,
-          headers: {
-            ...(init?.headers as Record<string, string>),
-            Authorization: `Bearer ${token}`,
-          },
-        }),
-    });
+    let es: EventSource | null = null;
+    let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 
-    es.onopen = () => {
-      console.log("[notify] EventSource connected");
-    };
+    function resetHeartbeat() {
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      heartbeatTimer = setTimeout(() => {
+        console.warn("[notify] No data received in 3 minutes, reconnecting...");
+        reconnect();
+      }, HEARTBEAT_TIMEOUT_MS);
+    }
 
-    const handleEvent = (event: MessageEvent) => {
-      try {
-        const data = JSON.parse(event.data);
-        const changed = data.changed ?? data.data?.changed ?? {};
-        if (changed[account]?.Email) {
-          console.log("[notify] Email state change detected");
-          onEmailChange();
-        }
-      } catch {
-        // ping or non-JSON, ignore
+    function reconnect() {
+      if (es) {
+        es.close();
+        es = null;
       }
-    };
+      if (heartbeatTimer) {
+        clearTimeout(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      setTimeout(connect, 5000);
+    }
 
-    es.onmessage = handleEvent;
-    es.addEventListener("state", handleEvent as EventListener);
-    es.addEventListener("ping", () => {});
+    function connect() {
+      console.log("[notify] Opening EventSource connection...");
+      es = new EventSource(url, {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, {
+            ...init,
+            headers: {
+              ...(init?.headers as Record<string, string>),
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+      });
 
-    es.onerror = (event: Event) => {
-      const err = event as Event & { code?: number; message?: string };
-      console.error(
-        "[notify] EventSource error:",
-        err.message ?? "unknown",
-        err.code ?? "",
-      );
-    };
+      es.onopen = () => {
+        console.log("[notify] EventSource connected");
+        resetHeartbeat();
+      };
+
+      const handleEvent = (event: MessageEvent) => {
+        resetHeartbeat();
+        try {
+          const data = JSON.parse(event.data);
+          const changed = data.changed ?? data.data?.changed ?? {};
+          if (changed[account]?.Email) {
+            console.log("[notify] Email state change detected");
+            onEmailChange();
+          }
+        } catch {
+          // ping or non-JSON, ignore
+        }
+      };
+
+      es.onmessage = handleEvent;
+      es.addEventListener("state", handleEvent as EventListener);
+      es.addEventListener("ping", ((event: MessageEvent) => {
+        resetHeartbeat();
+      }) as EventListener);
+
+      es.onerror = (event: Event) => {
+        const err = event as Event & { code?: number; message?: string };
+        console.error(
+          "[notify] EventSource error:",
+          err.message ?? "unknown",
+          err.code ?? "",
+        );
+        // If the connection is closed (CLOSED = 2), the library gave up — reconnect ourselves
+        if (es?.readyState === 2) {
+          console.warn("[notify] EventSource closed, reconnecting...");
+          reconnect();
+        }
+      };
+    }
+
+    connect();
   });
 }
