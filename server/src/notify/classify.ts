@@ -115,6 +115,7 @@ function detectAction(
   if (lower.includes("reassigned merge request")) return null;
   if (lower.includes("added as an assignee")) return null;
   if (lower.includes("removed from reviewer")) return null;
+  if (lower.includes("can no longer be merged")) return null;
   if (lower.includes("requested") && lower.includes("review"))
     return "review_request";
   if (lower.includes("added as reviewer"))
