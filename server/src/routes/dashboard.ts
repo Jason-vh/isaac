@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { and, between, eq, gte, lt, sql, inArray } from "drizzle-orm";
+import { and, between, eq, gte, lt, or, sql, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   tickets,
@@ -84,7 +84,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       winsLogged: 0,
     };
 
-    // 1. Ticket events
+    // 1. Ticket events (personal — only tickets assigned to or created by me)
     const ticketEventRows = await db
       .select({
         eventType: ticketEvents.eventType,
@@ -99,7 +99,8 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       .where(
         and(
           gte(ticketEvents.occurredAt, monday),
-          lt(ticketEvents.occurredAt, nextMonday)
+          lt(ticketEvents.occurredAt, nextMonday),
+          or(eq(tickets.assigneeIsMe, true), eq(tickets.createdByMe, true))
         )
       );
 
@@ -124,12 +125,16 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       });
     }
 
-    // 2. Tickets closed
+    // 2. Tickets closed (personal — only tickets assigned to or created by me)
     const closedTickets = await db
       .select()
       .from(tickets)
       .where(
-        and(gte(tickets.closedAt, monday), lt(tickets.closedAt, nextMonday))
+        and(
+          gte(tickets.closedAt, monday),
+          lt(tickets.closedAt, nextMonday),
+          or(eq(tickets.assigneeIsMe, true), eq(tickets.createdByMe, true))
+        )
       );
 
     for (const t of closedTickets) {
@@ -393,7 +398,11 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       })
       .from(tickets)
       .where(
-        and(gte(tickets.closedAt, monday), lt(tickets.closedAt, nextMonday))
+        and(
+          gte(tickets.closedAt, monday),
+          lt(tickets.closedAt, nextMonday),
+          or(eq(tickets.assigneeIsMe, true), eq(tickets.createdByMe, true))
+        )
       );
 
     const row = closedTickets[0];

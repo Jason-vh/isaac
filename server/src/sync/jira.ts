@@ -67,7 +67,7 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
     ].join(",");
 
     // Paginate through all matching issues (using nextPageToken cursor)
-    const jql = `(assignee = currentUser() OR reporter = currentUser()) AND updated >= "${sinceDate}"`;
+    const jql = `project = DESK AND updated >= "${sinceDate}"`;
     const allIssues: JiraIssue[] = [];
     let nextPageToken: string | undefined;
 

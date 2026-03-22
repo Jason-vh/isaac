@@ -67,7 +67,7 @@ export async function syncConfluence(sinceOverride?: Date): Promise<void> {
 
     // Step 2: Search pages with pagination
     const sinceDate = since.toISOString().slice(0, 10);
-    const cql = `type = page AND (creator = currentUser() OR contributor = currentUser()) AND lastModified >= "${sinceDate}"`;
+    const cql = `type = page AND space = DESK AND lastModified >= "${sinceDate}"`;
     const allPages: ConfluencePage[] = [];
     let start = 0;
 
@@ -130,7 +130,7 @@ export async function syncConfluence(sinceOverride?: Date): Promise<void> {
         occurredAt: Date;
       }> = [];
 
-      // "published" event if created by me
+      // "published" event (personal — only for pages I created)
       if (createdByMe) {
         incoming.push({
           documentId: docId,
@@ -156,8 +156,8 @@ export async function syncConfluence(sinceOverride?: Date): Promise<void> {
           });
 
         for (const comment of commentsData.results) {
+          // Events are personal — only track my comments for the dashboard
           if (comment.history.createdBy.accountId !== myAccountId) continue;
-
           const commentDate = new Date(comment.history.createdDate);
           if (commentDate < since) continue;
 

@@ -8,6 +8,7 @@ const SECTION_API_PREFIXES: Record<string, string[]> = {
   wbso: ["/api/wbso/"],
   objectives: ["/api/objectives/", "/api/key-results/"],
   pipelines: ["/api/pipelines/"],
+  digest: ["/api/digest"],
 };
 
 // Elysia beforeHandle function for use with .guard()

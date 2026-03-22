@@ -423,6 +423,7 @@ Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router st
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string, force?: boolean }` for filtered backfills — `force` bypasses the "already synced" skip for gitlab-pipelines, enabling backfill of new fields), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ token, expiresAt }` (owner-only, generates 24h share token)
+- **Digest:** GET `/digest?since=&until=` (structured summary of team activity for a time period — tickets created by type, status transitions, MRs opened/merged, Confluence docs, commit counts by day)
 - **Slack:** POST `/slack/events`, POST `/slack/commands` (no JWT — verified via Slack signing secret)
 
 ## Sync Architecture

@@ -12,6 +12,7 @@ import { pipelineRoutes } from "./routes/pipelines";
 import { shareRoutes } from "./routes/share";
 import { wbsoRoutes } from "./routes/wbso";
 import { activityRoutes } from "./routes/activity";
+import { digestRoutes } from "./routes/digest";
 import { verifyJwt, requireOwner } from "./auth/middleware";
 
 const STATIC_DIR = resolve(import.meta.dir, "../../web/dist");
@@ -33,6 +34,7 @@ const app = new Elysia()
       .use(pipelineRoutes)
       .use(wbsoRoutes)
       .use(activityRoutes)
+      .use(digestRoutes)
       .guard({ beforeHandle: requireOwner }, (app) =>
         app.use(syncRoutes).use(shareRoutes)
       )

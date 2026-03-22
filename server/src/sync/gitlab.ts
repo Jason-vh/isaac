@@ -110,8 +110,11 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
         authHeaders
       );
-      const myNotes = notes.filter(
-        (note) => note.author.id === myUserId && !note.system
+      const allNotes = notes.filter(
+        (note) => !note.system
+      );
+      const myNotes = allNotes.filter(
+        (note) => note.author.id === myUserId
       );
       const hasMyComments = myNotes.length > 0;
 
@@ -156,8 +159,8 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
 
       const mrId = upserted.id;
 
-      // Fetch and upsert commits for MRs I authored
-      if (authoredByMe) {
+      // Fetch and upsert commits for all MRs
+      {
         const gitlabCommits = await paginateGitLab<GitLabCommit>(
           `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
           authHeaders
@@ -242,9 +245,9 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         await db.insert(mergeRequestEvents).values(newEvents);
       }
 
-      // Upsert comment content
-      if (myNotes.length > 0) {
-        const commentRows = myNotes.map((note) => ({
+      // Upsert comment content (all non-system comments for digest)
+      if (allNotes.length > 0) {
+        const commentRows = allNotes.map((note) => ({
           id: note.id,
           mergeRequestId: mrId,
           body: note.body,

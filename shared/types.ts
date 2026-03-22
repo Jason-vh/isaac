@@ -589,3 +589,72 @@ export interface SyncLog {
   error: string | null;
   itemsSynced: number | null;
 }
+
+// Digest
+export interface DigestTicketGroup {
+  issueType: string;
+  count: number;
+  tickets: { key: string; title: string; status: string; assignee: boolean }[];
+}
+
+export interface DigestStatusTransition {
+  toValue: string;
+  count: number;
+  tickets: { key: string; title: string }[];
+}
+
+export interface DigestMR {
+  id: number;
+  gitlabIid: number;
+  projectPath: string;
+  title: string;
+  status: string;
+  authoredByMe: boolean;
+  ticketKey: string | null;
+  changesCount: number;
+  commitCount: number;
+  createdAt: string;
+  mergedAt: string | null;
+}
+
+export interface DigestConfluenceDoc {
+  id: number;
+  confluenceId: string;
+  title: string;
+  spaceKey: string;
+  createdByMe: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DigestData {
+  since: string;
+  until: string;
+
+  tickets: {
+    created: DigestTicketGroup[];
+    totalCreated: number;
+  };
+
+  statusTransitions: {
+    transitions: DigestStatusTransition[];
+    totalTransitions: number;
+  };
+
+  mergeRequests: {
+    opened: DigestMR[];
+    merged: DigestMR[];
+    totalOpened: number;
+    totalMerged: number;
+  };
+
+  confluence: {
+    documents: DigestConfluenceDoc[];
+    totalDocuments: number;
+  };
+
+  commits: {
+    totalCount: number;
+    byDay: { date: string; count: number }[];
+  };
+}
