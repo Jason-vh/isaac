@@ -163,9 +163,17 @@ automatically during sync; bots are never inserted.
 **Identity resolution.** Jira exposes `emailAddress` on assignee/reporter
 directly. GitLab does not reliably expose email, so it is resolved in order:
 `publicEmail` → project member `public_email` → the `author_email` of commits in
-the person's own MRs (matched on GitLab display name) → previously resolved
-rows in `people`. Users that resolve to no email (bots, `noreply` addresses)
-are skipped, which is what keeps renovate out of the numbers.
+the person's own MRs → previously resolved rows in `people`. Users that resolve
+to no email (bots, `noreply` addresses) are skipped, which is what keeps
+renovate out of the numbers.
+
+The commit-email step **requires the commit `author_name` to equal the GitLab
+display name**. Never guess from an unrelated commit: because people are keyed
+by email, binding the wrong email to an account overwrites the real person's
+row and silently reassigns their work. GitLab also reassigns deleted accounts to
+ghost placeholders (`ghost`, `ghost1`, …, display name "Ghost User"), which are
+treated as bots — their MRs and reviews are left unattributed rather than being
+merged into whoever happened to author the first commit.
 
 ### tickets
 

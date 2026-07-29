@@ -20,13 +20,21 @@ const BOT_USERNAME_PATTERNS = [
   /^project_\d+_bot/i,
   /^group_\d+_bot/i,
   /(^|[-_.])bot([-_.]|\d|$)/i,
-  /^ghost$/i,
+  // GitLab reassigns deleted accounts to ghost placeholders (ghost, ghost1, ...).
+  /^ghost\d*$/i,
 ];
+
+const BOT_NAME_PATTERNS = [/^ghost user$/i];
 
 const BOT_EMAIL_PATTERNS = [/noreply/i, /@users\.noreply/i];
 
-export function isBotUser(username: string, email?: string | null): boolean {
+export function isBotUser(
+  username: string,
+  email?: string | null,
+  name?: string | null
+): boolean {
   if (BOT_USERNAME_PATTERNS.some((re) => re.test(username))) return true;
+  if (name && BOT_NAME_PATTERNS.some((re) => re.test(name))) return true;
   if (email && BOT_EMAIL_PATTERNS.some((re) => re.test(email))) return true;
   return false;
 }
@@ -71,8 +79,9 @@ export class GitLabIdentityResolver {
 
   /** Records what we know about a GitLab user; email is optional. */
   observe(username: string, name?: string | null, email?: string | null): void {
+    if (isBotUser(username, email, name)) return;
     if (name) this.nameByUsername.set(username, name);
-    if (email && !isBotUser(username, email) && !this.emailByUsername.has(username)) {
+    if (email && !this.emailByUsername.has(username)) {
       this.emailByUsername.set(username, normaliseEmail(email));
     }
   }
@@ -87,12 +96,18 @@ export class GitLabIdentityResolver {
   ): void {
     if (this.emailByUsername.has(username) || isBotUser(username)) return;
     const displayName = this.nameByUsername.get(username);
-    const candidates = commits.filter(
-      (c) => !BOT_EMAIL_PATTERNS.some((re) => re.test(c.author_email))
+    if (!displayName) return;
+    // Require the commit author name to match. Guessing from an unrelated
+    // commit would bind someone else's email to this account, and because
+    // people are keyed by email that would corrupt the real person's row.
+    const match = commits.find(
+      (c) =>
+        c.author_name === displayName &&
+        !BOT_EMAIL_PATTERNS.some((re) => re.test(c.author_email))
     );
-    const match =
-      candidates.find((c) => c.author_name === displayName) ?? candidates[0];
-    if (match) this.emailByUsername.set(username, normaliseEmail(match.author_email));
+    if (match) {
+      this.emailByUsername.set(username, normaliseEmail(match.author_email));
+    }
   }
 
   getEmail(username: string): string | undefined {
@@ -105,12 +120,13 @@ export class GitLabIdentityResolver {
 
   /** Upserts the person for a GitLab username, or null if unresolvable. */
   async resolve(username: string): Promise<number | null> {
-    if (isBotUser(username)) return null;
+    const name = this.nameByUsername.get(username);
+    if (isBotUser(username, null, name)) return null;
     const email = this.emailByUsername.get(username);
     if (!email) return null;
     return upsertPerson({
       email,
-      displayName: this.nameByUsername.get(username) ?? username,
+      displayName: name ?? username,
       gitlabUsername: username,
     });
   }
