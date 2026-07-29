@@ -658,3 +658,62 @@ export interface DigestData {
     byDay: { date: string; count: number }[];
   };
 }
+
+// --- Team productivity ---
+
+export type CodeCategory = "frontend" | "backend" | "other";
+
+export interface Person {
+  id: number;
+  email: string;
+  displayName: string;
+  isMe: boolean;
+}
+
+/** Line counts split by area of the codebase. */
+export type LinesByCategory = Record<
+  CodeCategory,
+  { additions: number; deletions: number }
+>;
+
+export interface CodeVolume {
+  mrs: number;
+  additions: number;
+  deletions: number;
+  byCategory: LinesByCategory;
+}
+
+export interface TeamMemberProductivity {
+  person: Person;
+  merged: CodeVolume;
+  reviewed: CodeVolume & { approvals: number; comments: number };
+  tickets: { closed: number; storyPoints: number };
+}
+
+export interface TeamProductivity {
+  since: string;
+  until: string;
+  members: TeamMemberProductivity[];
+}
+
+export const TEAM_METRICS = [
+  "mergedAdditions",
+  "mergedMrs",
+  "reviewedAdditions",
+  "reviewedMrs",
+  "ticketsClosed",
+  "storyPoints",
+] as const;
+
+export type TeamMetric = (typeof TEAM_METRICS)[number];
+
+export interface TeamTrendPoint {
+  weekStart: string;
+  /** Person id -> metric values for that week. */
+  byPerson: Record<number, Record<TeamMetric, number>>;
+}
+
+export interface TeamTrend {
+  people: Person[];
+  points: TeamTrendPoint[];
+}

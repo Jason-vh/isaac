@@ -43,6 +43,7 @@ isaac/
 │   │   │   ├── wins.ts
 │   │   │   ├── objectives.ts
 │   │   │   ├── pipelines.ts    # Pipeline duration scatter, job stats, comparison, detail
+│   │   │   ├── team.ts         # Per-engineer productivity + weekly trend
 │   │   │   ├── share.ts        # POST /share (generate share URL)
 │   │   │   └── wbso.ts
 │   │   ├── sync/
@@ -52,6 +53,7 @@ isaac/
 │   │   │   ├── gitlab-pipelines.ts  # Pipeline + job sync (all pipelines, not just mine)
 │   │   │   ├── confluence.ts
 │   │   │   ├── calendar.ts     # Calls Apps Script endpoint
+│   │   │   ├── people.ts       # Cross-system person identity resolution
 │   │   │   └── linker.ts       # Infers links between entities
 │   │   ├── notify/
 │   │   │   ├── run.ts          # Notify service entry point (JMAP EventSource SSE)
@@ -80,6 +82,7 @@ isaac/
 │       │   ├── useDashboard.ts  # Dashboard data fetching
 │       │   ├── useObjectives.ts # OKR CRUD + evidence management
 │       │   ├── usePipelines.ts  # Pipeline scatter + comparison data fetching (date range, presets)
+│       │   ├── useTeam.ts       # Team productivity + trend fetching (date range, presets)
 │       │   └── useWbso.ts       # WBSO week data fetching
 │       ├── components/
 │       │   ├── dashboard/
@@ -106,6 +109,11 @@ isaac/
 │       │   │   ├── JobTimelineChart.vue     # Per-job daily chart (duration/retry/critical %) shown in expanded rows
 │       │   │   ├── PipelineList.vue         # Clickable pipeline list linking to detail page
 │       │   │   └── WaterfallChart.vue       # Job timeline bars with DAG dependency lines
+│       │   ├── team/
+│       │   │   ├── TeamTotals.vue           # Team-wide totals incl. frontend/backend share
+│       │   │   ├── TeamTable.vue            # Sortable per-engineer table with FE/BE/other split bar
+│       │   │   ├── TeamTrendChart.vue       # Weekly per-person line chart, metric switcher
+│       │   │   └── CategoryBar.vue          # Stacked frontend/backend/other bar
 │       │   └── wbso/
 │       │       ├── WbsoCategoryCards.vue    # 6 stat cards (Coding, Code Review, Dev Meeting, Dev Misc, Non-Dev, Leave)
 │       │       ├── WbsoWeekGrid.vue         # Mon-Fri grid with stacked category progress bars, entries grouped by epic
@@ -119,6 +127,7 @@ isaac/
 │       │   ├── PipelinesView.vue
 │       │   ├── PipelineDetailView.vue
 │       │   ├── WbsoView.vue
+│       │   ├── TeamView.vue          # Per-engineer productivity (/team)
 │       │   ├── AdminView.vue         # Sync trigger + log (hidden from nav, /admin)
 │       │   └── LoginView.vue
 │       └── api/
@@ -131,9 +140,32 @@ isaac/
 
 ## Database Schema
 
-All timestamp columns use `timestamptz`. Single-user app — no user/tenant IDs on any table.
+All timestamp columns use `timestamptz`. Single-user app — no user/tenant IDs on any table. The `people` table identifies *teammates* for team-level reporting; it is not an auth or tenancy boundary.
 
 Design principle: **store raw facts, derive meaning at query/report time.** Every claim Isaac makes should be traceable back to a source record.
+
+### people
+
+One row per human across GitLab and Jira, keyed by corporate email. Populated
+automatically during sync; bots are never inserted.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | serial PK | |
+| email | text unique | Corporate email — the cross-system key |
+| display_name | text | |
+| gitlab_username | text unique | Nullable until the person appears in GitLab |
+| jira_account_id | text unique | Nullable until the person appears in Jira |
+| is_me | boolean | Set from `JIRA_EMAIL` on every Jira sync |
+| active | boolean | Default true |
+| created_at / updated_at | timestamptz | |
+
+**Identity resolution.** Jira exposes `emailAddress` on assignee/reporter
+directly. GitLab does not reliably expose email, so it is resolved in order:
+`publicEmail` → project member `public_email` → the `author_email` of commits in
+the person's own MRs (matched on GitLab display name) → previously resolved
+rows in `people`. Users that resolve to no email (bots, `noreply` addresses)
+are skipped, which is what keeps renovate out of the numbers.
 
 ### tickets
 
@@ -150,6 +182,9 @@ The core entity. Epics are tickets with `issue_type = 'epic'`. Uses Jira key as 
 | epic_key | text FK → tickets | Nullable (epics don't have a parent epic) |
 | created_by_me | boolean | |
 | assignee_is_me | boolean | |
+| assignee_person_id | int FK → people | Nullable, current assignee |
+| reporter_person_id | int FK → people | Nullable |
+| closing_assignee_person_id | int FK → people | Nullable. Assignee at the moment the ticket closed, computed by rewinding changelog assignee changes made after `closed_at`. This is the grain used for "tickets closed per engineer". |
 | closed_at | timestamptz | Nullable, derived from status transitions |
 | jira_created_at | timestamptz | |
 | jira_updated_at | timestamptz | |
@@ -180,14 +215,52 @@ Raw status transitions and other events.
 | status | text | opened, merged, closed |
 | authored_by_me | boolean | |
 | reviewed_by_me | boolean | Default false. True if user approved or commented on the MR. |
+| author_person_id | int FK → people | Nullable. Null for bot-authored MRs (e.g. renovate). |
 | branch_name | text | |
 | ticket_key | text FK → tickets | Nullable, inferred from branch name |
 | ticket_key_inferred | boolean | Default true. Set to false when manually overridden. |
-| additions | int | Files changed (sourced from GitLab `changes_count`; column name kept for compatibility) |
+| files_changed | int | Files changed (GraphQL `diffStatsSummary.fileCount`) |
+| additions | int | Lines added across the MR diff |
+| deletions | int | Lines removed across the MR diff |
 | commit_count | int | |
 | gitlab_created_at | timestamptz | |
 | merged_at | timestamptz | Nullable |
 | synced_at | timestamptz | |
+
+### merge_request_reviews
+
+One row per person who approved or commented on an MR. The MR author is never
+recorded as their own reviewer.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | serial PK | |
+| merge_request_id | int FK → merge_requests | |
+| person_id | int FK → people | |
+| approved | boolean | Default false |
+| comment_count | int | Non-system, non-bot comments by this person |
+| first_reviewed_at | timestamptz | Nullable, first comment |
+| last_reviewed_at | timestamptz | Nullable, last comment. Used to place a review in time. |
+
+Unique on `(merge_request_id, person_id)`.
+
+### merge_request_file_stats
+
+Per-file line counts, stored raw so categorisation can change without re-syncing.
+Sourced from the GitLab GraphQL `diffStats` field (REST does not expose
+additions/deletions for MRs).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | serial PK | |
+| merge_request_id | int FK → merge_requests | |
+| path | text | Repo-relative file path |
+| category | text | frontend, backend, other — derived from the path prefix |
+| additions | int | |
+| deletions | int | |
+| excluded | boolean | Lockfiles and generated code; never counted in line totals |
+
+Unique on `(merge_request_id, path)`.
 
 ### merge_request_events
 
@@ -421,6 +494,7 @@ Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router st
 - **Pipelines:** GET `/pipelines/duration-scatter?since=&until=` (scatter points with type + scope), GET `/pipelines/job-stats?since=&until=&scope=` (p50 duration, retry count, needs per job), GET `/pipelines/critical-path-frequency?since=&until=&scope=` (per-job critical path %), GET `/pipelines/job-timeline?since=&until=&job=&scope=` (daily duration, retry rate, critical % for a single job), GET `/pipelines/:id/jobs` (detail with jobs + needs for DAG/waterfall)
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
+- **Team:** GET `/team/people` (active people), GET `/team/productivity?since=&until=` (per-engineer lines merged, lines reviewed, tickets closed and story points, each split frontend/backend/other), GET `/team/trend?since=&until=` (same metrics bucketed by week per person). Range defaults to the last 30 days.
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string, force?: boolean }` for filtered backfills — `force` bypasses the "already synced" skip for gitlab-pipelines, enabling backfill of new fields), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ token, expiresAt }` (owner-only, generates 24h share token)
 - **Digest:** GET `/digest?since=&until=` (structured summary of team activity for a time period — tickets created by type, status transitions, MRs opened/merged, Confluence docs, commit counts by day)
@@ -438,6 +512,25 @@ Railway cron jobs call `bun run server/src/sync/run.ts` on a schedule. This scri
 6. Logs results to `sync_log`
 
 Calendar sync calls an Apps Script endpoint (no OAuth needed). All other sources use API tokens via env vars. Pipeline sync uses both the REST API (for pipeline/job details) and the GraphQL API (for job `needs` DAG dependencies, which aren't exposed via REST).
+
+### GitLab sync details
+
+**Line counts.** The REST API does not expose additions/deletions for merge
+requests, so the sync issues a batched GraphQL query (10 MRs per request, since
+`diffStats` returns one node per changed file) for `diffStats`,
+`diffStatsSummary`, `commitCount`, `author` and `approvedBy`. This also replaces
+the old per-MR REST detail call.
+
+**Two-pass ordering.** Commits and notes for every MR in the window are fetched
+up front, before any attribution happens. A reviewer on the first MR may only be
+resolvable to an email from commits on a later one, so all identities must be
+known before reviews are written.
+
+**Categorisation.** `server/src/lib/codeCategory.ts` maps a path to
+frontend/backend/other by top-level directory and flags generated files
+(lockfiles, `schema.json`, codegen output, snapshots, `dist/`) as `excluded`.
+Because per-file rows are stored raw, changing these rules only requires an
+`UPDATE`, not a re-sync.
 
 ### Manual sync trigger
 

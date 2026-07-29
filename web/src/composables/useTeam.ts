@@ -1,0 +1,98 @@
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import type { TeamProductivity, TeamTrend } from "@isaac/shared";
+import { api, UnauthorizedError } from "../api/client";
+
+function toDateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function daysAgo(days: number): string {
+  return toDateString(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
+}
+
+const DEFAULT_DAYS = 30;
+const PRESET_DAYS = [7, 30, 90];
+
+function derivePreset(sinceVal: string, untilVal: string): number | null {
+  if (untilVal !== toDateString(new Date())) return null;
+  return PRESET_DAYS.find((days) => sinceVal === daysAgo(days)) ?? null;
+}
+
+export function useTeam() {
+  const router = useRouter();
+  const route = useRoute();
+
+  const since = ref((route.query.since as string) || daysAgo(DEFAULT_DAYS));
+  const until = ref((route.query.until as string) || toDateString(new Date()));
+  const activePreset = ref<number | null>(
+    derivePreset(since.value, until.value)
+  );
+
+  const productivity = ref<TeamProductivity | null>(null);
+  const trend = ref<TeamTrend | null>(null);
+  const loading = ref(false);
+  const initialLoading = ref(true);
+  const error = ref("");
+
+  function applyPreset(days: number) {
+    activePreset.value = days;
+    since.value = daysAgo(days);
+    until.value = toDateString(new Date());
+  }
+
+  function isActivePreset(days: number): boolean {
+    return activePreset.value === days;
+  }
+
+  const queryParams = computed(() => {
+    const params = new URLSearchParams();
+    params.set("since", new Date(since.value).toISOString());
+    params.set("until", new Date(until.value + "T23:59:59").toISOString());
+    return params.toString();
+  });
+
+  async function fetchAll() {
+    loading.value = true;
+    error.value = "";
+    try {
+      const [prod, tr] = await Promise.all([
+        api.get<TeamProductivity>(`/team/productivity?${queryParams.value}`),
+        api.get<TeamTrend>(`/team/trend?${queryParams.value}`),
+      ]);
+      productivity.value = prod;
+      trend.value = tr;
+    } catch (e: any) {
+      if (e instanceof UnauthorizedError) {
+        router.push("/login");
+        return;
+      }
+      error.value = e.message;
+    } finally {
+      loading.value = false;
+      initialLoading.value = false;
+    }
+  }
+
+  watch([since, until], () => {
+    if (activePreset.value !== null && !isActivePreset(activePreset.value)) {
+      activePreset.value = derivePreset(since.value, until.value);
+    }
+    router.replace({ query: { since: since.value, until: until.value } });
+  });
+
+  watch(queryParams, () => fetchAll(), { immediate: true });
+
+  return {
+    since,
+    until,
+    productivity,
+    trend,
+    loading,
+    initialLoading,
+    error,
+    presetDays: PRESET_DAYS,
+    applyPreset,
+    isActivePreset,
+  };
+}

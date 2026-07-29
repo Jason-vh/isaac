@@ -1,9 +1,21 @@
 import { db } from "../db";
-import { mergeRequests, mergeRequestEvents, mergeRequestComments, commits } from "../db/schema";
-import { sql } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import {
+  mergeRequests,
+  mergeRequestEvents,
+  mergeRequestComments,
+  mergeRequestFileStats,
+  mergeRequestReviews,
+  commits,
+} from "../db/schema";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, paginateGitLab, runSyncWithLog, dedup } from "./util";
+import { classifyPath } from "../lib/codeCategory";
+import {
+  GitLabIdentityResolver,
+  isBotUser,
+  resetPersonCache,
+} from "./people";
 
 // ---------------------------------------------------------------------------
 // Types for GitLab API responses
@@ -17,6 +29,13 @@ interface GitLabProject {
   path_with_namespace: string;
 }
 
+interface GitLabAuthor {
+  id: number;
+  username: string;
+  name: string;
+  public_email?: string | null;
+}
+
 interface GitLabMR {
   id: number;
   iid: number;
@@ -26,18 +45,15 @@ interface GitLabMR {
   web_url: string;
   created_at: string;
   merged_at: string | null;
-  author: { id: number };
-}
-
-interface GitLabMRDetail {
-  changes_count: string | null; // number of files changed (string!)
-  commit_count: number | null;
+  author: GitLabAuthor;
 }
 
 interface GitLabCommit {
   id: string; // sha
   title: string;
   authored_date: string;
+  author_name: string;
+  author_email: string;
 }
 
 interface GitLabNote {
@@ -45,8 +61,114 @@ interface GitLabNote {
   body: string;
   created_at: string;
   updated_at: string;
-  author: { id: number };
+  author: GitLabAuthor;
   system: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// GraphQL — per-file diff stats and approvals (not available via REST)
+// ---------------------------------------------------------------------------
+
+interface GraphQLUser {
+  username: string;
+  name: string;
+  publicEmail: string | null;
+}
+
+interface MrGraphQLDetail {
+  author: GraphQLUser | null;
+  approvedBy: string[];
+  additions: number;
+  deletions: number;
+  filesChanged: number;
+  commitCount: number;
+  files: Array<{ path: string; additions: number; deletions: number }>;
+}
+
+const MR_DETAIL_FRAGMENT = `
+  fragment MrDetail on MergeRequest {
+    iid
+    commitCount
+    author { username name publicEmail }
+    approvedBy { nodes { username name publicEmail } }
+    diffStatsSummary { additions deletions fileCount }
+    diffStats { path additions deletions }
+  }
+`;
+
+// diffStats returns one node per changed file, so keep batches small.
+const GRAPHQL_BATCH_SIZE = 10;
+
+async function fetchMrDetails(
+  baseUrl: string,
+  token: string,
+  projectPath: string,
+  iids: number[],
+  resolver: GitLabIdentityResolver
+): Promise<Map<number, MrGraphQLDetail>> {
+  const result = new Map<number, MrGraphQLDetail>();
+
+  for (let i = 0; i < iids.length; i += GRAPHQL_BATCH_SIZE) {
+    const batch = iids.slice(i, i + GRAPHQL_BATCH_SIZE);
+    const aliases = batch
+      .map((iid, idx) => `m${idx}: mergeRequest(iid: "${iid}") { ...MrDetail }`)
+      .join("\n");
+    const query = `${MR_DETAIL_FRAGMENT}
+      query($projectPath: ID!) {
+        project(fullPath: $projectPath) { ${aliases} }
+      }`;
+
+    const res = await fetch(`${baseUrl}/api/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "PRIVATE-TOKEN": token },
+      body: JSON.stringify({ query, variables: { projectPath } }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[gitlab] GraphQL diff query failed: ${res.status}`);
+      continue;
+    }
+
+    const json = (await res.json()) as {
+      data?: { project?: Record<string, any> | null };
+      errors?: unknown;
+    };
+    const project = json.data?.project;
+    if (!project) {
+      console.warn(`[gitlab] GraphQL diff query returned no project`);
+      continue;
+    }
+
+    for (let idx = 0; idx < batch.length; idx++) {
+      const node = project[`m${idx}`];
+      if (!node) continue;
+
+      const approvers: string[] = [];
+      for (const u of node.approvedBy?.nodes ?? []) {
+        resolver.observe(u.username, u.name, u.publicEmail);
+        approvers.push(u.username);
+      }
+      if (node.author) {
+        resolver.observe(
+          node.author.username,
+          node.author.name,
+          node.author.publicEmail
+        );
+      }
+
+      result.set(batch[idx], {
+        author: node.author,
+        approvedBy: approvers,
+        additions: node.diffStatsSummary?.additions ?? 0,
+        deletions: node.diffStatsSummary?.deletions ?? 0,
+        filesChanged: node.diffStatsSummary?.fileCount ?? 0,
+        commitCount: node.commitCount ?? 0,
+        files: node.diffStats ?? [],
+      });
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +177,8 @@ interface GitLabNote {
 
 export async function syncGitLab(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("gitlab", async (since) => {
+    resetPersonCache();
+
     // Lazy env access
     const baseUrl = env.GITLAB_BASE_URL;
     const token = env.GITLAB_API_TOKEN;
@@ -77,7 +201,12 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
 
     const sinceISO = since.toISOString();
 
-    // Step 3: Fetch ALL project MRs (no author/reviewer filter)
+    // Step 3: Seed identity resolution from known people and project members
+    const resolver = new GitLabIdentityResolver();
+    await resolver.loadKnownPeople();
+    await resolver.loadProjectMembers();
+
+    // Step 4: Fetch ALL project MRs (no author/reviewer filter)
     const allMRs = await paginateGitLab<GitLabMR>(
       `${baseUrl}/api/v4/projects/${projectId}/merge_requests?updated_after=${sinceISO}&state=all`,
       authHeaders
@@ -85,98 +214,232 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
 
     if (allMRs.length === 0) return 0;
 
-    // Step 4: Fetch MRs I approved (efficient list-level filter)
+    // Step 5: Fetch MRs I approved (efficient list-level filter)
     const approvedMRs = await paginateGitLab<GitLabMR>(
       `${baseUrl}/api/v4/projects/${projectId}/merge_requests?approved_by_ids[]=${myUserId}&updated_after=${sinceISO}&state=all`,
       authHeaders
     );
     const approvedSet = new Set(approvedMRs.map((mr) => mr.id));
 
-    // Step 5: Process each MR
+    // Step 6: Diff stats + approvals via GraphQL
+    const details = await fetchMrDetails(
+      baseUrl,
+      token,
+      projectPath,
+      allMRs.map((mr) => mr.iid),
+      resolver
+    );
+
+    // Step 7: Fetch commits and notes up front so every author email is known
+    // before we attribute reviews (a reviewer on the first MR may only be
+    // resolvable from commits on a later one).
+    const commitsByIid = new Map<number, GitLabCommit[]>();
+    const notesByIid = new Map<number, GitLabNote[]>();
+
+    console.log(`[sync:gitlab] Fetching detail for ${allMRs.length} MRs`);
+    let fetched = 0;
+
     for (const mr of allMRs) {
-      const authoredByMe = mr.author.id === myUserId;
+      resolver.observe(mr.author.username, mr.author.name, mr.author.public_email);
 
-      // Fetch MR detail for file count and commit count
-      // Note: GitLab REST API doesn't return additions/deletions;
-      // we use changes_count (files changed) as a size proxy.
-      const { data: detail } = await apiFetch<GitLabMRDetail>(
-        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}`,
-        { headers: authHeaders }
-      );
-      const changesCount = parseInt(detail.changes_count ?? "0", 10) || 0;
-
-      // Fetch my comments on this MR (both authored and reviewed)
-      const notes = await paginateGitLab<GitLabNote>(
-        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc&created_after=${sinceISO}`,
+      const mrCommits = await paginateGitLab<GitLabCommit>(
+        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
         authHeaders
       );
-      const allNotes = notes.filter(
-        (note) => !note.system
-      );
-      const myNotes = allNotes.filter(
-        (note) => note.author.id === myUserId
-      );
-      const hasMyComments = myNotes.length > 0;
+      commitsByIid.set(mr.iid, mrCommits);
+      resolver.observeCommits(mr.author.username, mrCommits);
 
-      const reviewedByMe = approvedSet.has(mr.id) || hasMyComments;
+      const notes = await paginateGitLab<GitLabNote>(
+        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc`,
+        authHeaders
+      );
+      notesByIid.set(mr.iid, notes);
+      for (const note of notes) {
+        if (note.system) continue;
+        resolver.observe(
+          note.author.username,
+          note.author.name,
+          note.author.public_email
+        );
+      }
 
-      // Upsert MR with both flags
+      if (++fetched % 25 === 0) {
+        console.log(`[sync:gitlab] Fetched ${fetched}/${allMRs.length} MRs`);
+      }
+    }
+
+    // Step 8: Process each MR
+    for (const mr of allMRs) {
+      const authoredByMe = mr.author.id === myUserId;
+      const detail = details.get(mr.iid);
+
+      const allNotes = (notesByIid.get(mr.iid) ?? []).filter((n) => !n.system);
+      const myNotes = allNotes.filter((note) => note.author.id === myUserId);
+      const reviewedByMe = approvedSet.has(mr.id) || myNotes.length > 0;
+
+      const authorPersonId = await resolver.resolve(mr.author.username);
+
+      const values = {
+        gitlabIid: mr.iid,
+        projectPath,
+        title: mr.title,
+        status: mr.state,
+        authoredByMe,
+        reviewedByMe,
+        authorPersonId,
+        branchName: mr.source_branch,
+        gitlabCreatedAt: new Date(mr.created_at),
+        mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
+        syncedAt: new Date(),
+      };
+
+      // Never overwrite known counts with zeros when a GraphQL batch failed.
+      const diffValues = detail
+        ? {
+            filesChanged: detail.filesChanged,
+            additions: detail.additions,
+            deletions: detail.deletions,
+            commitCount: detail.commitCount,
+          }
+        : null;
+      if (!diffValues) {
+        console.warn(`[sync:gitlab] No diff stats for MR !${mr.iid}`);
+      }
+
       const [upserted] = await db
         .insert(mergeRequests)
         .values({
           gitlabId: mr.id,
-          gitlabIid: mr.iid,
-          projectPath,
-          title: mr.title,
-          status: mr.state,
-          authoredByMe,
-          reviewedByMe,
-          branchName: mr.source_branch,
-          changesCount,
-          commitCount: detail.commit_count ?? 0,
-          gitlabCreatedAt: new Date(mr.created_at),
-          mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
-          syncedAt: new Date(),
+          ...values,
+          filesChanged: diffValues?.filesChanged ?? 0,
+          additions: diffValues?.additions ?? 0,
+          deletions: diffValues?.deletions ?? 0,
+          commitCount: diffValues?.commitCount ?? 0,
         })
         .onConflictDoUpdate({
           target: mergeRequests.gitlabId,
-          set: {
-            gitlabIid: mr.iid,
-            projectPath,
-            title: mr.title,
-            status: mr.state,
-            authoredByMe,
-            reviewedByMe,
-            branchName: mr.source_branch,
-            changesCount,
-            commitCount: detail.commit_count ?? 0,
-            gitlabCreatedAt: new Date(mr.created_at),
-            mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
-            syncedAt: new Date(),
-          },
+          set: { ...values, ...(diffValues ?? {}) },
         })
         .returning({ id: mergeRequests.id });
 
       const mrId = upserted.id;
 
-      // Fetch and upsert commits for all MRs
-      {
-        const gitlabCommits = await paginateGitLab<GitLabCommit>(
-          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
-          authHeaders
+      // Per-file line counts
+      if (detail) {
+        if (detail.files.length > 0) {
+          const fileRows = detail.files.map((f) => {
+            const { category, excluded } = classifyPath(f.path);
+            return {
+              mergeRequestId: mrId,
+              path: f.path,
+              category,
+              additions: f.additions,
+              deletions: f.deletions,
+              excluded,
+            };
+          });
+
+          await db
+            .insert(mergeRequestFileStats)
+            .values(fileRows)
+            .onConflictDoUpdate({
+              target: [
+                mergeRequestFileStats.mergeRequestId,
+                mergeRequestFileStats.path,
+              ],
+              set: {
+                category: sql`excluded.category`,
+                additions: sql`excluded.additions`,
+                deletions: sql`excluded.deletions`,
+                excluded: sql`excluded.excluded`,
+              },
+            });
+        }
+
+        // Drop files that left the diff (e.g. after a force-push).
+        const paths = detail.files.map((f) => f.path);
+        await db
+          .delete(mergeRequestFileStats)
+          .where(
+            and(
+              eq(mergeRequestFileStats.mergeRequestId, mrId),
+              paths.length > 0
+                ? notInArray(mergeRequestFileStats.path, paths)
+                : undefined
+            )
+          );
+      }
+
+      // Reviews — approvers and commenters, excluding the MR author
+      const reviewers = new Map<
+        string,
+        { approved: boolean; commentCount: number; first?: Date; last?: Date }
+      >();
+
+      for (const username of detail?.approvedBy ?? []) {
+        if (username === mr.author.username) continue;
+        reviewers.set(username, { approved: true, commentCount: 0 });
+      }
+      for (const note of allNotes) {
+        const username = note.author.username;
+        if (username === mr.author.username || isBotUser(username)) continue;
+        const entry = reviewers.get(username) ?? {
+          approved: false,
+          commentCount: 0,
+        };
+        entry.commentCount++;
+        const at = new Date(note.created_at);
+        if (!entry.first || at < entry.first) entry.first = at;
+        if (!entry.last || at > entry.last) entry.last = at;
+        reviewers.set(username, entry);
+      }
+
+      const reviewerPersonIds: number[] = [];
+      for (const [username, r] of reviewers) {
+        const personId = await resolver.resolve(username);
+        if (!personId) continue;
+        reviewerPersonIds.push(personId);
+        const reviewValues = {
+          approved: r.approved,
+          commentCount: r.commentCount,
+          firstReviewedAt: r.first ?? null,
+          lastReviewedAt: r.last ?? null,
+        };
+        await db
+          .insert(mergeRequestReviews)
+          .values({ mergeRequestId: mrId, personId, ...reviewValues })
+          .onConflictDoUpdate({
+            target: [
+              mergeRequestReviews.mergeRequestId,
+              mergeRequestReviews.personId,
+            ],
+            set: reviewValues,
+          });
+      }
+
+      // Drop reviews that no longer exist (e.g. a revoked approval).
+      await db
+        .delete(mergeRequestReviews)
+        .where(
+          and(
+            eq(mergeRequestReviews.mergeRequestId, mrId),
+            reviewerPersonIds.length > 0
+              ? notInArray(mergeRequestReviews.personId, reviewerPersonIds)
+              : undefined
+          )
         );
 
-        for (const c of gitlabCommits) {
-          await db
-            .insert(commits)
-            .values({
-              mergeRequestId: mrId,
-              sha: c.id,
-              title: c.title,
-              authoredAt: new Date(c.authored_date),
-            })
-            .onConflictDoNothing({ target: commits.sha });
-        }
+      // Upsert commits for all MRs
+      for (const c of commitsByIid.get(mr.iid) ?? []) {
+        await db
+          .insert(commits)
+          .values({
+            mergeRequestId: mrId,
+            sha: c.id,
+            title: c.title,
+            authoredAt: new Date(c.authored_date),
+          })
+          .onConflictDoNothing({ target: commits.sha });
       }
 
       // Events stay personal — only for MRs I participated in
@@ -210,7 +473,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         });
       }
 
-      // "commented" events from notes (already fetched for non-authored MRs)
+      // "commented" events from my notes
       for (const note of myNotes) {
         incoming.push({
           mergeRequestId: mrId,

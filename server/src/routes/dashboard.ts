@@ -216,13 +216,13 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
       const day = dayMap.get(dk);
       if (day) day.mrsMerged++;
       stats.mrsMerged++;
-      stats.filesChanged += mr.changesCount;
+      stats.filesChanged += mr.filesChanged;
 
       feed.push({
         id: `mr_merged:${mr.gitlabIid}`,
         type: "mr_merged",
         title: `!${mr.gitlabIid} ${mr.title}`,
-        subtitle: `${mr.changesCount} files changed`,
+        subtitle: `${mr.filesChanged} files changed`,
         occurredAt: mr.mergedAt!.toISOString(),
         endsAt: null,
         externalUrl: null,

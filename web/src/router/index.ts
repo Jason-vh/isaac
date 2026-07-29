@@ -51,6 +51,11 @@ export const router = createRouter({
       component: () => import("../views/ActivityView.vue"),
     },
     {
+      path: "/team",
+      name: "team",
+      component: () => import("../views/TeamView.vue"),
+    },
+    {
       path: "/pipelines",
       children: [
         {

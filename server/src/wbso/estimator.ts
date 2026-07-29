@@ -224,7 +224,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       authoredAt: commits.authoredAt,
       mrId: commits.mergeRequestId,
       mrTitle: mergeRequests.title,
-      changesCount: mergeRequests.changesCount,
+      changesCount: mergeRequests.filesChanged,
       commitCount: mergeRequests.commitCount,
       ticketKey: mergeRequests.ticketKey,
       gitlabIid: mergeRequests.gitlabIid,
@@ -361,7 +361,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       mrId: mergeRequestEvents.mergeRequestId,
       mrTitle: mergeRequests.title,
       ticketKey: mergeRequests.ticketKey,
-      changesCount: mergeRequests.changesCount,
+      changesCount: mergeRequests.filesChanged,
       gitlabIid: mergeRequests.gitlabIid,
       projectPath: mergeRequests.projectPath,
       mrStatus: mergeRequests.status,
@@ -736,7 +736,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       title: mergeRequests.title,
       branchName: mergeRequests.branchName,
       commitCount: mergeRequests.commitCount,
-      changesCount: mergeRequests.changesCount,
+      changesCount: mergeRequests.filesChanged,
     })
     .from(mergeRequests)
     .innerJoin(commits, eq(commits.mergeRequestId, mergeRequests.id))
@@ -757,7 +757,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       title: mergeRequests.title,
       branchName: mergeRequests.branchName,
       commitCount: mergeRequests.commitCount,
-      changesCount: mergeRequests.changesCount,
+      changesCount: mergeRequests.filesChanged,
     })
     .from(mergeRequests)
     .innerJoin(mergeRequestEvents, eq(mergeRequestEvents.mergeRequestId, mergeRequests.id))

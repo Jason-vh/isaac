@@ -13,20 +13,23 @@ Isaac is a personal impact tracker for my work at FareHarbor. It aggregates acti
 - **Infer links, allow manual override.** Automate linking where possible (e.g. MR branch name → ticket), but always allow manual correction.
 - **Propose, then automate.** WBSO estimates start as suggestions I review and adjust. Over time, Isaac fills them in autonomously.
 - **Single user, shareable.** No multi-tenancy. Everything is behind a passkey login, just for me. Read-only views can be shared via expiring links (24h DB-backed token, scoped to the page section that was shared).
+- **One viewer, many subjects.** Isaac has a single *user* but tracks many *people*. Teammates are first-class entities so team-level questions can be answered, but they never log in and there is still no tenancy boundary.
 
 ## Data Sources
 
 | Source | What we track | Sync method |
 |---|---|---|
 | **Jira** | Tickets created, tickets closed/transitioned, story points, epics | Periodic (hourly) via API |
-| **GitLab** | All project MRs (authored, reviewed, team). "Reviewed" = approved or commented. Full comment content stored for quality tracking. | Periodic (hourly) via API |
+| **GitLab** | All project MRs (authored, reviewed, team) with per-file line counts and per-person review attribution. "Reviewed" = approved or commented. Full comment content stored for quality tracking. | Periodic (hourly) via REST + GraphQL API |
 | **GitLab Pipelines** | Pipeline durations, per-job timing, retry/flaky rates, DAG dependencies (all pipelines, not just mine) | Periodic (hourly) via REST + GraphQL API |
 | **Confluence** | Documents published, documents commented on (stretch) | Periodic (hourly) via API |
 | **Google Calendar** | Meetings attended, holidays/OOO | Periodic (hourly) via API |
 | **Slack bot** | Wins logged manually (shorthand, enriched later on web) | Real-time via Slack app |
 | **GitLab emails** | MR comments, approvals, merges, pipeline results, review requests, mentions | Real-time via JMAP EventSource (isaac-notify service) — emails parsed for identifiers, enriched via GitLab API, persisted as activity items |
 
-Identity is consistent across systems (same email, API tokens scoped to me).
+Identity is consistent across systems: corporate email is the join key between
+GitLab and Jira accounts. API tokens are scoped to me, but the data they return
+covers the whole team.
 
 ## Domain Model
 
@@ -47,6 +50,12 @@ Confluence page. Tracked events: published, commented on. Linked to epics (infer
 **Meeting**
 Google Calendar event. Categorised as dev, non-dev, leave, or ignore. Leave detection uses keyword matching on the event title (sick, OOO, holiday, vacation, etc.). Working-location events (Home, Office, etc.) are ignored entirely. Linked to epics where possible (inferred or manual). Linking a meeting to a ticket automatically resolves its epic and sets the category to "dev". All-day and multi-day events are placed on every weekday they span using Amsterdam timezone boundaries.
 
+**Person**
+An engineer or teammate, keyed by corporate email, with optional GitLab and Jira
+identities attached. Created automatically during sync; bots are never recorded.
+Exactly one person is flagged `isMe`. Persons are the grain for team-level
+reporting: MRs have an author, reviews have a reviewer, tickets have an assignee.
+
 **Win**
 Manually logged via Slack bot, enriched on the web app. Qualitative and narrative. Can link to any other entity (tickets, epics, OKRs).
 
@@ -56,10 +65,38 @@ Annual objective with Key Results. Objectives and KRs are hardcoded in `shared/o
 ### Relationships
 
 - Tickets belong to epics
+- Tickets have an assignee, a reporter, and an assignee-at-close (all people)
+- MRs have an author (a person) and many reviews (one per reviewing person)
+- MRs have per-file line counts, categorised frontend/backend/other
 - MRs link to tickets (inferred from branch names)
 - Documents and meetings link to epics (inferred where possible, manual otherwise)
 - Wins link to anything (manual)
 - Key Results are evidenced by any of the above
+
+### Team Productivity
+
+A secondary output: how work is distributed across the team. Three measures per
+engineer over a period, each split frontend/backend/other by file path.
+
+| Measure | Definition |
+|---|---|
+| Lines merged | Additions across files in MRs the person authored, by merge date |
+| Lines reviewed | Additions across files in MRs the person approved or commented on, by review date |
+| Tickets closed | Tickets whose assignee-at-close was the person, plus their story points |
+
+Deliberate interpretation choices:
+
+- **Lines of code is a volume signal, not a value signal.** It is easy to game
+  and rewards verbosity. It is shown next to MR and ticket counts so it is never
+  read alone, and generated files (lockfiles, codegen output, snapshots) are
+  excluded so a dependency bump can't swamp a week of real work.
+- **Every reviewer is credited the full diff.** Two people reviewing one MR each
+  get its full line count, so team-wide reviewed lines exceed merged lines. This
+  measures review load, which is the useful question.
+- **Closed tickets attribute to the assignee at close time**, not the person who
+  dragged the ticket to Done — that is often QA or a PM.
+- **Tests count as code.** Backend tests live under `backend/`, and `e2e/`
+  counts as "other", which is why QA-authored work shows up there.
 
 ### WBSO Estimation
 
@@ -81,8 +118,8 @@ Every working day must total exactly 8 hours. The algorithm:
 1. **Meetings** use their actual calendar duration.
 2. **Leave** fills the entire 8h day — no other activity is placed on leave days.
 3. **Remaining hours** (`8 - meeting_hours`) are distributed proportionally across coding and review activities using relative weights:
-   - Coding weight: `changesCount * (dayCommits / totalCommits)` — files changed scaled by commit proportion on that day (min weight: 60)
-   - Review weight: `changesCount * 0.1` — files changed with a 0.1 factor (reviewing is faster than writing, min weight: 10)
+   - Coding weight: `filesChanged * (dayCommits / totalCommits)` — files changed scaled by commit proportion on that day (min weight: 60)
+   - Review weight: `filesChanged * 0.1` — files changed with a 0.1 factor (reviewing is faster than writing, min weight: 10)
 4. **Zero-activity days** borrow coding weights from the next weekday that has commits (you were working on things you committed the next day).
 5. **0.25h minimum** per coding entry, **10 min minimum** per review entry, with redistribution from larger entries.
 6. **Quarter-hour rounding** uses Hamilton's method (largest remainder) to preserve the 8h total exactly.
@@ -110,6 +147,7 @@ Clicking an entry chip opens a slide-over detail panel showing the entry's under
 
 ### Periodically
 - Review OKR progress on the Objectives page — expand objectives to see linked evidence (epics auto-resolve child tickets, MRs, and docs)
+- Compare team throughput on the Team page (`/team`) — lines merged, lines reviewed, tickets closed and story points per engineer over a chosen period, with each engineer's output split frontend/backend/other and a weekly trend chart. Useful for spotting review load imbalance and where each person's work sits in the stack.
 - Track CI/CD health on the Pipelines page — scatter chart of pipeline durations (split by pipeline type or change scope: frontend/backend/fullstack/neither), with selectable p50/p90/p99 trend line. Job overview with duration variance, critical path %, retry rates, and scope filter. Expand any job for a daily timeline chart (duration, retry rate, critical %). Drill into individual pipeline detail pages for job waterfall timelines. All job filters support `-prefix` exclusion.
 - Use accumulated data for performance reviews, brag documents, retrospectives
 

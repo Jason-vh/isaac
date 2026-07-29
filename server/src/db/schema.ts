@@ -8,6 +8,7 @@ import {
   decimal,
   timestamp,
   index,
+  uniqueIndex,
   customType,
 } from "drizzle-orm/pg-core";
 
@@ -24,6 +25,21 @@ const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
   },
 });
 
+// --- people ---
+
+// One row per human across GitLab and Jira, keyed by corporate email.
+export const people = pgTable("people", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  gitlabUsername: text("gitlab_username").unique(),
+  jiraAccountId: text("jira_account_id").unique(),
+  isMe: boolean("is_me").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
 // --- tickets ---
 
 export const tickets = pgTable("tickets", {
@@ -36,6 +52,12 @@ export const tickets = pgTable("tickets", {
   epicKey: text("epic_key").references(() => tickets.key),
   createdByMe: boolean("created_by_me").notNull(),
   assigneeIsMe: boolean("assignee_is_me").notNull(),
+  assigneePersonId: integer("assignee_person_id").references(() => people.id),
+  reporterPersonId: integer("reporter_person_id").references(() => people.id),
+  // Assignee at the moment the ticket moved to done — the productivity grain.
+  closingAssigneePersonId: integer("closing_assignee_person_id").references(
+    () => people.id
+  ),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   jiraCreatedAt: timestamp("jira_created_at", { withTimezone: true }).notNull(),
   jiraUpdatedAt: timestamp("jira_updated_at", { withTimezone: true }).notNull(),
@@ -64,17 +86,69 @@ export const mergeRequests = pgTable("merge_requests", {
   status: text("status").notNull(),
   authoredByMe: boolean("authored_by_me").notNull(),
   reviewedByMe: boolean("reviewed_by_me").notNull().default(false),
+  authorPersonId: integer("author_person_id").references(() => people.id),
   branchName: text("branch_name").notNull(),
   ticketKey: text("ticket_key").references(() => tickets.key),
   ticketKeyInferred: boolean("ticket_key_inferred").notNull().default(true),
-  changesCount: integer("additions").notNull(), // files changed (column kept as "additions" to avoid migration)
+  filesChanged: integer("files_changed").notNull(),
+  additions: integer("additions").notNull().default(0),
+  deletions: integer("deletions").notNull().default(0),
   commitCount: integer("commit_count").notNull(),
   gitlabCreatedAt: timestamp("gitlab_created_at", {
     withTimezone: true,
   }).notNull(),
   mergedAt: timestamp("merged_at", { withTimezone: true }),
   syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
-});
+}, (t) => [
+  index("merge_requests_merged_at_idx").on(t.mergedAt),
+]);
+
+// One row per person who approved or commented on an MR.
+export const mergeRequestReviews = pgTable(
+  "merge_request_reviews",
+  {
+    id: serial("id").primaryKey(),
+    mergeRequestId: integer("merge_request_id")
+      .notNull()
+      .references(() => mergeRequests.id),
+    personId: integer("person_id")
+      .notNull()
+      .references(() => people.id),
+    approved: boolean("approved").notNull().default(false),
+    commentCount: integer("comment_count").notNull().default(0),
+    firstReviewedAt: timestamp("first_reviewed_at", { withTimezone: true }),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("merge_request_reviews_mr_person_idx").on(
+      t.mergeRequestId,
+      t.personId
+    ),
+    index("merge_request_reviews_person_idx").on(t.personId),
+  ]
+);
+
+// Per-file line counts, kept raw so categorisation can change without re-syncing.
+export const mergeRequestFileStats = pgTable(
+  "merge_request_file_stats",
+  {
+    id: serial("id").primaryKey(),
+    mergeRequestId: integer("merge_request_id")
+      .notNull()
+      .references(() => mergeRequests.id),
+    path: text("path").notNull(),
+    category: text("category").notNull(),
+    additions: integer("additions").notNull(),
+    deletions: integer("deletions").notNull(),
+    excluded: boolean("excluded").notNull().default(false),
+  },
+  (t) => [
+    uniqueIndex("merge_request_file_stats_mr_path_idx").on(
+      t.mergeRequestId,
+      t.path
+    ),
+  ]
+);
 
 export const mergeRequestEvents = pgTable("merge_request_events", {
   id: serial("id").primaryKey(),

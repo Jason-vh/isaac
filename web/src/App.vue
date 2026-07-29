@@ -60,6 +60,7 @@ const allNavLinks = [
   { to: "/wbso", label: "WBSO", section: "wbso" },
   { to: "/objectives", label: "Objectives", section: "objectives" },
   { to: "/activity", label: "Activity", section: "activity" },
+  { to: "/team", label: "Team", section: "team" },
   { to: "/pipelines", label: "Pipelines", section: "pipelines" },
 ];
 

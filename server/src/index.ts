@@ -12,6 +12,7 @@ import { pipelineRoutes } from "./routes/pipelines";
 import { shareRoutes } from "./routes/share";
 import { wbsoRoutes } from "./routes/wbso";
 import { activityRoutes } from "./routes/activity";
+import { teamRoutes } from "./routes/team";
 import { digestRoutes } from "./routes/digest";
 import { verifyJwt, requireOwner } from "./auth/middleware";
 
@@ -34,6 +35,7 @@ const app = new Elysia()
       .use(pipelineRoutes)
       .use(wbsoRoutes)
       .use(activityRoutes)
+      .use(teamRoutes)
       .use(digestRoutes)
       .guard({ beforeHandle: requireOwner }, (app) =>
         app.use(syncRoutes).use(shareRoutes)

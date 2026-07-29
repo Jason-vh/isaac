@@ -3,6 +3,12 @@ import { tickets, ticketEvents } from "../db/schema";
 import { eq, and, inArray, isNull, isNotNull } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, basicAuthHeader, runSyncWithLog, dedup } from "./util";
+import {
+  lookupPersonByJiraAccountId,
+  markOwner,
+  resetPersonCache,
+  upsertPerson,
+} from "./people";
 
 // ---------------------------------------------------------------------------
 // Types for Jira API responses
@@ -23,19 +29,63 @@ interface JiraIssue {
     parent?: { key: string };
     created: string;
     updated: string;
-    assignee?: { emailAddress: string } | null;
-    reporter?: { emailAddress: string } | null;
+    assignee?: JiraUser | null;
+    reporter?: JiraUser | null;
   };
   changelog: {
     histories: Array<{
       created: string;
       items: Array<{
         field: string;
+        from: string | null;
+        to: string | null;
         fromString: string | null;
         toString: string | null;
       }>;
     }>;
   };
+}
+
+interface JiraUser {
+  accountId: string;
+  displayName: string;
+  emailAddress?: string | null;
+}
+
+/** Upserts a person from a Jira user field, or null when email is hidden. */
+async function resolveJiraPerson(
+  user: JiraUser | null | undefined
+): Promise<number | null> {
+  if (!user?.emailAddress) return null;
+  return upsertPerson({
+    email: user.emailAddress,
+    displayName: user.displayName,
+    jiraAccountId: user.accountId,
+  });
+}
+
+/**
+ * Finds the assignee at the moment the ticket closed by rewinding any
+ * assignee changes recorded after that time.
+ */
+function assigneeAccountIdAtClose(
+  issue: JiraIssue,
+  closedAt: Date
+): string | null {
+  let accountId = issue.fields.assignee?.accountId ?? null;
+  const changes = issue.changelog.histories
+    .flatMap((h) =>
+      h.items
+        .filter((item) => item.field === "assignee")
+        .map((item) => ({ at: new Date(h.created), from: item.from }))
+    )
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
+
+  for (const change of changes) {
+    if (change.at.getTime() <= closedAt.getTime()) break;
+    accountId = change.from;
+  }
+  return accountId;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +94,8 @@ interface JiraIssue {
 
 export async function syncJira(sinceOverride?: Date): Promise<void> {
   await runSyncWithLog("jira", async (since) => {
+    resetPersonCache();
+
     // Lazy env access — strip trailing /jira if present (API root is the Atlassian domain)
     const baseUrl = env.JIRA_BASE_URL.replace(/\/jira\/?$/, "");
 
@@ -105,6 +157,9 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
         issue.fields.assignee?.emailAddress === email;
       const parentKey = issue.fields.parent?.key ?? null;
 
+      const assigneePersonId = await resolveJiraPerson(issue.fields.assignee);
+      const reporterPersonId = await resolveJiraPerson(issue.fields.reporter);
+
       const jiraCreatedAt = new Date(issue.fields.created);
       const jiraUpdatedAt = new Date(issue.fields.updated);
 
@@ -130,6 +185,16 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
         }
       }
 
+      // Attribute closed work to whoever was assigned when it closed.
+      let closingAssigneePersonId: number | null = null;
+      if (closedAt) {
+        const closingAccountId = assigneeAccountIdAtClose(issue, closedAt);
+        closingAssigneePersonId =
+          closingAccountId === issue.fields.assignee?.accountId
+            ? assigneePersonId
+            : await lookupPersonByJiraAccountId(closingAccountId);
+      }
+
       await db
         .insert(tickets)
         .values({
@@ -142,6 +207,9 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
           epicKey: null,
           createdByMe,
           assigneeIsMe,
+          assigneePersonId,
+          reporterPersonId,
+          closingAssigneePersonId,
           closedAt,
           jiraCreatedAt,
           jiraUpdatedAt,
@@ -157,6 +225,9 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
             parentKey,
             createdByMe,
             assigneeIsMe,
+            assigneePersonId,
+            reporterPersonId,
+            closingAssigneePersonId,
             closedAt,
             jiraCreatedAt,
             jiraUpdatedAt,
@@ -311,6 +382,8 @@ export async function syncJira(sinceOverride?: Date): Promise<void> {
         await db.insert(ticketEvents).values(newEvents);
       }
     }
+
+    await markOwner(email);
 
     return allIssues.length;
   }, sinceOverride);

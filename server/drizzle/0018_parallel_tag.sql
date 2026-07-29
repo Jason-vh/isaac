@@ -1,0 +1,1 @@
+ALTER TABLE "merge_requests" RENAME COLUMN "additions" TO "files_changed";

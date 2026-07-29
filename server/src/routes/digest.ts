@@ -170,7 +170,7 @@ export const digestRoutes = new Elysia({ prefix: "/api/digest" }).get(
       status: mr.status,
       authoredByMe: mr.authoredByMe,
       ticketKey: mr.ticketKey,
-      changesCount: mr.changesCount,
+      changesCount: mr.filesChanged,
       commitCount: mr.commitCount,
       createdAt: mr.gitlabCreatedAt.toISOString(),
       mergedAt: mr.mergedAt?.toISOString() ?? null,

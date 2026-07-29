@@ -124,7 +124,7 @@ async function upsertMr(
         authoredByMe: false,
         reviewedByMe: false,
         branchName: mr.source_branch,
-        changesCount: 0,
+        filesChanged: 0,
         commitCount: 0,
         gitlabCreatedAt: new Date(mr.created_at),
         mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
