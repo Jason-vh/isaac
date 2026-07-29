@@ -57,6 +57,7 @@ const metricOptions: { value: TeamMetric; label: string }[] = [
   { value: "mergedAdditions", label: "Lines merged" },
   { value: "reviewedAdditions", label: "Lines reviewed" },
   { value: "mergedMrs", label: "MRs" },
+  { value: "reviewComments", label: "Comments" },
   { value: "ticketsClosed", label: "Tickets" },
   { value: "storyPoints", label: "Points" },
 ];

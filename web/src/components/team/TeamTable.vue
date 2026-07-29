@@ -115,6 +115,12 @@ const columns = [
     format: number,
   },
   {
+    key: "reviewComments",
+    label: "Comments",
+    value: (m: TeamMemberProductivity) => m.reviewed.comments,
+    format: number,
+  },
+  {
     key: "ticketsClosed",
     label: "Tickets",
     value: (m: TeamMemberProductivity) => m.tickets.closed,

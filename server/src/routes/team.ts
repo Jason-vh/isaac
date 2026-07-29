@@ -9,6 +9,7 @@ import {
   tickets,
 } from "../db/schema";
 import { CODE_CATEGORIES, type CodeCategory } from "../lib/codeCategory";
+import { TEAM_METRICS } from "@isaac/shared";
 import type {
   CodeVolume,
   LinesByCategory,
@@ -281,6 +282,22 @@ export const teamRoutes = new Elysia({ prefix: "/api/team" })
       .where(reviewedBetween(since, until))
       .groupBy(sql`1`, mergeRequestReviews.personId);
 
+    // Separate from reviewedByWeek: that query fans out over file stats, which
+    // would multiply comment counts by the number of files in each MR.
+    const commentsByWeek = await db
+      .select({
+        weekStart: week(reviewedAt),
+        personId: mergeRequestReviews.personId,
+        comments: sql<number>`coalesce(sum(${mergeRequestReviews.commentCount}), 0)::int`,
+      })
+      .from(mergeRequestReviews)
+      .innerJoin(
+        mergeRequests,
+        eq(mergeRequests.id, mergeRequestReviews.mergeRequestId)
+      )
+      .where(reviewedBetween(since, until))
+      .groupBy(sql`1`, mergeRequestReviews.personId);
+
     const ticketsByWeek = await db
       .select({
         weekStart: week(tickets.closedAt),
@@ -309,14 +326,9 @@ export const teamRoutes = new Elysia({ prefix: "/api/team" })
         pointsByWeek.set(weekStart, point);
       }
       if (!point.byPerson[personId]) {
-        point.byPerson[personId] = {
-          mergedAdditions: 0,
-          mergedMrs: 0,
-          reviewedAdditions: 0,
-          reviewedMrs: 0,
-          ticketsClosed: 0,
-          storyPoints: 0,
-        } as Record<TeamMetric, number>;
+        point.byPerson[personId] = Object.fromEntries(
+          TEAM_METRICS.map((m) => [m, 0])
+        ) as Record<TeamMetric, number>;
       }
       return point.byPerson[personId];
     };
@@ -330,6 +342,9 @@ export const teamRoutes = new Elysia({ prefix: "/api/team" })
       const b = bucket(row.weekStart, row.personId);
       b.reviewedMrs = row.mrs;
       b.reviewedAdditions = row.additions;
+    }
+    for (const row of commentsByWeek) {
+      bucket(row.weekStart, row.personId).reviewComments = row.comments;
     }
     for (const row of ticketsByWeek) {
       const b = bucket(row.weekStart, row.personId!);

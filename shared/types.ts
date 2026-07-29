@@ -701,6 +701,7 @@ export const TEAM_METRICS = [
   "mergedMrs",
   "reviewedAdditions",
   "reviewedMrs",
+  "reviewComments",
   "ticketsClosed",
   "storyPoints",
 ] as const;
