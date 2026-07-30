@@ -245,12 +245,27 @@ recorded as their own reviewer.
 | id | serial PK | |
 | merge_request_id | int FK → merge_requests | |
 | person_id | int FK → people | |
-| approved | boolean | Default false |
+| approved | boolean | Default false. Current approval state, from GraphQL `approvedBy`. |
 | comment_count | int | Non-system, non-bot comments by this person |
 | first_reviewed_at | timestamptz | Nullable, first comment |
-| last_reviewed_at | timestamptz | Nullable, last comment. Used to place a review in time. |
+| last_reviewed_at | timestamptz | Nullable, last comment |
+| approved_at | timestamptz | Nullable, their most recent approval |
 
 Unique on `(merge_request_id, person_id)`.
+
+**Timing a review.** GitLab exposes no approval timestamp on the MR, so
+`approved_at` is parsed from the `approved this merge request` system note
+(taking the latest, since people approve, unapprove and re-approve). A review is
+placed in time at `GREATEST(last_reviewed_at, approved_at)`, falling back to the
+merge date and then the MR creation date. Without `approved_at`, approval-only
+reviews — 55% of all reviews — were dated by when the MR merged, which skews any
+short window or weekly trend.
+
+**Reset approvals still count.** Pushing to a branch resets its approvals, and a
+reviewer who approved but never commented would otherwise vanish from the data
+entirely. Anyone with an approval system note is recorded as a reviewer even if
+they no longer appear in `approvedBy`; the `approved` column reflects the
+current state, while `approved_at` preserves that the review happened.
 
 ### merge_request_file_stats
 

@@ -42,10 +42,11 @@ function emptyVolume(): CodeVolume {
 }
 
 /**
- * A review is attributed to when the review happened, falling back to the
- * merge date for approvals that left no comment.
+ * When the review happened: the person's last comment or approval, whichever
+ * came later. GREATEST ignores nulls. Reviews with neither timestamp fall back
+ * to the merge date, then the MR creation date.
  */
-const reviewedAt = sql`coalesce(${mergeRequestReviews.lastReviewedAt}, ${mergeRequests.mergedAt}, ${mergeRequests.gitlabCreatedAt})`;
+const reviewedAt = sql`coalesce(greatest(${mergeRequestReviews.lastReviewedAt}, ${mergeRequestReviews.approvedAt}), ${mergeRequests.mergedAt}, ${mergeRequests.gitlabCreatedAt})`;
 
 /** Raw sql templates can't bind a Date, so pass an explicitly cast ISO string. */
 function reviewedBetween(since: Date, until: Date) {

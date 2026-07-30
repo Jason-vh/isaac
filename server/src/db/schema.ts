@@ -118,6 +118,9 @@ export const mergeRequestReviews = pgTable(
     commentCount: integer("comment_count").notNull().default(0),
     firstReviewedAt: timestamp("first_reviewed_at", { withTimezone: true }),
     lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    // When they last approved, parsed from GitLab's approval system notes.
+    // Without it, approval-only reviews have no timestamp of their own.
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("merge_request_reviews_mr_person_idx").on(

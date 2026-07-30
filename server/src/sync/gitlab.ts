@@ -177,8 +177,30 @@ async function fetchMrDetails(
 
 type ReviewerMap = Map<
   string,
-  { approved: boolean; commentCount: number; first?: Date; last?: Date }
+  {
+    approved: boolean;
+    commentCount: number;
+    first?: Date;
+    last?: Date;
+    approvedAt?: Date;
+  }
 >;
+
+// GitLab records approvals as system notes rather than exposing a timestamp on
+// the MR, so this is the only way to know when a review actually happened.
+const APPROVAL_NOTE = /^approved this merge request$/i;
+
+/** Latest approval time per user, from an MR's system notes. */
+function parseApprovals(notes: GitLabNote[]): Map<string, Date> {
+  const approvals = new Map<string, Date>();
+  for (const note of notes) {
+    if (!note.system || !APPROVAL_NOTE.test(note.body.trim())) continue;
+    const at = new Date(note.created_at);
+    const seen = approvals.get(note.author.username);
+    if (!seen || at > seen) approvals.set(note.author.username, at);
+  }
+  return approvals;
+}
 
 /** Upserts an MR's reviews and drops rows for people who no longer review it. */
 async function writeReviews(
@@ -197,6 +219,7 @@ async function writeReviews(
       commentCount: r.commentCount,
       firstReviewedAt: r.first ?? null,
       lastReviewedAt: r.last ?? null,
+      approvedAt: r.approvedAt ?? null,
     };
     await db
       .insert(mergeRequestReviews)
@@ -428,25 +451,39 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
             );
         }
 
-        // Reviews — approvers and commenters, excluding the MR author
+        // Reviews — anyone who approved or commented, excluding the MR author.
         const reviewers: ReviewerMap = new Map();
+        const approvals = parseApprovals(notes);
+        const currentlyApproved = new Set(detail?.approvedBy ?? []);
 
-        for (const username of detail?.approvedBy ?? []) {
+        const reviewerEntry = (username: string) => {
+          const entry = reviewers.get(username) ?? {
+            approved: currentlyApproved.has(username),
+            commentCount: 0,
+            approvedAt: approvals.get(username),
+          };
+          reviewers.set(username, entry);
+          return entry;
+        };
+
+        for (const username of currentlyApproved) {
           if (username === mr.author.username) continue;
-          reviewers.set(username, { approved: true, commentCount: 0 });
+          reviewerEntry(username);
+        }
+        // An approval that was later reset (by a push, or withdrawn) still
+        // happened, so it counts as a review even with no comment.
+        for (const username of approvals.keys()) {
+          if (username === mr.author.username || isBotUser(username)) continue;
+          reviewerEntry(username);
         }
         for (const note of allNotes) {
           const username = note.author.username;
           if (username === mr.author.username || isBotUser(username)) continue;
-          const entry = reviewers.get(username) ?? {
-            approved: false,
-            commentCount: 0,
-          };
+          const entry = reviewerEntry(username);
           entry.commentCount++;
           const at = new Date(note.created_at);
           if (!entry.first || at < entry.first) entry.first = at;
           if (!entry.last || at > entry.last) entry.last = at;
-          reviewers.set(username, entry);
         }
 
         // Writing a partial reviewer set would let the stale-row cleanup delete a

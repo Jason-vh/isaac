@@ -1,0 +1,1 @@
+ALTER TABLE "merge_request_reviews" ADD COLUMN "approved_at" timestamp with time zone;
