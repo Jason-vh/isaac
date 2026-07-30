@@ -529,10 +529,25 @@ requests, so the sync issues a batched GraphQL query (10 MRs per request, since
 `diffStatsSummary`, `commitCount`, `author` and `approvedBy`. This also replaces
 the old per-MR REST detail call.
 
-**Two-pass ordering.** Commits and notes for every MR in the window are fetched
-up front, before any attribution happens. A reviewer on the first MR may only be
-resolvable to an email from commits on a later one, so all identities must be
-known before reviews are written.
+**Incremental processing.** MRs are handled in chunks of 10 (matching the
+GraphQL batch), and each MR is written before the next is fetched, so an
+interrupted run keeps everything synced so far. An earlier version prefetched
+commits and notes for the whole window before writing anything; on a 2,173-MR
+backfill that OOM-killed the Railway container, and a single network timeout
+discarded 50 minutes of work.
+
+**Deferred identities.** A reviewer on the first MR may only become resolvable
+from commits on a later one. Rather than prefetching, an MR whose reviewer set
+contains an unidentifiable real person is deferred (bots don't count — they are
+meant to stay unattributed) and written in a final pass once every email
+discovered during the run is known. Deferring the whole MR matters: writing a
+partial reviewer set would let the stale-row cleanup delete a reviewer we simply
+couldn't identify yet.
+
+**Retries.** `apiFetch` retries 429/5xx *and* thrown network errors/timeouts
+with exponential backoff, and sets an explicit per-request timeout. Only HTTP
+error responses were retried previously, so a transient socket timeout aborted
+the entire sync.
 
 **Categorisation.** `server/src/lib/codeCategory.ts` maps a path to
 frontend/backend/other by top-level directory and flags generated files

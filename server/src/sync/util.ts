@@ -3,13 +3,15 @@ import { syncLog } from "../db/schema";
 import { eq, and, desc, gt, inArray } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
-// apiFetch — thin fetch wrapper with retries on 429/5xx
+// apiFetch — thin fetch wrapper with retries on 429/5xx and network errors
 // ---------------------------------------------------------------------------
+
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export async function apiFetch<T>(
   url: string,
   options: RequestInit = {},
-  retries = 3
+  retries = 4
 ): Promise<{ data: T; headers: Headers }> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type") && options.body) {
@@ -20,7 +22,29 @@ export async function apiFetch<T>(
   }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, { ...options, headers });
+    const backoff = async (reason: string) => {
+      const delay = 1000 * 2 ** attempt; // 1s, 2s, 4s, 8s
+      console.warn(
+        `[apiFetch] ${reason} from ${url}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    };
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        ...options,
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      // Network errors and timeouts throw rather than returning a response.
+      if (attempt < retries) {
+        await backoff((err as Error).name || "network error");
+        continue;
+      }
+      throw err;
+    }
 
     if (res.ok) {
       const data = (await res.json()) as T;
@@ -30,11 +54,7 @@ export async function apiFetch<T>(
     const shouldRetry =
       (res.status === 429 || res.status >= 500) && attempt < retries;
     if (shouldRetry) {
-      const delay = 1000 * 2 ** attempt; // 1s, 2s, 4s
-      console.warn(
-        `[apiFetch] ${res.status} from ${url}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`
-      );
-      await new Promise((r) => setTimeout(r, delay));
+      await backoff(String(res.status));
       continue;
     }
 

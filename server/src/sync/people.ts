@@ -114,6 +114,21 @@ export class GitLabIdentityResolver {
     return this.emailByUsername.get(username);
   }
 
+  /** True when the user is a bot or ghost we intentionally never attribute. */
+  isIgnorable(username: string): boolean {
+    return isBotUser(username, null, this.nameByUsername.get(username));
+  }
+
+  /**
+   * True when any of these users is a real person we can't identify yet.
+   * Bots don't count — they are expected to stay unattributed.
+   */
+  hasUnresolved(usernames: string[]): boolean {
+    return usernames.some(
+      (u) => !this.isIgnorable(u) && !this.emailByUsername.has(u)
+    );
+  }
+
   getName(username: string): string | undefined {
     return this.nameByUsername.get(username);
   }

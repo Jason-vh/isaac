@@ -172,6 +172,59 @@ async function fetchMrDetails(
 }
 
 // ---------------------------------------------------------------------------
+// Review attribution
+// ---------------------------------------------------------------------------
+
+type ReviewerMap = Map<
+  string,
+  { approved: boolean; commentCount: number; first?: Date; last?: Date }
+>;
+
+/** Upserts an MR's reviews and drops rows for people who no longer review it. */
+async function writeReviews(
+  mrId: number,
+  reviewers: ReviewerMap,
+  resolver: GitLabIdentityResolver
+): Promise<void> {
+  const personIds: number[] = [];
+
+  for (const [username, r] of reviewers) {
+    const personId = await resolver.resolve(username);
+    if (!personId) continue;
+    personIds.push(personId);
+    const reviewValues = {
+      approved: r.approved,
+      commentCount: r.commentCount,
+      firstReviewedAt: r.first ?? null,
+      lastReviewedAt: r.last ?? null,
+    };
+    await db
+      .insert(mergeRequestReviews)
+      .values({ mergeRequestId: mrId, personId, ...reviewValues })
+      .onConflictDoUpdate({
+        target: [
+          mergeRequestReviews.mergeRequestId,
+          mergeRequestReviews.personId,
+        ],
+        set: reviewValues,
+      });
+  }
+
+  // Drop reviews that no longer exist (e.g. a revoked approval, or a reviewer
+  // now correctly identified as a bot).
+  await db
+    .delete(mergeRequestReviews)
+    .where(
+      and(
+        eq(mergeRequestReviews.mergeRequestId, mrId),
+        personIds.length > 0
+          ? notInArray(mergeRequestReviews.personId, personIds)
+          : undefined
+      )
+    );
+}
+
+// ---------------------------------------------------------------------------
 // GitLab sync
 // ---------------------------------------------------------------------------
 
@@ -221,315 +274,316 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
     );
     const approvedSet = new Set(approvedMRs.map((mr) => mr.id));
 
-    // Step 6: Diff stats + approvals via GraphQL
-    const details = await fetchMrDetails(
-      baseUrl,
-      token,
-      projectPath,
-      allMRs.map((mr) => mr.iid),
-      resolver
-    );
+    // Step 6: Process MRs in chunks, committing each one before moving on, so
+    // an interruption keeps everything synced so far. People we can't identify
+    // yet are deferred to the end of the run.
+    const deferredReviews: Array<{ mrId: number; reviewers: ReviewerMap }> = [];
+    const deferredAuthorIids: number[] = [];
 
-    // Step 7: Fetch commits and notes up front so every author email is known
-    // before we attribute reviews (a reviewer on the first MR may only be
-    // resolvable from commits on a later one).
-    const commitsByIid = new Map<number, GitLabCommit[]>();
-    const notesByIid = new Map<number, GitLabNote[]>();
+    console.log(`[sync:gitlab] Processing ${allMRs.length} MRs`);
+    let processed = 0;
 
-    console.log(`[sync:gitlab] Fetching detail for ${allMRs.length} MRs`);
-    let fetched = 0;
-
-    for (const mr of allMRs) {
-      resolver.observe(mr.author.username, mr.author.name, mr.author.public_email);
-
-      const mrCommits = await paginateGitLab<GitLabCommit>(
-        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
-        authHeaders
-      );
-      commitsByIid.set(mr.iid, mrCommits);
-      resolver.observeCommits(mr.author.username, mrCommits);
-
-      const notes = await paginateGitLab<GitLabNote>(
-        `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc`,
-        authHeaders
-      );
-      notesByIid.set(mr.iid, notes);
-      for (const note of notes) {
-        if (note.system) continue;
-        resolver.observe(
-          note.author.username,
-          note.author.name,
-          note.author.public_email
-        );
-      }
-
-      if (++fetched % 25 === 0) {
-        console.log(`[sync:gitlab] Fetched ${fetched}/${allMRs.length} MRs`);
-      }
-    }
-
-    // Step 8: Process each MR
-    for (const mr of allMRs) {
-      const authoredByMe = mr.author.id === myUserId;
-      const detail = details.get(mr.iid);
-
-      const allNotes = (notesByIid.get(mr.iid) ?? []).filter((n) => !n.system);
-      const myNotes = allNotes.filter((note) => note.author.id === myUserId);
-      const reviewedByMe = approvedSet.has(mr.id) || myNotes.length > 0;
-
-      const authorPersonId = await resolver.resolve(mr.author.username);
-
-      const values = {
-        gitlabIid: mr.iid,
+    for (let i = 0; i < allMRs.length; i += GRAPHQL_BATCH_SIZE) {
+      const chunk = allMRs.slice(i, i + GRAPHQL_BATCH_SIZE);
+      const details = await fetchMrDetails(
+        baseUrl,
+        token,
         projectPath,
-        title: mr.title,
-        status: mr.state,
-        authoredByMe,
-        reviewedByMe,
-        authorPersonId,
-        branchName: mr.source_branch,
-        gitlabCreatedAt: new Date(mr.created_at),
-        mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
-        syncedAt: new Date(),
-      };
+        chunk.map((mr) => mr.iid),
+        resolver
+      );
 
-      // Never overwrite known counts with zeros when a GraphQL batch failed.
-      const diffValues = detail
-        ? {
-            filesChanged: detail.filesChanged,
-            additions: detail.additions,
-            deletions: detail.deletions,
-            commitCount: detail.commitCount,
+      for (const mr of chunk) {
+        if (++processed % 100 === 0) {
+          console.log(
+            `[sync:gitlab] Processed ${processed}/${allMRs.length} MRs`
+          );
+        }
+
+        const authoredByMe = mr.author.id === myUserId;
+        const detail = details.get(mr.iid);
+
+        resolver.observe(
+          mr.author.username,
+          mr.author.name,
+          mr.author.public_email
+        );
+
+        const mrCommits = await paginateGitLab<GitLabCommit>(
+          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/commits`,
+          authHeaders
+        );
+        resolver.observeCommits(mr.author.username, mrCommits);
+
+        const notes = await paginateGitLab<GitLabNote>(
+          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc`,
+          authHeaders
+        );
+        for (const note of notes) {
+          if (note.system) continue;
+          resolver.observe(
+            note.author.username,
+            note.author.name,
+            note.author.public_email
+          );
+        }
+
+        const allNotes = notes.filter((n) => !n.system);
+        const myNotes = allNotes.filter((note) => note.author.id === myUserId);
+        const reviewedByMe = approvedSet.has(mr.id) || myNotes.length > 0;
+
+        const authorPersonId = await resolver.resolve(mr.author.username);
+        if (!authorPersonId && !resolver.isIgnorable(mr.author.username)) {
+          deferredAuthorIids.push(mr.iid);
+        }
+
+        const values = {
+          gitlabIid: mr.iid,
+          projectPath,
+          title: mr.title,
+          status: mr.state,
+          authoredByMe,
+          reviewedByMe,
+          authorPersonId,
+          branchName: mr.source_branch,
+          gitlabCreatedAt: new Date(mr.created_at),
+          mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
+          syncedAt: new Date(),
+        };
+
+        // Never overwrite known counts with zeros when a GraphQL batch failed.
+        const diffValues = detail
+          ? {
+              filesChanged: detail.filesChanged,
+              additions: detail.additions,
+              deletions: detail.deletions,
+              commitCount: detail.commitCount,
+            }
+          : null;
+        if (!diffValues) {
+          console.warn(`[sync:gitlab] No diff stats for MR !${mr.iid}`);
+        }
+
+        const [upserted] = await db
+          .insert(mergeRequests)
+          .values({
+            gitlabId: mr.id,
+            ...values,
+            filesChanged: diffValues?.filesChanged ?? 0,
+            additions: diffValues?.additions ?? 0,
+            deletions: diffValues?.deletions ?? 0,
+            commitCount: diffValues?.commitCount ?? 0,
+          })
+          .onConflictDoUpdate({
+            target: mergeRequests.gitlabId,
+            set: { ...values, ...(diffValues ?? {}) },
+          })
+          .returning({ id: mergeRequests.id });
+
+        const mrId = upserted.id;
+
+        // Per-file line counts
+        if (detail) {
+          if (detail.files.length > 0) {
+            const fileRows = detail.files.map((f) => {
+              const { category, excluded } = classifyPath(f.path);
+              return {
+                mergeRequestId: mrId,
+                path: f.path,
+                category,
+                additions: f.additions,
+                deletions: f.deletions,
+                excluded,
+              };
+            });
+
+            await db
+              .insert(mergeRequestFileStats)
+              .values(fileRows)
+              .onConflictDoUpdate({
+                target: [
+                  mergeRequestFileStats.mergeRequestId,
+                  mergeRequestFileStats.path,
+                ],
+                set: {
+                  category: sql`excluded.category`,
+                  additions: sql`excluded.additions`,
+                  deletions: sql`excluded.deletions`,
+                  excluded: sql`excluded.excluded`,
+                },
+              });
           }
-        : null;
-      if (!diffValues) {
-        console.warn(`[sync:gitlab] No diff stats for MR !${mr.iid}`);
-      }
 
-      const [upserted] = await db
-        .insert(mergeRequests)
-        .values({
-          gitlabId: mr.id,
-          ...values,
-          filesChanged: diffValues?.filesChanged ?? 0,
-          additions: diffValues?.additions ?? 0,
-          deletions: diffValues?.deletions ?? 0,
-          commitCount: diffValues?.commitCount ?? 0,
-        })
-        .onConflictDoUpdate({
-          target: mergeRequests.gitlabId,
-          set: { ...values, ...(diffValues ?? {}) },
-        })
-        .returning({ id: mergeRequests.id });
+          // Drop files that left the diff (e.g. after a force-push).
+          const paths = detail.files.map((f) => f.path);
+          await db
+            .delete(mergeRequestFileStats)
+            .where(
+              and(
+                eq(mergeRequestFileStats.mergeRequestId, mrId),
+                paths.length > 0
+                  ? notInArray(mergeRequestFileStats.path, paths)
+                  : undefined
+              )
+            );
+        }
 
-      const mrId = upserted.id;
+        // Reviews — approvers and commenters, excluding the MR author
+        const reviewers: ReviewerMap = new Map();
 
-      // Per-file line counts
-      if (detail) {
-        if (detail.files.length > 0) {
-          const fileRows = detail.files.map((f) => {
-            const { category, excluded } = classifyPath(f.path);
-            return {
+        for (const username of detail?.approvedBy ?? []) {
+          if (username === mr.author.username) continue;
+          reviewers.set(username, { approved: true, commentCount: 0 });
+        }
+        for (const note of allNotes) {
+          const username = note.author.username;
+          if (username === mr.author.username || isBotUser(username)) continue;
+          const entry = reviewers.get(username) ?? {
+            approved: false,
+            commentCount: 0,
+          };
+          entry.commentCount++;
+          const at = new Date(note.created_at);
+          if (!entry.first || at < entry.first) entry.first = at;
+          if (!entry.last || at > entry.last) entry.last = at;
+          reviewers.set(username, entry);
+        }
+
+        // Writing a partial reviewer set would let the stale-row cleanup delete a
+        // reviewer we simply can't identify yet, so defer the whole MR instead.
+        if (resolver.hasUnresolved([...reviewers.keys()])) {
+          deferredReviews.push({ mrId, reviewers });
+        } else {
+          await writeReviews(mrId, reviewers, resolver);
+        }
+
+        // Upsert commits for all MRs
+        for (const c of mrCommits) {
+          await db
+            .insert(commits)
+            .values({
               mergeRequestId: mrId,
-              path: f.path,
-              category,
-              additions: f.additions,
-              deletions: f.deletions,
-              excluded,
-            };
+              sha: c.id,
+              title: c.title,
+              authoredAt: new Date(c.authored_date),
+            })
+            .onConflictDoNothing({ target: commits.sha });
+        }
+
+        // Events stay personal — only for MRs I participated in
+        if (!authoredByMe && !reviewedByMe) continue;
+
+        // Build incoming events
+        const incoming: Array<{
+          mergeRequestId: number;
+          eventType: string;
+          externalUrl: string | null;
+          occurredAt: Date;
+        }> = [];
+
+        // "authored" event
+        if (authoredByMe) {
+          incoming.push({
+            mergeRequestId: mrId,
+            eventType: "authored",
+            externalUrl: mr.web_url,
+            occurredAt: new Date(mr.created_at),
           });
+        }
+
+        // "merged" event (for authored OR reviewed MRs)
+        if (mr.state === "merged" && mr.merged_at) {
+          incoming.push({
+            mergeRequestId: mrId,
+            eventType: "merged",
+            externalUrl: mr.web_url,
+            occurredAt: new Date(mr.merged_at),
+          });
+        }
+
+        // "commented" events from my notes
+        for (const note of myNotes) {
+          incoming.push({
+            mergeRequestId: mrId,
+            eventType: "commented",
+            externalUrl: `${mr.web_url}#note_${note.id}`,
+            occurredAt: new Date(note.created_at),
+          });
+        }
+
+        // Dedup events
+        const existing = await db
+          .select({
+            eventType: mergeRequestEvents.eventType,
+            occurredAt: mergeRequestEvents.occurredAt,
+          })
+          .from(mergeRequestEvents)
+          .where(eq(mergeRequestEvents.mergeRequestId, mrId));
+
+        const existingKeyFn = (e: { eventType: string; occurredAt: Date }) =>
+          `${e.eventType}:${e.occurredAt.toISOString()}`;
+
+        const incomingKeyFn = (e: {
+          mergeRequestId: number;
+          eventType: string;
+          externalUrl: string | null;
+          occurredAt: Date;
+        }) => `${e.eventType}:${e.occurredAt.toISOString()}`;
+
+        const newEvents = dedup(existing, incoming, existingKeyFn, incomingKeyFn);
+
+        if (newEvents.length > 0) {
+          await db.insert(mergeRequestEvents).values(newEvents);
+        }
+
+        // Upsert comment content (all non-system comments for digest)
+        if (allNotes.length > 0) {
+          const commentRows = allNotes.map((note) => ({
+            id: note.id,
+            mergeRequestId: mrId,
+            body: note.body,
+            externalUrl: `${mr.web_url}#note_${note.id}`,
+            createdAt: new Date(note.created_at),
+            updatedAt: new Date(note.updated_at),
+          }));
 
           await db
-            .insert(mergeRequestFileStats)
-            .values(fileRows)
+            .insert(mergeRequestComments)
+            .values(commentRows)
             .onConflictDoUpdate({
-              target: [
-                mergeRequestFileStats.mergeRequestId,
-                mergeRequestFileStats.path,
-              ],
+              target: mergeRequestComments.id,
               set: {
-                category: sql`excluded.category`,
-                additions: sql`excluded.additions`,
-                deletions: sql`excluded.deletions`,
-                excluded: sql`excluded.excluded`,
+                body: sql`excluded.body`,
+                updatedAt: sql`excluded.updated_at`,
               },
             });
         }
 
-        // Drop files that left the diff (e.g. after a force-push).
-        const paths = detail.files.map((f) => f.path);
-        await db
-          .delete(mergeRequestFileStats)
-          .where(
-            and(
-              eq(mergeRequestFileStats.mergeRequestId, mrId),
-              paths.length > 0
-                ? notInArray(mergeRequestFileStats.path, paths)
-                : undefined
-            )
-          );
       }
+    }
 
-      // Reviews — approvers and commenters, excluding the MR author
-      const reviewers = new Map<
-        string,
-        { approved: boolean; commentCount: number; first?: Date; last?: Date }
-      >();
+    // Step 7: Retry whatever referenced a person we couldn't identify at the
+    // time. Every email discovered during the run is known by now.
+    if (deferredAuthorIids.length > 0 || deferredReviews.length > 0) {
+      console.log(
+        `[sync:gitlab] Resolving ${deferredAuthorIids.length} deferred authors, ${deferredReviews.length} deferred review sets`
+      );
+    }
 
-      for (const username of detail?.approvedBy ?? []) {
-        if (username === mr.author.username) continue;
-        reviewers.set(username, { approved: true, commentCount: 0 });
-      }
-      for (const note of allNotes) {
-        const username = note.author.username;
-        if (username === mr.author.username || isBotUser(username)) continue;
-        const entry = reviewers.get(username) ?? {
-          approved: false,
-          commentCount: 0,
-        };
-        entry.commentCount++;
-        const at = new Date(note.created_at);
-        if (!entry.first || at < entry.first) entry.first = at;
-        if (!entry.last || at > entry.last) entry.last = at;
-        reviewers.set(username, entry);
-      }
-
-      const reviewerPersonIds: number[] = [];
-      for (const [username, r] of reviewers) {
-        const personId = await resolver.resolve(username);
-        if (!personId) continue;
-        reviewerPersonIds.push(personId);
-        const reviewValues = {
-          approved: r.approved,
-          commentCount: r.commentCount,
-          firstReviewedAt: r.first ?? null,
-          lastReviewedAt: r.last ?? null,
-        };
-        await db
-          .insert(mergeRequestReviews)
-          .values({ mergeRequestId: mrId, personId, ...reviewValues })
-          .onConflictDoUpdate({
-            target: [
-              mergeRequestReviews.mergeRequestId,
-              mergeRequestReviews.personId,
-            ],
-            set: reviewValues,
-          });
-      }
-
-      // Drop reviews that no longer exist (e.g. a revoked approval).
+    const mrByIid = new Map(allMRs.map((mr) => [mr.iid, mr]));
+    for (const iid of deferredAuthorIids) {
+      const mr = mrByIid.get(iid);
+      if (!mr) continue;
+      const personId = await resolver.resolve(mr.author.username);
+      if (!personId) continue;
       await db
-        .delete(mergeRequestReviews)
-        .where(
-          and(
-            eq(mergeRequestReviews.mergeRequestId, mrId),
-            reviewerPersonIds.length > 0
-              ? notInArray(mergeRequestReviews.personId, reviewerPersonIds)
-              : undefined
-          )
-        );
+        .update(mergeRequests)
+        .set({ authorPersonId: personId })
+        .where(eq(mergeRequests.gitlabId, mr.id));
+    }
 
-      // Upsert commits for all MRs
-      for (const c of commitsByIid.get(mr.iid) ?? []) {
-        await db
-          .insert(commits)
-          .values({
-            mergeRequestId: mrId,
-            sha: c.id,
-            title: c.title,
-            authoredAt: new Date(c.authored_date),
-          })
-          .onConflictDoNothing({ target: commits.sha });
-      }
-
-      // Events stay personal — only for MRs I participated in
-      if (!authoredByMe && !reviewedByMe) continue;
-
-      // Build incoming events
-      const incoming: Array<{
-        mergeRequestId: number;
-        eventType: string;
-        externalUrl: string | null;
-        occurredAt: Date;
-      }> = [];
-
-      // "authored" event
-      if (authoredByMe) {
-        incoming.push({
-          mergeRequestId: mrId,
-          eventType: "authored",
-          externalUrl: mr.web_url,
-          occurredAt: new Date(mr.created_at),
-        });
-      }
-
-      // "merged" event (for authored OR reviewed MRs)
-      if (mr.state === "merged" && mr.merged_at) {
-        incoming.push({
-          mergeRequestId: mrId,
-          eventType: "merged",
-          externalUrl: mr.web_url,
-          occurredAt: new Date(mr.merged_at),
-        });
-      }
-
-      // "commented" events from my notes
-      for (const note of myNotes) {
-        incoming.push({
-          mergeRequestId: mrId,
-          eventType: "commented",
-          externalUrl: `${mr.web_url}#note_${note.id}`,
-          occurredAt: new Date(note.created_at),
-        });
-      }
-
-      // Dedup events
-      const existing = await db
-        .select({
-          eventType: mergeRequestEvents.eventType,
-          occurredAt: mergeRequestEvents.occurredAt,
-        })
-        .from(mergeRequestEvents)
-        .where(eq(mergeRequestEvents.mergeRequestId, mrId));
-
-      const existingKeyFn = (e: { eventType: string; occurredAt: Date }) =>
-        `${e.eventType}:${e.occurredAt.toISOString()}`;
-
-      const incomingKeyFn = (e: {
-        mergeRequestId: number;
-        eventType: string;
-        externalUrl: string | null;
-        occurredAt: Date;
-      }) => `${e.eventType}:${e.occurredAt.toISOString()}`;
-
-      const newEvents = dedup(existing, incoming, existingKeyFn, incomingKeyFn);
-
-      if (newEvents.length > 0) {
-        await db.insert(mergeRequestEvents).values(newEvents);
-      }
-
-      // Upsert comment content (all non-system comments for digest)
-      if (allNotes.length > 0) {
-        const commentRows = allNotes.map((note) => ({
-          id: note.id,
-          mergeRequestId: mrId,
-          body: note.body,
-          externalUrl: `${mr.web_url}#note_${note.id}`,
-          createdAt: new Date(note.created_at),
-          updatedAt: new Date(note.updated_at),
-        }));
-
-        await db
-          .insert(mergeRequestComments)
-          .values(commentRows)
-          .onConflictDoUpdate({
-            target: mergeRequestComments.id,
-            set: {
-              body: sql`excluded.body`,
-              updatedAt: sql`excluded.updated_at`,
-            },
-          });
-      }
+    for (const { mrId, reviewers } of deferredReviews) {
+      await writeReviews(mrId, reviewers, resolver);
     }
 
     return allMRs.length;
