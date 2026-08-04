@@ -28,19 +28,25 @@ function parseRange(query: Record<string, string | undefined>) {
 /**
  * One row per merged MR, with the review signals gathered from the tables that
  * would otherwise fan out against each other.
+ *
+ * `review_started_at` is when the MR first went in front of reviewers, which is
+ * not the ready flag: about a third have reviewers requested while still a
+ * draft, and anchoring on ready makes those look reviewed in minutes. LEAST
+ * ignores nulls, so any one of the three signals is enough.
  */
 async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
   const rows = (await db.execute(sql`
     SELECT
       mr.id, mr.gitlab_iid, mr.title, mr.project_path, mr.author_person_id,
       mr.threads_opened, mr.threads_resolved,
-      mr.ready_at, mr.first_approved_at, mr.last_approved_at, mr.merged_at,
+      mr.first_approved_at, mr.last_approved_at, mr.merged_at,
+      LEAST(mr.ready_at, e.first_request, r.first_comment) AS review_started_at,
       COALESCE(f.additions, 0) AS additions,
       COALESCE(f.deletions, 0) AS deletions,
       COALESCE(r.comments, 0) AS comments,
       COALESCE(r.approvals, 0) AS approvals,
       COALESCE(r.reviewers, 0) AS reviewers,
-      COALESCE(e.rounds, 0) AS review_rounds,
+      COALESCE(e.resets, 0) AS approval_resets,
       COALESCE(p.failed, 0) AS failed_pipelines
     FROM merge_requests mr
     LEFT JOIN LATERAL (
@@ -52,16 +58,17 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
       SELECT
         sum(comment_count)::int AS comments,
         count(*) FILTER (WHERE approved)::int AS approvals,
-        count(*)::int AS reviewers
+        count(*)::int AS reviewers,
+        min(first_reviewed_at) AS first_comment
       FROM merge_request_reviews
       WHERE merge_request_id = mr.id
     ) r ON true
     LEFT JOIN LATERAL (
-      SELECT count(*)::int AS rounds
+      SELECT
+        count(*) FILTER (WHERE event_type = 'approvals_reset')::int AS resets,
+        min(occurred_at) FILTER (WHERE event_type = 'review_requested') AS first_request
       FROM merge_request_state_events
       WHERE merge_request_id = mr.id
-        AND event_type = 'commits_pushed'
-        AND (mr.ready_at IS NULL OR occurred_at >= mr.ready_at)
     ) e ON true
     LEFT JOIN LATERAL (
       SELECT count(*) FILTER (WHERE status = 'failed')::int AS failed
@@ -74,7 +81,7 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
   `)) as any[];
 
   return rows.map((r) => {
-    const readyAt = r.ready_at ? new Date(r.ready_at) : null;
+    const startedAt = r.review_started_at ? new Date(r.review_started_at) : null;
     const mergedAt = new Date(r.merged_at);
     const firstApprovedAt = r.first_approved_at
       ? new Date(r.first_approved_at)
@@ -82,6 +89,10 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
     const lastApprovedAt = r.last_approved_at
       ? new Date(r.last_approved_at)
       : null;
+
+    // An approval predating the review window belongs to an earlier round.
+    const sinceStart = (at: Date | null): number | null =>
+      startedAt && at && at >= startedAt ? workHoursBetween(startedAt, at) : null;
 
     return {
       id: Number(r.id),
@@ -96,16 +107,15 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
       reviewers: r.reviewers,
       threadsOpened: r.threads_opened,
       threadsResolved: r.threads_resolved,
-      reviewRounds: r.review_rounds,
+      approvalResets: r.approval_resets,
       failedPipelines: r.failed_pipelines,
-      readyToFirstApprovalHours:
-        readyAt && firstApprovedAt && firstApprovedAt >= readyAt
-          ? workHoursBetween(readyAt, firstApprovedAt)
-          : null,
-      readyToMergeHours: readyAt ? workHoursBetween(readyAt, mergedAt) : null,
-      lastApprovalToMergeHours: lastApprovedAt
+      hoursToFirstApproval: sinceStart(firstApprovedAt),
+      hoursToHeldApproval: sinceStart(lastApprovedAt),
+      hoursToMerge: sinceStart(mergedAt),
+      hoursApprovalToMerge: lastApprovedAt
         ? workHoursBetween(lastApprovedAt, mergedAt)
         : null,
+      reviewStartedAt: startedAt?.toISOString() ?? null,
       mergedAt: mergedAt.toISOString(),
     } satisfies ReviewMr;
   });
@@ -122,19 +132,16 @@ function summarise(mrs: ReviewMr[]): ReviewSummary {
   return {
     mrs: mrs.length,
     latency: {
-      readyToFirstApproval: distribution(
-        mrs.map((m) => m.readyToFirstApprovalHours)
-      ),
-      readyToMerge: distribution(mrs.map((m) => m.readyToMergeHours)),
-      lastApprovalToMerge: distribution(
-        mrs.map((m) => m.lastApprovalToMergeHours)
-      ),
+      toFirstApproval: distribution(mrs.map((m) => m.hoursToFirstApproval)),
+      toHeldApproval: distribution(mrs.map((m) => m.hoursToHeldApproval)),
+      toMerge: distribution(mrs.map((m) => m.hoursToMerge)),
+      approvalToMerge: distribution(mrs.map((m) => m.hoursApprovalToMerge)),
     },
     size: { additions: distribution(mrs.map((m) => m.additions)) },
     engagement: {
       commentsPerMr: distribution(mrs.map((m) => m.comments)),
       commentsPer100Lines: distribution(mrs.map(commentDensity)),
-      reviewRounds: distribution(mrs.map((m) => m.reviewRounds)),
+      approvalResets: distribution(mrs.map((m) => m.approvalResets)),
       threadsOpened: mrs.reduce((n, m) => n + m.threadsOpened, 0),
       threadsResolved: mrs.reduce((n, m) => n + m.threadsResolved, 0),
     },
@@ -143,6 +150,7 @@ function summarise(mrs: ReviewMr[]): ReviewSummary {
       singleApprover: mrs.filter((m) => m.approvals === 1).length,
       rubberStamped: mrs.filter((m) => m.approvals > 0 && m.comments === 0)
         .length,
+      withResetApproval: mrs.filter((m) => m.approvalResets > 0).length,
       withFailedPipeline: mrs.filter((m) => m.failedPipelines > 0).length,
     },
   };
@@ -168,10 +176,9 @@ function trend(mrs: ReviewMr[]): ReviewTrendPoint[] {
     .map(([week, weekMrs]) => ({
       weekStart: week,
       mrs: weekMrs.length,
-      readyToFirstApprovalP50: median(
-        weekMrs.map((m) => m.readyToFirstApprovalHours)
-      ),
-      readyToMergeP50: median(weekMrs.map((m) => m.readyToMergeHours)),
+      toFirstApprovalP50: median(weekMrs.map((m) => m.hoursToFirstApproval)),
+      toHeldApprovalP50: median(weekMrs.map((m) => m.hoursToHeldApproval)),
+      toMergeP50: median(weekMrs.map((m) => m.hoursToMerge)),
       commentsPerMrP50: median(weekMrs.map((m) => m.comments)),
     }));
 }

@@ -3,7 +3,8 @@
     <div class="border-b border-border px-5 py-4">
       <h2 class="text-lg font-semibold text-ink">Distributions</h2>
       <p class="mt-0.5 text-sm text-ink-muted">
-        Medians and tails per merged MR. Durations exclude weekends.
+        Medians and tails per merged MR, timed from when it first went in front
+        of reviewers. Durations exclude weekends.
       </p>
     </div>
 
@@ -63,13 +64,14 @@ const rows = computed(() => {
   ) => ({ label, dist, format });
 
   return [
-    row("Ready → first approval", s.latency.readyToFirstApproval, formatHours),
-    row("Ready → merge", s.latency.readyToMerge, formatHours),
-    row("Last approval → merge", s.latency.lastApprovalToMerge, formatHours),
+    row("→ first approval", s.latency.toFirstApproval, formatHours),
+    row("→ approval that held", s.latency.toHeldApproval, formatHours),
+    row("→ merge", s.latency.toMerge, formatHours),
+    row("Last approval → merge", s.latency.approvalToMerge, formatHours),
     row("Lines added", s.size.additions),
     row("Comments", s.engagement.commentsPerMr),
     row("Comments per 100 lines", s.engagement.commentsPer100Lines),
-    row("Review rounds (pushes after ready)", s.engagement.reviewRounds),
+    row("Approval resets", s.engagement.approvalResets),
   ];
 });
 </script>

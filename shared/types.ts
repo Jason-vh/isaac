@@ -729,11 +729,17 @@ export interface Distribution {
   p90: number | null;
 }
 
-/** Durations are in hours, weekends excluded. */
+/**
+ * Durations in hours, weekends excluded. Measured from the moment an MR first
+ * went in front of reviewers, not from the ready flag: a third of MRs have
+ * reviewers requested while still a draft.
+ */
 export interface ReviewLatency {
-  readyToFirstApproval: Distribution;
-  readyToMerge: Distribution;
-  lastApprovalToMerge: Distribution;
+  toFirstApproval: Distribution;
+  /** To the last approval, i.e. the one that survived to the merge. */
+  toHeldApproval: Distribution;
+  toMerge: Distribution;
+  approvalToMerge: Distribution;
 }
 
 export interface ReviewSummary {
@@ -743,7 +749,8 @@ export interface ReviewSummary {
   engagement: {
     commentsPerMr: Distribution;
     commentsPer100Lines: Distribution;
-    reviewRounds: Distribution;
+    /** Approvals wiped out by a later push. */
+    approvalResets: Distribution;
     threadsOpened: number;
     threadsResolved: number;
   };
@@ -752,6 +759,7 @@ export interface ReviewSummary {
     noApproval: number;
     singleApprover: number;
     rubberStamped: number;
+    withResetApproval: number;
     withFailedPipeline: number;
   };
 }
@@ -769,19 +777,22 @@ export interface ReviewMr {
   reviewers: number;
   threadsOpened: number;
   threadsResolved: number;
-  reviewRounds: number;
+  approvalResets: number;
   failedPipelines: number;
-  readyToFirstApprovalHours: number | null;
-  readyToMergeHours: number | null;
-  lastApprovalToMergeHours: number | null;
+  hoursToFirstApproval: number | null;
+  hoursToHeldApproval: number | null;
+  hoursToMerge: number | null;
+  hoursApprovalToMerge: number | null;
+  reviewStartedAt: string | null;
   mergedAt: string;
 }
 
 export interface ReviewTrendPoint {
   weekStart: string;
   mrs: number;
-  readyToFirstApprovalP50: number | null;
-  readyToMergeP50: number | null;
+  toFirstApprovalP50: number | null;
+  toHeldApprovalP50: number | null;
+  toMergeP50: number | null;
   commentsPerMrP50: number | null;
 }
 

@@ -47,9 +47,9 @@ const props = defineProps<{ mrs: ReviewMr[] }>();
 
 const series = computed(() =>
   props.mrs
-    .filter((m) => m.readyToMergeHours !== null && m.additions + m.deletions > 0)
+    .filter((m) => m.hoursToMerge !== null && m.additions + m.deletions > 0)
     .map((m) => ({
-      value: [m.additions + m.deletions, Math.max(m.readyToMergeHours!, 0.1)],
+      value: [m.additions + m.deletions, Math.max(m.hoursToMerge!, 0.1)],
       mr: m,
     }))
 );
@@ -81,7 +81,7 @@ const chartOption = computed(() => ({
       return `!${mr.iid} ${mr.title}<br/>${(
         mr.additions + mr.deletions
       ).toLocaleString()} lines · ${formatHours(
-        mr.readyToMergeHours
+        mr.hoursToMerge
       )} · ${mr.comments} comments`;
     },
   },

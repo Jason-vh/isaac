@@ -3,7 +3,7 @@
     <div class="border-b border-border px-5 py-4">
       <h2 class="text-lg font-semibold text-ink">Slowest reviews</h2>
       <p class="mt-0.5 text-sm text-ink-muted">
-        Longest ready → merge windows in this period.
+        Longest review windows in this period.
       </p>
     </div>
 
@@ -18,7 +18,7 @@
           <th class="px-3 py-2.5 text-right font-medium">Author</th>
           <th class="px-3 py-2.5 text-right font-medium">Lines</th>
           <th class="px-3 py-2.5 text-right font-medium">Comments</th>
-          <th class="px-3 py-2.5 text-right font-medium">Rounds</th>
+          <th class="px-3 py-2.5 text-right font-medium">Resets</th>
           <th class="px-3 py-2.5 text-right font-medium">→ approval</th>
           <th class="px-5 py-2.5 text-right font-medium">→ merge</th>
         </tr>
@@ -45,13 +45,13 @@
             {{ mr.comments }}
           </td>
           <td class="px-3 py-3 text-right font-mono tabular-nums text-ink">
-            {{ mr.reviewRounds }}
+            {{ mr.approvalResets }}
           </td>
           <td class="px-3 py-3 text-right font-mono tabular-nums text-ink">
-            {{ formatHours(mr.readyToFirstApprovalHours) }}
+            {{ formatHours(mr.hoursToFirstApproval) }}
           </td>
           <td class="px-5 py-3 text-right font-mono tabular-nums text-ink">
-            {{ formatHours(mr.readyToMergeHours) }}
+            {{ formatHours(mr.hoursToMerge) }}
           </td>
         </tr>
       </tbody>
@@ -68,8 +68,8 @@ const props = defineProps<{ mrs: ReviewMr[]; people: Person[]; limit?: number }>
 
 const rows = computed(() =>
   props.mrs
-    .filter((m) => m.readyToMergeHours !== null)
-    .sort((a, b) => b.readyToMergeHours! - a.readyToMergeHours!)
+    .filter((m) => m.hoursToMerge !== null)
+    .sort((a, b) => b.hoursToMerge! - a.hoursToMerge!)
     .slice(0, props.limit ?? 15)
 );
 

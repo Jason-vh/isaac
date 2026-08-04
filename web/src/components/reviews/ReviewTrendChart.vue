@@ -41,17 +41,23 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent]);
 
 const props = defineProps<{ points: ReviewTrendPoint[] }>();
 
-type Metric = "readyToFirstApprovalP50" | "readyToMergeP50" | "commentsPerMrP50" | "mrs";
+type Metric =
+  | "toFirstApprovalP50"
+  | "toHeldApprovalP50"
+  | "toMergeP50"
+  | "commentsPerMrP50"
+  | "mrs";
 
 const metricOptions: { value: Metric; label: string }[] = [
-  { value: "readyToFirstApprovalP50", label: "Ready → approval" },
-  { value: "readyToMergeP50", label: "Ready → merge" },
+  { value: "toFirstApprovalP50", label: "First approval" },
+  { value: "toHeldApprovalP50", label: "Approval that held" },
+  { value: "toMergeP50", label: "Merge" },
   { value: "commentsPerMrP50", label: "Comments" },
   { value: "mrs", label: "MRs merged" },
 ];
 
-const metric = ref<Metric>("readyToFirstApprovalP50");
-const isDuration = computed(() => metric.value.startsWith("ready"));
+const metric = ref<Metric>("toFirstApprovalP50");
+const isDuration = computed(() => metric.value.startsWith("to"));
 const points = computed(() => props.points);
 
 const chartOption = computed(() => ({

@@ -66,9 +66,11 @@
     </div>
 
     <p class="mt-4 text-xs text-ink-faint">
-      Scoped to MRs merged in the period. "Ready" is the last draft → ready
-      transition; MRs that were never drafts count as ready from creation.
-      Durations exclude weekends.
+      Scoped to MRs merged in the period. The review window starts when the MR
+      first went in front of reviewers — the earliest of marked ready, review
+      requested, or a first review comment — since a third of MRs have reviewers
+      requested while still a draft. A push resets approvals, so the approval
+      that held is often not the first one. Durations exclude weekends.
     </p>
   </div>
 </template>

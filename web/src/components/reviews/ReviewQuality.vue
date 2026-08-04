@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
     <div v-for="card in cards" :key="card.label" class="card p-4">
       <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
         {{ card.label }}
@@ -40,6 +40,11 @@ const cards = computed(() => {
       label: "Approved, no comments",
       value: pct(quality.rubberStamped, mrs),
       detail: `${quality.rubberStamped} MRs`,
+    },
+    {
+      label: "Approval reset",
+      value: pct(quality.withResetApproval, mrs),
+      detail: `${quality.withResetApproval} MRs re-approved after a push`,
     },
     {
       label: "Threads resolved",

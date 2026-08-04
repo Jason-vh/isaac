@@ -26,22 +26,22 @@ const cards = computed(() => {
     {
       label: "MRs merged",
       value: s ? s.mrs.toLocaleString() : "—",
-      detail: `${s?.latency.readyToFirstApproval.n ?? 0} with an approval time`,
+      detail: `${s?.latency.toFirstApproval.n ?? 0} with an approval time`,
     },
     {
-      label: "Ready → approval",
-      value: formatHours(latency?.readyToFirstApproval.p50),
-      detail: `p90 ${formatHours(latency?.readyToFirstApproval.p90)}`,
+      label: "To first approval",
+      value: formatHours(latency?.toFirstApproval.p50),
+      detail: `p90 ${formatHours(latency?.toFirstApproval.p90)}`,
     },
     {
-      label: "Ready → merge",
-      value: formatHours(latency?.readyToMerge.p50),
-      detail: `p90 ${formatHours(latency?.readyToMerge.p90)}`,
+      label: "To approval that held",
+      value: formatHours(latency?.toHeldApproval.p50),
+      detail: `p90 ${formatHours(latency?.toHeldApproval.p90)}`,
     },
     {
-      label: "Approval → merge",
-      value: formatHours(latency?.lastApprovalToMerge.p50),
-      detail: `p90 ${formatHours(latency?.lastApprovalToMerge.p90)}`,
+      label: "To merge",
+      value: formatHours(latency?.toMerge.p50),
+      detail: `p90 ${formatHours(latency?.toMerge.p90)}`,
     },
   ];
 });

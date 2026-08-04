@@ -113,19 +113,29 @@ reviewed.
 
 | Measure | Definition |
 |---|---|
-| Ready → first approval | Time from the MR becoming ready to its first approval |
-| Ready → merge | The full review window |
+| Time to first approval | From review start to the first approval by anyone |
+| Time to the approval that held | From review start to the last approval, the one that survived to merge |
+| Time to merge | The full review window |
 | Last approval → merge | The tail after review is done |
 | Comments per MR, per 100 lines | Review depth, raw and normalised for size |
-| Review rounds | Pushes after the MR became ready |
+| Approval resets | Approvals wiped out by a later push |
 | Threads opened / resolved | Review threads, and how many got closed out |
 | Reviewer load | Reviews, approvals and comments per person, and how concentrated they are |
 
 Deliberate interpretation choices:
 
-- **Time in draft is not review time.** Latency is measured from the last
-  draft → ready transition, not from MR creation, so an author sitting on a
-  branch for a week doesn't read as a slow review.
+- **Review starts when the MR goes in front of reviewers**, which is the
+  earliest of marked ready, reviewers requested, or a first review comment — not
+  the ready flag, since a third of MRs have reviewers requested while still a
+  draft. Measuring from MR creation is wrong in the other direction: an author
+  sitting on a branch for a week isn't a slow review.
+- **The first approval often isn't the real one.** A push resets approvals, and
+  43% of merged MRs have more than one approval event, so an approval can be
+  wiped out minutes after it lands. Both are reported — how fast someone looked,
+  and when the MR was actually approved — alongside how often approvals reset.
+- **First approval is the fastest of many.** Reviews are typically requested from
+  the whole team at once, so "time to first approval" is a minimum over ~8
+  people and will always look quick. It measures responsiveness, not effort.
 - **Weekends are excluded from durations.** An MR that goes up Friday evening
   and merges Monday morning waited hours, not days.
 - **Medians and tails, never averages.** Review latency is heavily skewed; the

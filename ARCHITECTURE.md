@@ -252,7 +252,7 @@ when they happened. Keyed by the note id, so re-syncing never duplicates them.
 | id | bigint PK | GitLab system note id |
 | merge_request_id | int FK → merge_requests | |
 | person_id | int FK → people | Nullable, actor. Filled in on a later sync if unresolvable now. |
-| event_type | text | draft, ready, approved, unapproved, commits_pushed, review_requested, review_request_removed |
+| event_type | text | draft, ready, approved, unapproved, approvals_reset, commits_pushed, review_requested, review_request_removed |
 | occurred_at | timestamptz | |
 
 ### merge_request_reviews
@@ -596,12 +596,24 @@ grouping and resolution state, which is where `threads_opened` and
 parses system notes into `merge_request_state_events`, and derives the review
 window (`ready_at`, `first_approved_at`, `last_approved_at`).
 
-**Review latency.** Latency metrics are computed from `ready_at` rather than MR
-creation, because time spent in draft is the author's own iteration and would
-otherwise swamp the review signal. `ready_at` is the *last* draft → ready
-transition before the merge — MRs get re-drafted — and MRs that were never
-drafts count as ready from creation. `server/src/lib/reviewMetrics.ts` computes
-percentiles and excludes weekends from durations.
+**Review latency.** Latency is measured from when an MR first went in front of
+reviewers: `LEAST(ready_at, first review_requested event, first review comment)`.
+Anchoring on `ready_at` alone reported a 30-minute median to first approval,
+because a third of MRs have reviewers requested while still a draft, so the ready
+flag lands after the review already started. The anchor is computed in the query
+rather than stored, so the definition can change without a re-sync.
+
+MR creation is the wrong anchor for the opposite reason: time in draft is the
+author's own iteration and swamps the review signal.
+
+**First approval vs. the one that held.** Pushing resets approvals, and 43% of
+merged MRs have more than one approval event, so the first approval is often
+wiped out minutes later. Both are reported: `first_approved_at` answers "how fast
+did someone look", `last_approved_at` answers "when was it actually approved".
+The `approvals_reset` event counts how often that happened.
+
+`server/src/lib/reviewMetrics.ts` computes percentiles and excludes weekends from
+durations.
 Because per-file rows are stored raw, changing these rules only requires an
 `UPDATE`, not a re-sync.
 
