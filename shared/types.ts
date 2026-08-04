@@ -718,3 +718,101 @@ export interface TeamTrend {
   people: Person[];
   points: TeamTrendPoint[];
 }
+
+// --- Review analytics ---
+
+/** Percentiles over a set of MRs; null when the sample is empty. */
+export interface Distribution {
+  n: number;
+  p50: number | null;
+  p75: number | null;
+  p90: number | null;
+}
+
+/** Durations are in hours, weekends excluded. */
+export interface ReviewLatency {
+  readyToFirstApproval: Distribution;
+  readyToMerge: Distribution;
+  lastApprovalToMerge: Distribution;
+}
+
+export interface ReviewSummary {
+  mrs: number;
+  latency: ReviewLatency;
+  size: { additions: Distribution };
+  engagement: {
+    commentsPerMr: Distribution;
+    commentsPer100Lines: Distribution;
+    reviewRounds: Distribution;
+    threadsOpened: number;
+    threadsResolved: number;
+  };
+  /** Counts of MRs, out of `mrs`. */
+  quality: {
+    noApproval: number;
+    singleApprover: number;
+    rubberStamped: number;
+    withFailedPipeline: number;
+  };
+}
+
+export interface ReviewMr {
+  id: number;
+  iid: number;
+  title: string;
+  webUrl: string;
+  authorId: number | null;
+  additions: number;
+  deletions: number;
+  comments: number;
+  approvals: number;
+  reviewers: number;
+  threadsOpened: number;
+  threadsResolved: number;
+  reviewRounds: number;
+  failedPipelines: number;
+  readyToFirstApprovalHours: number | null;
+  readyToMergeHours: number | null;
+  lastApprovalToMergeHours: number | null;
+  mergedAt: string;
+}
+
+export interface ReviewTrendPoint {
+  weekStart: string;
+  mrs: number;
+  readyToFirstApprovalP50: number | null;
+  readyToMergeP50: number | null;
+  commentsPerMrP50: number | null;
+}
+
+export interface ReviewOverview {
+  since: string;
+  until: string;
+  summary: ReviewSummary;
+  trend: ReviewTrendPoint[];
+  mrs: ReviewMr[];
+  people: Person[];
+}
+
+export interface ReviewerLoad {
+  person: Person;
+  mrsReviewed: number;
+  approvals: number;
+  comments: number;
+  /** Share of all reviews in the period. */
+  share: number;
+}
+
+/** How often one person reviewed another's MRs. */
+export interface ReviewerPair {
+  authorId: number;
+  reviewerId: number;
+  mrs: number;
+}
+
+export interface ReviewerReport {
+  reviewers: ReviewerLoad[];
+  pairs: ReviewerPair[];
+  /** Share of reviews done by the two busiest reviewers. */
+  top2Share: number;
+}

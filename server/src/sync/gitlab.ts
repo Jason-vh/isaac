@@ -5,6 +5,7 @@ import {
   mergeRequestComments,
   mergeRequestFileStats,
   mergeRequestReviews,
+  mergeRequestStateEvents,
   commits,
 } from "../db/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
@@ -16,6 +17,15 @@ import {
   isBotUser,
   resetPersonCache,
 } from "./people";
+import {
+  approvalsByUser,
+  deriveReviewTimings,
+  flattenNotes,
+  parseStateEvents,
+  threadStats,
+  type GitLabDiscussion,
+  type MrStateEvent,
+} from "./gitlabNotes";
 
 // ---------------------------------------------------------------------------
 // Types for GitLab API responses
@@ -41,10 +51,12 @@ interface GitLabMR {
   iid: number;
   title: string;
   state: string;
+  draft: boolean;
   source_branch: string;
   web_url: string;
   created_at: string;
   merged_at: string | null;
+  closed_at: string | null;
   author: GitLabAuthor;
 }
 
@@ -54,15 +66,6 @@ interface GitLabCommit {
   authored_date: string;
   author_name: string;
   author_email: string;
-}
-
-interface GitLabNote {
-  id: number;
-  body: string;
-  created_at: string;
-  updated_at: string;
-  author: GitLabAuthor;
-  system: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,22 +189,6 @@ type ReviewerMap = Map<
   }
 >;
 
-// GitLab records approvals as system notes rather than exposing a timestamp on
-// the MR, so this is the only way to know when a review actually happened.
-const APPROVAL_NOTE = /^approved this merge request$/i;
-
-/** Latest approval time per user, from an MR's system notes. */
-function parseApprovals(notes: GitLabNote[]): Map<string, Date> {
-  const approvals = new Map<string, Date>();
-  for (const note of notes) {
-    if (!note.system || !APPROVAL_NOTE.test(note.body.trim())) continue;
-    const at = new Date(note.created_at);
-    const seen = approvals.get(note.author.username);
-    if (!seen || at > seen) approvals.set(note.author.username, at);
-  }
-  return approvals;
-}
-
 /** Upserts an MR's reviews and drops rows for people who no longer review it. */
 async function writeReviews(
   mrId: number,
@@ -245,6 +232,37 @@ async function writeReviews(
           : undefined
       )
     );
+}
+
+/** Upserts an MR's lifecycle events; the note id keeps re-syncs idempotent. */
+async function writeStateEvents(
+  mrId: number,
+  events: MrStateEvent[],
+  resolver: GitLabIdentityResolver
+): Promise<void> {
+  if (events.length === 0) return;
+
+  const rows = [];
+  for (const e of events) {
+    rows.push({
+      id: e.noteId,
+      mergeRequestId: mrId,
+      personId: await resolver.resolve(e.username),
+      eventType: e.type,
+      occurredAt: e.occurredAt,
+    });
+  }
+
+  await db
+    .insert(mergeRequestStateEvents)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: mergeRequestStateEvents.id,
+      // Only fill in an actor we couldn't identify on an earlier run.
+      set: {
+        personId: sql`coalesce(excluded.person_id, ${mergeRequestStateEvents.personId})`,
+      },
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -338,10 +356,13 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         );
         resolver.observeCommits(mr.author.username, mrCommits);
 
-        const notes = await paginateGitLab<GitLabNote>(
-          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/notes?sort=asc`,
+        // Discussions rather than notes: same request count, but they also
+        // carry thread grouping and resolution state.
+        const discussions = await paginateGitLab<GitLabDiscussion>(
+          `${baseUrl}/api/v4/projects/${projectId}/merge_requests/${mr.iid}/discussions`,
           authHeaders
         );
+        const notes = flattenNotes(discussions);
         for (const note of notes) {
           if (note.system) continue;
           resolver.observe(
@@ -360,6 +381,16 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           deferredAuthorIids.push(mr.iid);
         }
 
+        const stateEvents = parseStateEvents(notes);
+        const mergedAt = mr.merged_at ? new Date(mr.merged_at) : null;
+        const timings = deriveReviewTimings(stateEvents, {
+          createdAt: new Date(mr.created_at),
+          mergedAt,
+          draft: mr.draft,
+          authorUsername: mr.author.username,
+        });
+        const threads = threadStats(discussions);
+
         const values = {
           gitlabIid: mr.iid,
           projectPath,
@@ -369,8 +400,14 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           reviewedByMe,
           authorPersonId,
           branchName: mr.source_branch,
+          threadsOpened: threads.opened,
+          threadsResolved: threads.resolved,
           gitlabCreatedAt: new Date(mr.created_at),
-          mergedAt: mr.merged_at ? new Date(mr.merged_at) : null,
+          readyAt: timings.readyAt,
+          firstApprovedAt: timings.firstApprovedAt,
+          lastApprovedAt: timings.lastApprovedAt,
+          mergedAt,
+          closedAt: mr.closed_at ? new Date(mr.closed_at) : null,
           syncedAt: new Date(),
         };
 
@@ -404,6 +441,8 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           .returning({ id: mergeRequests.id });
 
         const mrId = upserted.id;
+
+        await writeStateEvents(mrId, stateEvents, resolver);
 
         // Per-file line counts
         if (detail) {
@@ -453,7 +492,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
 
         // Reviews — anyone who approved or commented, excluding the MR author.
         const reviewers: ReviewerMap = new Map();
-        const approvals = parseApprovals(notes);
+        const approvals = approvalsByUser(stateEvents);
         const currentlyApproved = new Set(detail?.approvedBy ?? []);
 
         const reviewerEntry = (username: string) => {

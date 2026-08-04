@@ -231,9 +231,29 @@ Raw status transitions and other events.
 | additions | int | Lines added across the MR diff |
 | deletions | int | Lines removed across the MR diff |
 | commit_count | int | |
+| threads_opened | int | Resolvable discussions on the MR |
+| threads_resolved | int | How many of them ended up resolved |
 | gitlab_created_at | timestamptz | |
+| ready_at | timestamptz | Nullable. Last draft → ready transition; MR creation when it was never a draft. |
+| first_approved_at | timestamptz | Nullable, earliest approval by someone other than the author |
+| last_approved_at | timestamptz | Nullable, latest such approval |
 | merged_at | timestamptz | Nullable |
+| closed_at | timestamptz | Nullable |
 | synced_at | timestamptz | |
+
+### merge_request_state_events
+
+Lifecycle events for every MR, parsed from GitLab system notes — GitLab records
+these as notes rather than fields, so walking the notes is the only way to know
+when they happened. Keyed by the note id, so re-syncing never duplicates them.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | bigint PK | GitLab system note id |
+| merge_request_id | int FK → merge_requests | |
+| person_id | int FK → people | Nullable, actor. Filled in on a later sync if unresolvable now. |
+| event_type | text | draft, ready, approved, unapproved, commits_pushed, review_requested, review_request_removed |
+| occurred_at | timestamptz | |
 
 ### merge_request_reviews
 
@@ -518,6 +538,7 @@ Share URL format: `https://isaac.vhtm.eu/<any-page>?s=<token>` — the router st
 - **WBSO:** GET `/wbso/week/:date` (computed weekly summary with per-ticket-per-day breakdown, includes estimation reasoning and MR/commit/meeting detail), GET `/wbso/tickets/search?q=` (search tickets by key or title for linking, returns epic titles), PATCH `/wbso/meetings/:id` (update category/epicKey/ticketKey — ticketKey resolves to epicKey server-side, linking to an epic auto-sets category to dev, owner-only), PATCH `/wbso/merge-requests/:id` (link MR to ticket, validates ticket exists, owner-only)
 - **Dashboard:** GET `/dashboard/week/:date`, GET `/dashboard/velocity?weeks=N` (last N weeks of SP/ticket counts, default 12, max 26)
 - **Team:** GET `/team/people` (active people), GET `/team/productivity?since=&until=` (per-engineer lines merged, lines reviewed, tickets closed and story points, each split frontend/backend/other), GET `/team/trend?since=&until=` (same metrics bucketed by week per person). Range defaults to the last 30 days.
+- **Reviews:** GET `/reviews/overview?since=&until=` (per-MR review rows plus summary percentiles, weekly trend and people, for MRs merged in the range), GET `/reviews/reviewers?since=&until=` (per-reviewer load, share and author → reviewer pairs). Range defaults to the last 30 days.
 - **Sync:** POST `/sync/trigger` (accepts `{ sources?: string[], since?: string, force?: boolean }` for filtered backfills — `force` bypasses the "already synced" skip for gitlab-pipelines, enabling backfill of new fields), GET `/sync/status`, GET `/sync/log` (last 50 entries ordered by `startedAt` desc), POST `/sync/cleanup` (marks stale running entries >10min as error)
 - **Share:** POST `/share` → `{ token, expiresAt }` (owner-only, generates 24h share token)
 - **Digest:** GET `/digest?since=&until=` (structured summary of team activity for a time period — tickets created by type, status transitions, MRs opened/merged, Confluence docs, commit counts by day)
@@ -567,6 +588,20 @@ the entire sync.
 **Categorisation.** `server/src/lib/codeCategory.ts` maps a path to
 frontend/backend/other by top-level directory and flags generated files
 (lockfiles, `schema.json`, codegen output, snapshots, `dist/`) as `excluded`.
+
+**Discussions, not notes.** The sync reads `/merge_requests/:iid/discussions`
+rather than `/notes`: it costs the same number of requests but adds thread
+grouping and resolution state, which is where `threads_opened` and
+`threads_resolved` come from. `server/src/sync/gitlabNotes.ts` flattens them,
+parses system notes into `merge_request_state_events`, and derives the review
+window (`ready_at`, `first_approved_at`, `last_approved_at`).
+
+**Review latency.** Latency metrics are computed from `ready_at` rather than MR
+creation, because time spent in draft is the author's own iteration and would
+otherwise swamp the review signal. `ready_at` is the *last* draft → ready
+transition before the merge — MRs get re-drafted — and MRs that were never
+drafts count as ready from creation. `server/src/lib/reviewMetrics.ts` computes
+percentiles and excludes weekends from durations.
 Because per-file rows are stored raw, changing these rules only requires an
 `UPDATE`, not a re-sync.
 

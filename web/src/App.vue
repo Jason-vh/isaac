@@ -61,6 +61,7 @@ const allNavLinks = [
   { to: "/objectives", label: "Objectives", section: "objectives" },
   { to: "/activity", label: "Activity", section: "activity" },
   { to: "/team", label: "Team", section: "team" },
+  { to: "/reviews", label: "Reviews", section: "reviews" },
   { to: "/pipelines", label: "Pipelines", section: "pipelines" },
 ];
 

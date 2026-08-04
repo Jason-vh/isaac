@@ -56,6 +56,11 @@ export const router = createRouter({
       component: () => import("../views/TeamView.vue"),
     },
     {
+      path: "/reviews",
+      name: "reviews",
+      component: () => import("../views/ReviewsView.vue"),
+    },
+    {
       path: "/pipelines",
       children: [
         {

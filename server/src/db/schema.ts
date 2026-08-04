@@ -94,14 +94,43 @@ export const mergeRequests = pgTable("merge_requests", {
   additions: integer("additions").notNull().default(0),
   deletions: integer("deletions").notNull().default(0),
   commitCount: integer("commit_count").notNull(),
+  // Resolvable discussions, and how many of them ended up resolved.
+  threadsOpened: integer("threads_opened").notNull().default(0),
+  threadsResolved: integer("threads_resolved").notNull().default(0),
   gitlabCreatedAt: timestamp("gitlab_created_at", {
     withTimezone: true,
   }).notNull(),
+  // Last draft -> ready transition, i.e. the start of the final review window.
+  readyAt: timestamp("ready_at", { withTimezone: true }),
+  firstApprovedAt: timestamp("first_approved_at", { withTimezone: true }),
+  lastApprovedAt: timestamp("last_approved_at", { withTimezone: true }),
   mergedAt: timestamp("merged_at", { withTimezone: true }),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
   syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
 }, (t) => [
   index("merge_requests_merged_at_idx").on(t.mergedAt),
 ]);
+
+// Lifecycle events for every MR, parsed from GitLab system notes. Keyed by the
+// note id so re-syncing an MR never duplicates them.
+export const mergeRequestStateEvents = pgTable(
+  "merge_request_state_events",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey(),
+    mergeRequestId: integer("merge_request_id")
+      .notNull()
+      .references(() => mergeRequests.id),
+    personId: integer("person_id").references(() => people.id),
+    eventType: text("event_type").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("merge_request_state_events_mr_type_idx").on(
+      t.mergeRequestId,
+      t.eventType
+    ),
+  ]
+);
 
 // One row per person who approved or commented on an MR.
 export const mergeRequestReviews = pgTable(

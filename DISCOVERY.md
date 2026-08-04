@@ -44,6 +44,12 @@ Groups tickets into projects. Also a Jira issue. Maps to WBSO projects. The prim
 **Merge Request**
 GitLab MR. All project MRs are stored for denominator metrics (e.g. review percentage). Three classes: authored (`authoredByMe`), reviewed (`reviewedByMe` — approved or commented, not authored), and team (neither). Events are only created for MRs the user participated in. Linked to tickets via branch name (inferred, case-insensitive). Can also be manually linked to a ticket via the entry detail panel or the unlinked MRs panel.
 
+**MR state event**
+A lifecycle change on an MR — draft, ready, approved, unapproved, commits pushed,
+review requested — recorded for every MR in the project. GitLab keeps these as
+system notes rather than fields, so they are parsed out of the note stream during
+sync. They define an MR's review window and its rework rounds.
+
 **Document**
 Confluence page. Tracked events: published, commented on. Linked to epics (inferred where possible, manual otherwise).
 
@@ -67,6 +73,7 @@ Annual objective with Key Results. Objectives and KRs are hardcoded in `shared/o
 - Tickets belong to epics
 - Tickets have an assignee, a reporter, and an assignee-at-close (all people)
 - MRs have an author (a person) and many reviews (one per reviewing person)
+- MRs have lifecycle state events, and review threads that are opened and resolved
 - MRs have per-file line counts, categorised frontend/backend/other
 - MRs link to tickets (inferred from branch names)
 - Documents and meetings link to epics (inferred where possible, manual otherwise)
@@ -97,6 +104,37 @@ Deliberate interpretation choices:
   dragged the ticket to Done — that is often QA or a PM.
 - **Tests count as code.** Backend tests live under `backend/`, and `e2e/`
   counts as "other", which is why QA-authored work shows up there.
+
+### Review Health
+
+How the team's review process behaves, scoped to MRs merged in a period. Distinct
+from team productivity: that asks who did the work, this asks how the work got
+reviewed.
+
+| Measure | Definition |
+|---|---|
+| Ready → first approval | Time from the MR becoming ready to its first approval |
+| Ready → merge | The full review window |
+| Last approval → merge | The tail after review is done |
+| Comments per MR, per 100 lines | Review depth, raw and normalised for size |
+| Review rounds | Pushes after the MR became ready |
+| Threads opened / resolved | Review threads, and how many got closed out |
+| Reviewer load | Reviews, approvals and comments per person, and how concentrated they are |
+
+Deliberate interpretation choices:
+
+- **Time in draft is not review time.** Latency is measured from the last
+  draft → ready transition, not from MR creation, so an author sitting on a
+  branch for a week doesn't read as a slow review.
+- **Weekends are excluded from durations.** An MR that goes up Friday evening
+  and merges Monday morning waited hours, not days.
+- **Medians and tails, never averages.** Review latency is heavily skewed; the
+  p90 is where the pain lives.
+- **Comment counts are normalised by size.** A raw comment count mostly measures
+  how big the MR was.
+- **Approval without comment is flagged, not judged.** A trivial MR deserves a
+  fast approval; a 1,000-line one probably doesn't. The scatter of size against
+  review time is the honest version of that question.
 
 ### WBSO Estimation
 
