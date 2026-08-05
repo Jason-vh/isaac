@@ -5,23 +5,22 @@
         {{ card.label }}
       </p>
       <template v-if="card.duration">
-        <div class="mt-1 flex items-baseline gap-2">
-          <span class="font-mono text-3xl font-medium tabular-nums text-ink">
-            {{ formatHours(card.dist?.p50) }}
-          </span>
-          <span class="text-xs font-medium uppercase text-ink-faint">p50</span>
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <div
+            v-for="stat in [
+              { label: 'p50', value: card.dist?.p50 },
+              { label: 'p99', value: card.dist?.p99 },
+            ]"
+            :key="stat.label"
+          >
+            <p class="text-xs font-medium uppercase tracking-wider text-ink-muted">
+              {{ stat.label }}
+            </p>
+            <p class="font-mono text-2xl font-medium tabular-nums text-ink">
+              {{ formatHours(stat.value) }}
+            </p>
+          </div>
         </div>
-        <p class="mt-1 text-sm text-ink-muted">
-          <span class="font-mono tabular-nums text-ink"
-            >{{ formatHours(card.dist?.p90) }}
-          </span>
-          p90
-          <span class="mx-1 text-ink-faint">·</span>
-          <span class="font-mono tabular-nums text-ink"
-            >{{ formatHours(card.dist?.p99) }}
-          </span>
-          p99
-        </p>
       </template>
       <template v-else>
         <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">

@@ -1,17 +1,25 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center justify-between border-b border-border px-5 py-4">
+    <div class="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
       <div>
         <h2 class="text-lg font-semibold text-ink">Merge requests</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
           Every MR merged in this period. Click a column to sort.
         </p>
       </div>
-      <p class="text-sm text-ink-muted">{{ sorted.length }} MRs</p>
+      <div class="flex items-center gap-3">
+        <input
+          v-model="query"
+          type="search"
+          placeholder="Search title, !iid or author"
+          class="w-64 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+        <p class="whitespace-nowrap text-sm text-ink-muted">{{ sorted.length }} MRs</p>
+      </div>
     </div>
 
     <div v-if="!sorted.length" class="px-5 py-16 text-center text-sm text-ink-faint">
-      Nothing to show.
+      {{ query ? `No MRs match "${query}".` : "Nothing to show." }}
     </div>
 
     <table v-else class="w-full text-sm">
@@ -41,7 +49,9 @@
               <span class="font-mono text-ink-faint">!{{ mr.iid }}</span>
               {{ mr.title }}
             </a>
-            <span class="ml-2 text-ink-muted">{{ authorName(mr.authorId) }}</span>
+            <span v-if="authorName(mr.authorId)" class="ml-2 text-ink-muted">
+              {{ authorName(mr.authorId) }}
+            </span>
           </td>
           <td
             v-for="col in columns"
@@ -66,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import type { Person, ReviewMr } from "@isaac/shared";
 import { formatHours } from "../../lib/duration";
 
@@ -94,6 +104,11 @@ const columns: { key: SortKey; label: string; format: (v: number | null) => stri
 const sortKey = ref<SortKey>("hoursToFirstReview");
 const descending = ref(true);
 const expanded = ref(false);
+const query = ref("");
+
+watch(query, () => {
+  expanded.value = false;
+});
 
 function toggleSort(key: SortKey) {
   if (sortKey.value === key) descending.value = !descending.value;
@@ -108,8 +123,19 @@ const rows = computed(() =>
   props.mrs.map((mr) => ({ ...mr, lines: mr.additions + mr.deletions }))
 );
 
+const filtered = computed(() => {
+  const q = query.value.trim().toLowerCase();
+  if (!q) return rows.value;
+  return rows.value.filter((mr) =>
+    [mr.title, `!${mr.iid}`, authorName(mr.authorId)]
+      .join(" ")
+      .toLowerCase()
+      .includes(q)
+  );
+});
+
 const sorted = computed(() =>
-  [...rows.value].sort((a, b) => {
+  [...filtered.value].sort((a, b) => {
     const [x, y] = [a[sortKey.value], b[sortKey.value]];
     // MRs with no measurement sink to the bottom whichever way we sort.
     if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -125,7 +151,8 @@ const peopleById = computed(
   () => new Map(props.people.map((p) => [p.id, p.displayName]))
 );
 
+/** Empty when the MR has no linked person (e.g. bot MRs). */
 function authorName(id: number | null): string {
-  return (id !== null && peopleById.value.get(id)) || "—";
+  return (id !== null && peopleById.value.get(id)) || "";
 }
 </script>
