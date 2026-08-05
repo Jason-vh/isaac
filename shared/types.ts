@@ -725,8 +725,8 @@ export interface TeamTrend {
 export interface Distribution {
   n: number;
   p50: number | null;
-  p75: number | null;
   p90: number | null;
+  p99: number | null;
 }
 
 /**
@@ -735,9 +735,9 @@ export interface Distribution {
  * reviewers requested while still a draft.
  */
 export interface ReviewLatency {
+  /** To the first review action by anyone but the author: a comment or an approval. */
+  toFirstReview: Distribution;
   toFirstApproval: Distribution;
-  /** To the last approval, i.e. the one that survived to the merge. */
-  toHeldApproval: Distribution;
   toMerge: Distribution;
   approvalToMerge: Distribution;
 }
@@ -779,8 +779,8 @@ export interface ReviewMr {
   threadsResolved: number;
   approvalResets: number;
   failedPipelines: number;
+  hoursToFirstReview: number | null;
   hoursToFirstApproval: number | null;
-  hoursToHeldApproval: number | null;
   hoursToMerge: number | null;
   hoursApprovalToMerge: number | null;
   reviewStartedAt: string | null;
@@ -790,10 +790,19 @@ export interface ReviewMr {
 export interface ReviewTrendPoint {
   weekStart: string;
   mrs: number;
+  toFirstReviewP50: number | null;
   toFirstApprovalP50: number | null;
-  toHeldApprovalP50: number | null;
   toMergeP50: number | null;
   commentsPerMrP50: number | null;
+}
+
+/** How long one engineer's own MRs waited to be looked at. */
+export interface AuthorWait {
+  person: Person;
+  mrs: number;
+  toFirstReview: Distribution;
+  toFirstApproval: Distribution;
+  toMerge: Distribution;
 }
 
 export interface ReviewOverview {
@@ -801,6 +810,7 @@ export interface ReviewOverview {
   until: string;
   summary: ReviewSummary;
   trend: ReviewTrendPoint[];
+  authors: AuthorWait[];
   mrs: ReviewMr[];
   people: Person[];
 }

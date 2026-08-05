@@ -5,6 +5,7 @@ import { mergeRequests, mergeRequestReviews, people } from "../db/schema";
 import { env } from "../env";
 import { distribution, median, workHoursBetween } from "../lib/reviewMetrics";
 import type {
+  AuthorWait,
   Person,
   ReviewMr,
   ReviewOverview,
@@ -33,6 +34,11 @@ function parseRange(query: Record<string, string | undefined>) {
  * not the ready flag: about a third have reviewers requested while still a
  * draft, and anchoring on ready makes those look reviewed in minutes. LEAST
  * ignores nulls, so any one of the three signals is enough.
+ *
+ * The ready signal is the *first* draft -> ready transition, not the stored
+ * `ready_at`: an MR sent back to draft after review flips ready again near the
+ * merge, which would start the window after the review already happened.
+ * `ready_at` still covers MRs that were never drafts, where it is creation.
  */
 async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
   const rows = (await db.execute(sql`
@@ -40,7 +46,9 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
       mr.id, mr.gitlab_iid, mr.title, mr.project_path, mr.author_person_id,
       mr.threads_opened, mr.threads_resolved,
       mr.first_approved_at, mr.last_approved_at, mr.merged_at,
-      LEAST(mr.ready_at, e.first_request, r.first_comment) AS review_started_at,
+      LEAST(COALESCE(e.first_ready, mr.ready_at), e.first_request, r.first_comment)
+        AS review_started_at,
+      LEAST(r.first_comment, mr.first_approved_at) AS first_reviewed_at,
       COALESCE(f.additions, 0) AS additions,
       COALESCE(f.deletions, 0) AS deletions,
       COALESCE(r.comments, 0) AS comments,
@@ -66,6 +74,7 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
     LEFT JOIN LATERAL (
       SELECT
         count(*) FILTER (WHERE event_type = 'approvals_reset')::int AS resets,
+        min(occurred_at) FILTER (WHERE event_type = 'ready') AS first_ready,
         min(occurred_at) FILTER (WHERE event_type = 'review_requested') AS first_request
       FROM merge_request_state_events
       WHERE merge_request_id = mr.id
@@ -109,8 +118,10 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
       threadsResolved: r.threads_resolved,
       approvalResets: r.approval_resets,
       failedPipelines: r.failed_pipelines,
+      hoursToFirstReview: sinceStart(
+        r.first_reviewed_at ? new Date(r.first_reviewed_at) : null
+      ),
       hoursToFirstApproval: sinceStart(firstApprovedAt),
-      hoursToHeldApproval: sinceStart(lastApprovedAt),
       hoursToMerge: sinceStart(mergedAt),
       hoursApprovalToMerge: lastApprovedAt
         ? workHoursBetween(lastApprovedAt, mergedAt)
@@ -132,8 +143,8 @@ function summarise(mrs: ReviewMr[]): ReviewSummary {
   return {
     mrs: mrs.length,
     latency: {
+      toFirstReview: distribution(mrs.map((m) => m.hoursToFirstReview)),
       toFirstApproval: distribution(mrs.map((m) => m.hoursToFirstApproval)),
-      toHeldApproval: distribution(mrs.map((m) => m.hoursToHeldApproval)),
       toMerge: distribution(mrs.map((m) => m.hoursToMerge)),
       approvalToMerge: distribution(mrs.map((m) => m.hoursApprovalToMerge)),
     },
@@ -176,11 +187,38 @@ function trend(mrs: ReviewMr[]): ReviewTrendPoint[] {
     .map(([week, weekMrs]) => ({
       weekStart: week,
       mrs: weekMrs.length,
+      toFirstReviewP50: median(weekMrs.map((m) => m.hoursToFirstReview)),
       toFirstApprovalP50: median(weekMrs.map((m) => m.hoursToFirstApproval)),
-      toHeldApprovalP50: median(weekMrs.map((m) => m.hoursToHeldApproval)),
       toMergeP50: median(weekMrs.map((m) => m.hoursToMerge)),
       commentsPerMrP50: median(weekMrs.map((m) => m.comments)),
     }));
+}
+
+/** How long each author's own MRs waited, busiest author first. */
+function authorWaits(mrs: ReviewMr[], people: Person[]): AuthorWait[] {
+  const byAuthor = new Map<number, ReviewMr[]>();
+  for (const mr of mrs) {
+    if (mr.authorId === null) continue;
+    byAuthor.set(mr.authorId, [...(byAuthor.get(mr.authorId) ?? []), mr]);
+  }
+
+  return people
+    .flatMap((person) => {
+      const authored = byAuthor.get(person.id);
+      if (!authored) return [];
+      return [
+        {
+          person,
+          mrs: authored.length,
+          toFirstReview: distribution(authored.map((m) => m.hoursToFirstReview)),
+          toFirstApproval: distribution(
+            authored.map((m) => m.hoursToFirstApproval)
+          ),
+          toMerge: distribution(authored.map((m) => m.hoursToMerge)),
+        },
+      ];
+    })
+    .sort((a, b) => b.mrs - a.mrs);
 }
 
 async function loadPeople(): Promise<Person[]> {
@@ -199,14 +237,16 @@ export const reviewRoutes = new Elysia({ prefix: "/api/reviews" })
   .get("/overview", async ({ query }) => {
     const { since, until } = parseRange(query as Record<string, string>);
     const mrs = await loadMergedMrs(since, until);
+    const peopleList = await loadPeople();
 
     return {
       since: since.toISOString(),
       until: until.toISOString(),
       summary: summarise(mrs),
       trend: trend(mrs),
+      authors: authorWaits(mrs, peopleList),
       mrs,
-      people: await loadPeople(),
+      people: peopleList,
     } satisfies ReviewOverview;
   })
   .get("/reviewers", async ({ query }) => {

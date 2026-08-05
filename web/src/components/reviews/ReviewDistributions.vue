@@ -17,8 +17,8 @@
         <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
           <th class="px-5 py-2.5 font-medium">Metric</th>
           <th class="px-3 py-2.5 text-right font-medium">p50</th>
-          <th class="px-3 py-2.5 text-right font-medium">p75</th>
           <th class="px-3 py-2.5 text-right font-medium">p90</th>
+          <th class="px-3 py-2.5 text-right font-medium">p99</th>
           <th class="px-5 py-2.5 text-right font-medium">MRs</th>
         </tr>
       </thead>
@@ -30,7 +30,7 @@
         >
           <td class="px-5 py-3 text-ink">{{ row.label }}</td>
           <td
-            v-for="(value, i) in [row.dist.p50, row.dist.p75, row.dist.p90]"
+            v-for="(value, i) in [row.dist.p50, row.dist.p90, row.dist.p99]"
             :key="i"
             class="px-3 py-3 text-right font-mono tabular-nums text-ink"
           >
@@ -64,8 +64,8 @@ const rows = computed(() => {
   ) => ({ label, dist, format });
 
   return [
+    row("→ first review", s.latency.toFirstReview, formatHours),
     row("→ first approval", s.latency.toFirstApproval, formatHours),
-    row("→ approval that held", s.latency.toHeldApproval, formatHours),
     row("→ merge", s.latency.toMerge, formatHours),
     row("Last approval → merge", s.latency.approvalToMerge, formatHours),
     row("Lines added", s.size.additions),

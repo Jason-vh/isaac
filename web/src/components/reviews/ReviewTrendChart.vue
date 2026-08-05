@@ -1,7 +1,7 @@
 <template>
   <div class="card p-5">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-ink">Weekly trend</h2>
+      <h2 class="text-lg font-semibold text-ink">Weekly trend (p50)</h2>
       <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
         <button
           v-for="opt in metricOptions"
@@ -42,21 +42,21 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent]);
 const props = defineProps<{ points: ReviewTrendPoint[] }>();
 
 type Metric =
+  | "toFirstReviewP50"
   | "toFirstApprovalP50"
-  | "toHeldApprovalP50"
   | "toMergeP50"
   | "commentsPerMrP50"
   | "mrs";
 
 const metricOptions: { value: Metric; label: string }[] = [
+  { value: "toFirstReviewP50", label: "First review" },
   { value: "toFirstApprovalP50", label: "First approval" },
-  { value: "toHeldApprovalP50", label: "Approval that held" },
   { value: "toMergeP50", label: "Merge" },
   { value: "commentsPerMrP50", label: "Comments" },
   { value: "mrs", label: "MRs merged" },
 ];
 
-const metric = ref<Metric>("toFirstApprovalP50");
+const metric = ref<Metric>("toFirstReviewP50");
 const isDuration = computed(() => metric.value.startsWith("to"));
 const points = computed(() => props.points);
 

@@ -55,11 +55,15 @@
     </div>
 
     <div class="mt-6">
+      <AuthorWaitTable :authors="overview?.authors ?? []" />
+    </div>
+
+    <div class="mt-6">
       <ReviewSizeScatter :mrs="overview?.mrs ?? []" />
     </div>
 
     <div class="mt-6">
-      <SlowestMrsTable
+      <MrReviewTable
         :mrs="overview?.mrs ?? []"
         :people="overview?.people ?? []"
       />
@@ -67,23 +71,24 @@
 
     <p class="mt-4 text-xs text-ink-faint">
       Scoped to MRs merged in the period. The review window starts when the MR
-      first went in front of reviewers — the earliest of marked ready, review
-      requested, or a first review comment — since a third of MRs have reviewers
-      requested while still a draft. A push resets approvals, so the approval
-      that held is often not the first one. Durations exclude weekends.
+      first went in front of reviewers — the earliest of the first marked-ready,
+      review requested, or a first review comment — since a third of MRs have
+      reviewers requested while still a draft. First review is the first comment
+      or approval by anyone but the author. Durations exclude weekends.
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useReviews } from "../composables/useReviews";
+import AuthorWaitTable from "../components/reviews/AuthorWaitTable.vue";
 import ReviewDistributions from "../components/reviews/ReviewDistributions.vue";
 import ReviewQuality from "../components/reviews/ReviewQuality.vue";
 import ReviewSizeScatter from "../components/reviews/ReviewSizeScatter.vue";
 import ReviewTotals from "../components/reviews/ReviewTotals.vue";
 import ReviewTrendChart from "../components/reviews/ReviewTrendChart.vue";
 import ReviewerTable from "../components/reviews/ReviewerTable.vue";
-import SlowestMrsTable from "../components/reviews/SlowestMrsTable.vue";
+import MrReviewTable from "../components/reviews/MrReviewTable.vue";
 
 const {
   since,

@@ -234,7 +234,7 @@ Raw status transitions and other events.
 | threads_opened | int | Resolvable discussions on the MR |
 | threads_resolved | int | How many of them ended up resolved |
 | gitlab_created_at | timestamptz | |
-| ready_at | timestamptz | Nullable. Last draft → ready transition; MR creation when it was never a draft. |
+| ready_at | timestamptz | Nullable. First draft → ready transition; MR creation when it was never a draft. |
 | first_approved_at | timestamptz | Nullable, earliest approval by someone other than the author |
 | last_approved_at | timestamptz | Nullable, latest such approval |
 | merged_at | timestamptz | Nullable |
@@ -597,23 +597,31 @@ parses system notes into `merge_request_state_events`, and derives the review
 window (`ready_at`, `first_approved_at`, `last_approved_at`).
 
 **Review latency.** Latency is measured from when an MR first went in front of
-reviewers: `LEAST(ready_at, first review_requested event, first review comment)`.
-Anchoring on `ready_at` alone reported a 30-minute median to first approval,
-because a third of MRs have reviewers requested while still a draft, so the ready
-flag lands after the review already started. The anchor is computed in the query
-rather than stored, so the definition can change without a re-sync.
+reviewers: `LEAST(first ready event, first review_requested event, first review
+comment)`. Anchoring on the ready flag alone reported a 30-minute median to first
+approval, because a third of MRs have reviewers requested while still a draft, so
+the ready flag lands after the review already started. Using the *first* ready
+event matters too: an MR sent back to draft after review flips ready again near
+the merge, which would start the window after the review already happened. The
+anchor is computed in the query rather than stored, so the definition can change
+without a re-sync.
 
 MR creation is the wrong anchor for the opposite reason: time in draft is the
 author's own iteration and swamps the review signal.
 
-**First approval vs. the one that held.** Pushing resets approvals, and 43% of
-merged MRs have more than one approval event, so the first approval is often
-wiped out minutes later. Both are reported: `first_approved_at` answers "how fast
-did someone look", `last_approved_at` answers "when was it actually approved".
-The `approvals_reset` event counts how often that happened.
+**First review vs. first approval.** The headline latency is time to first
+review: `LEAST(first review comment, first_approved_at)`, the first moment anyone
+but the author engaged. Time to first approval is reported alongside it, but on
+its own it flatters the team, because a lot of MRs are approved within minutes of
+the ready flag with no comments at all.
 
-`server/src/lib/reviewMetrics.ts` computes percentiles and excludes weekends from
-durations.
+**Percentiles.** `server/src/lib/reviewMetrics.ts` reports p50, p90 and p99 and
+excludes weekends from durations. p99 is where the felt pain lives: p50 to first
+review is under 20 minutes while p99 is several days.
+
+**Approval resets.** Pushing resets approvals, and 43% of merged MRs have more
+than one approval event. `last_approved_at` is kept for the last approval → merge
+gap, and the `approvals_reset` event counts how often approvals were wiped.
 Because per-file rows are stored raw, changing these rules only requires an
 `UPDATE`, not a re-sync.
 

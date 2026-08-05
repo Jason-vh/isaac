@@ -104,8 +104,9 @@ export interface MrReviewTimings {
 }
 
 /**
- * Review-window timings for one MR. `readyAt` is the last draft -> ready
- * transition before the merge; MRs that were never drafts count as ready from
+ * Review-window timings for one MR. `readyAt` is the first draft -> ready
+ * transition before the merge, since a later flip back to draft is rework, not
+ * a fresh wait for review; MRs that were never drafts count as ready from
  * creation. Approvals by the author itself are ignored.
  */
 export function deriveReviewTimings(
@@ -115,7 +116,7 @@ export function deriveReviewTimings(
   const readyEvents = events
     .filter((e) => e.type === "ready")
     .filter((e) => !mr.mergedAt || e.occurredAt <= mr.mergedAt);
-  const lastReady = readyEvents.at(-1)?.occurredAt ?? null;
+  const firstReady = readyEvents[0]?.occurredAt ?? null;
   const wasEverDraft = events.some((e) => e.type === "draft") || mr.draft;
 
   const approvals = events
@@ -124,7 +125,7 @@ export function deriveReviewTimings(
     .sort((a, b) => a.getTime() - b.getTime());
 
   return {
-    readyAt: lastReady ?? (wasEverDraft ? null : mr.createdAt),
+    readyAt: firstReady ?? (wasEverDraft ? null : mr.createdAt),
     firstApprovedAt: approvals[0] ?? null,
     lastApprovedAt: approvals.at(-1) ?? null,
   };

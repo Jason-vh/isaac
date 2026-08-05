@@ -45,12 +45,12 @@ export function distribution(values: Array<number | null>): Distribution {
   const sorted = values
     .filter((v): v is number => v !== null)
     .sort((a, b) => a - b);
-  if (sorted.length === 0) return { n: 0, p50: null, p75: null, p90: null };
+  if (sorted.length === 0) return { n: 0, p50: null, p90: null, p99: null };
   return {
     n: sorted.length,
     p50: quantile(sorted, 0.5),
-    p75: quantile(sorted, 0.75),
     p90: quantile(sorted, 0.9),
+    p99: quantile(sorted, 0.99),
   };
 }
 
