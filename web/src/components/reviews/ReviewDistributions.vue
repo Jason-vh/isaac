@@ -64,7 +64,7 @@ const rows = computed(() => {
   ) => ({ label, dist, format });
 
   return [
-    row("→ first review", s.latency.toFirstReview, formatHours),
+    row("→ first comment", s.latency.toFirstReview, formatHours),
     row("→ first approval", s.latency.toFirstApproval, formatHours),
     row("→ merge", s.latency.toMerge, formatHours),
     row("Last approval → merge", s.latency.approvalToMerge, formatHours),

@@ -3,7 +3,7 @@
     <div class="border-b border-border px-5 py-4">
       <h2 class="text-lg font-semibold text-ink">Wait per author</h2>
       <p class="mt-0.5 text-sm text-ink-muted">
-        How long each engineer's own MRs waited before someone reviewed them.
+        How long each engineer's own MRs waited before someone commented.
       </p>
     </div>
 
@@ -16,9 +16,9 @@
         <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
           <th class="px-5 py-2.5 font-medium">Author</th>
           <th class="px-3 py-2.5 text-right font-medium">MRs</th>
-          <th class="px-3 py-2.5 text-right font-medium">→ review p50</th>
-          <th class="px-3 py-2.5 text-right font-medium">→ review p90</th>
-          <th class="px-3 py-2.5 text-right font-medium">→ review p99</th>
+          <th class="px-3 py-2.5 text-right font-medium">→ comment p50</th>
+          <th class="px-3 py-2.5 text-right font-medium">→ comment p90</th>
+          <th class="px-3 py-2.5 text-right font-medium">→ comment p99</th>
           <th class="px-3 py-2.5 text-right font-medium">→ approval p50</th>
           <th class="px-5 py-2.5 text-right font-medium">→ merge p50</th>
         </tr>

@@ -72,9 +72,10 @@
     <p class="mt-4 text-xs text-ink-faint">
       Scoped to MRs merged in the period. The review window starts when the MR
       first went in front of reviewers — the earliest of the first marked-ready,
-      review requested, or a first review comment — since a third of MRs have
-      reviewers requested while still a draft. First review is the first comment
-      or approval by anyone but the author. Durations exclude weekends.
+      review requested, or first comment — since a third of MRs have reviewers
+      requested while still a draft. First comment is the first comment or
+      approval by another person; bots such as Bugbot and the security scanner
+      don't count. Durations exclude weekends.
     </p>
   </div>
 </template>

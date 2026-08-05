@@ -53,9 +53,13 @@ const cards = computed<Card[]>(() => {
     {
       label: "MRs merged",
       value: s ? s.mrs.toLocaleString() : "—",
-      detail: `${s?.latency.toFirstReview.n ?? 0} with a review time`,
+      detail: `${s?.latency.toFirstReview.n ?? 0} with a comment time`,
     },
-    { label: "To first review", duration: true, dist: s?.latency.toFirstReview },
+    {
+      label: "To first comment",
+      duration: true,
+      dist: s?.latency.toFirstReview,
+    },
     {
       label: "To first approval",
       duration: true,

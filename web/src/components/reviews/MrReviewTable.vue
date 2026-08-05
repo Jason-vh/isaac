@@ -96,7 +96,7 @@ const number = (v: number | null) => (v === null ? "—" : v.toLocaleString());
 const columns: { key: SortKey; label: string; format: (v: number | null) => string }[] = [
   { key: "lines", label: "Lines", format: number },
   { key: "comments", label: "Comments", format: number },
-  { key: "hoursToFirstReview", label: "→ first review", format: formatHours },
+  { key: "hoursToFirstReview", label: "→ first comment", format: formatHours },
   { key: "hoursToFirstApproval", label: "→ approval", format: formatHours },
   { key: "hoursToMerge", label: "→ merge", format: formatHours },
 ];

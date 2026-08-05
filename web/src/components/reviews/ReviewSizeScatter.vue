@@ -2,7 +2,7 @@
   <div class="card p-5">
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-lg font-semibold text-ink">Size vs. review time</h2>
+        <h2 class="text-lg font-semibold text-ink">Size vs. time to merge</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
           Each dot is a merged MR. Both axes are logarithmic; click to open it in
           GitLab.

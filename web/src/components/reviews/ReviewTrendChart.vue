@@ -49,7 +49,7 @@ type Metric =
   | "mrs";
 
 const metricOptions: { value: Metric; label: string }[] = [
-  { value: "toFirstReviewP50", label: "First review" },
+  { value: "toFirstReviewP50", label: "First comment" },
   { value: "toFirstApprovalP50", label: "First approval" },
   { value: "toMergeP50", label: "Merge" },
   { value: "commentsPerMrP50", label: "Comments" },
