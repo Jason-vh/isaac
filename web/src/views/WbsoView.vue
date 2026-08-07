@@ -18,6 +18,12 @@
         <div class="flex items-center gap-3">
           <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
           <button
+            @click="worksheet = !worksheet"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            {{ worksheet ? "Overview" : "Worksheet" }}
+          </button>
+          <button
             v-if="!isCurrentWeek"
             @click="goToday"
             class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
@@ -27,30 +33,37 @@
         </div>
       </div>
 
-      <!-- Category cards -->
-      <div class="mt-6">
-        <WbsoCategoryCards :totals="data.totals" />
+      <!-- Worksheet -->
+      <div v-if="worksheet" class="mt-6">
+        <WbsoWorksheet :days="data.days" />
       </div>
 
-      <!-- Week grid -->
-      <div class="mt-6">
-        <WbsoWeekGrid
-          :days="data.days"
-          :jira-browse-url="data.jiraBrowseUrl"
-          :epic-dates="data.epicDates"
-          @entry-click="onEntryClick"
-        />
-      </div>
+      <template v-else>
+        <!-- Category cards -->
+        <div class="mt-6">
+          <WbsoCategoryCards :totals="data.totals" />
+        </div>
 
-      <!-- Epic summary -->
-      <div class="mt-6">
-        <WbsoEpicSummary :epics="data.byEpic" :jira-browse-url="data.jiraBrowseUrl" />
-      </div>
+        <!-- Week grid -->
+        <div class="mt-6">
+          <WbsoWeekGrid
+            :days="data.days"
+            :jira-browse-url="data.jiraBrowseUrl"
+            :epic-dates="data.epicDates"
+            @entry-click="onEntryClick"
+          />
+        </div>
 
-      <!-- Unlinked MRs -->
-      <div class="mt-6">
-        <WbsoUnlinkedPanel :mrs="data.unlinkedMRs" @link="onLinkMr" />
-      </div>
+        <!-- Epic summary -->
+        <div class="mt-6">
+          <WbsoEpicSummary :epics="data.byEpic" :jira-browse-url="data.jiraBrowseUrl" />
+        </div>
+
+        <!-- Unlinked MRs -->
+        <div class="mt-6">
+          <WbsoUnlinkedPanel :mrs="data.unlinkedMRs" @link="onLinkMr" />
+        </div>
+      </template>
 
       <!-- Entry detail panel -->
       <WbsoEntryDetail
@@ -77,6 +90,9 @@ import WbsoWeekGrid from "../components/wbso/WbsoWeekGrid.vue";
 import WbsoEpicSummary from "../components/wbso/WbsoEpicSummary.vue";
 import WbsoUnlinkedPanel from "../components/wbso/WbsoUnlinkedPanel.vue";
 import WbsoEntryDetail from "../components/wbso/WbsoEntryDetail.vue";
+import WbsoWorksheet from "../components/wbso/WbsoWorksheet.vue";
+
+const worksheet = ref(false);
 
 const { data, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday, updateMeetingCategory, updateMrTicket } =
   useWbso();

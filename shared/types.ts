@@ -462,7 +462,41 @@ export interface WbsoDayData {
   date: string;
   dayLabel: string;
   totalHours: number;
+  /** No activity was found for this day — hours must be entered from memory. */
+  needsInput: boolean;
   entries: WbsoEntry[];
+}
+
+/** Work types accepted by the WBSO daily-logs API. */
+export type WbsoWorkType =
+  | "CODING"
+  | "ASSISTING"
+  | "DEV_MEETING"
+  | "DEV_MISCELLANEOUS"
+  | "MISCELLANEOUS"
+  | "HOLIDAY";
+
+/** Isaac category → WBSO work type. Code review maps to ASSISTING (helping colleagues). */
+export const WBSO_WORK_TYPE: Record<WbsoCategory, WbsoWorkType> = {
+  coding: "CODING",
+  code_review: "ASSISTING",
+  dev_meeting: "DEV_MEETING",
+  dev_misc: "DEV_MISCELLANEOUS",
+  non_dev: "MISCELLANEOUS",
+  leave: "HOLIDAY",
+};
+
+/** Human-readable work description for a WBSO form row. */
+export function wbsoDescription(entry: WbsoEntry): string {
+  const r = entry.reasoning;
+  if (r.meetingTitle) return r.meetingTitle;
+  if (entry.category === "code_review") {
+    const title = r.mrTitles?.[0];
+    return title ? `Code review: ${title}` : "Code review";
+  }
+  if (r.mrTitles?.length) return r.mrTitles.join("; ");
+  if (entry.ticketTitle) return entry.ticketTitle;
+  return "";
 }
 
 export interface WbsoCategoryTotals {

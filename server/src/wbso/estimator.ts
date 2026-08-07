@@ -474,6 +474,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   // Phase 4: Fill every day to exactly 8h
   // -----------------------------------------------------------------------
   const dayEntries = new Map<string, WbsoEntry[]>();
+  const needsInputDays = new Set<string>();
 
   for (let i = 0; i < dayDates.length; i++) {
     const dayStr = dayDates[i];
@@ -507,35 +508,16 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     const available = HOURS_PER_DAY - meetingHours;
 
     // Gather weighted activity for this day
-    let weighted: WeightedEntry[] = [
+    const weighted: WeightedEntry[] = [
       ...(dayCodingWeights.get(dayStr) ?? []),
       ...(dayReviewWeights.get(dayStr) ?? []),
     ];
 
-    // Zero-activity day: borrow coding weights from the next weekday that has them
+    // No activity at all: leave the day for manual entry rather than inventing
+    // hours. Meetings (if any) stand on their own actual duration.
     if (weighted.length === 0) {
-      for (let j = i + 1; j < dayDates.length; j++) {
-        const nextDayCoding = dayCodingWeights.get(dayDates[j]) ?? [];
-        if (nextDayCoding.length > 0) {
-          // Copy weights — same tickets, same proportions
-          weighted = nextDayCoding.map((w) => ({ ...w }));
-          break;
-        }
-      }
-    }
-
-    // Still nothing — allocate entire available block as dev_misc
-    if (weighted.length === 0) {
-      entries.push({
-        category: "dev_misc",
-        ticketKey: null,
-        ticketTitle: null,
-        epicKey: null,
-        epicTitle: null,
-        hours: available,
-        reasoning: {},
-      });
-      roundToQuartersPreservingTotal(entries, HOURS_PER_DAY);
+      needsInputDays.add(dayStr);
+      roundToQuartersPreservingTotal(entries, meetingHours);
       dayEntries.set(dayStr, entries);
       continue;
     }
@@ -626,6 +608,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       date,
       dayLabel: DAY_LABELS[i],
       totalHours: entries.reduce((sum, e) => sum + e.hours, 0),
+      needsInput: needsInputDays.has(date),
       entries,
     };
   });
