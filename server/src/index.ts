@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { validateCoreEnv } from "./env";
+import { validateCoreEnv, webauthnOrigins } from "./env";
 validateCoreEnv();
 import { db } from "./db";
 import { sql } from "drizzle-orm";
@@ -47,6 +47,13 @@ const app = new Elysia()
   .onRequest(async ({ request, set }) => {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api")) return;
+
+    // Related Origin Requests: lets one passkey work across every origin listed
+    // here, not just the one matching WEBAUTHN_RP_ID.
+    if (url.pathname === "/.well-known/webauthn") {
+      set.headers["content-type"] = "application/json";
+      return new Response(JSON.stringify({ origins: webauthnOrigins() }));
+    }
 
     const filePath = `${STATIC_DIR}${url.pathname}`;
     const file = Bun.file(filePath);

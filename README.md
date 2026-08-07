@@ -241,7 +241,17 @@ without them.
 ## Auth
 
 Two token types. An **owner token** (JWT, subject `isaac-owner`, 7d) gives full
-read/write access via passkey login. A **share token** (random string, 24h,
+read/write access via passkey login.
+
+The passkey works across several domains via WebAuthn Related Origin Requests.
+`WEBAUTHN_ORIGIN` is a comma-separated list of allowed origins, served at
+`/.well-known/webauthn`, which browsers fetch from the `WEBAUTHN_RP_ID` host
+when the current origin doesn't match it. **The RP ID must therefore be the
+host that is reachable from everywhere** — `isaac-web-production.up.railway.app`
+rather than `isaac.vhtm.eu`, since the latter is blocked by the corporate web
+filter (miscategorised as "parked"), which would break the related-origin fetch
+exactly when on the VPN. Changing the RP ID invalidates existing passkeys, so
+it needs a one-time re-registration. A **share token** (random string, 24h,
 stored in `share_tokens`) gives read-only access, scoped to the page section it
 was created from: `https://isaac.vhtm.eu/<page>?s=<token>`. The router strips
 the param, stores the token, and renders in read-only mode. Write endpoints

@@ -63,6 +63,17 @@ export const env = new Proxy({} as Env, {
   },
 });
 
+/**
+ * Origins allowed to use the passkey. WEBAUTHN_ORIGIN is comma-separated so a
+ * single credential works across domains via Related Origin Requests; the first
+ * entry should be the origin matching WEBAUTHN_RP_ID.
+ */
+export function webauthnOrigins(): string[] {
+  return env.WEBAUTHN_ORIGIN.split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
 /** Call before running sync jobs to ensure all sync vars are set. */
 export function validateSyncEnv(): void {
   validate(sync);

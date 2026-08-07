@@ -9,7 +9,7 @@ import type { AuthenticatorTransportFuture } from "@simplewebauthn/types";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { passkeyCredentials } from "../db/schema";
-import { env } from "../env";
+import { env, webauthnOrigins } from "../env";
 import { setChallenge, getChallenge } from "../auth/challenges";
 import { signToken, verifyToken } from "../auth/jwt";
 
@@ -97,7 +97,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: challenge,
-      expectedOrigin: env.WEBAUTHN_ORIGIN,
+      expectedOrigin: webauthnOrigins(),
       expectedRPID: env.WEBAUTHN_RP_ID,
     });
 
@@ -172,7 +172,7 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge: challenge,
-      expectedOrigin: env.WEBAUTHN_ORIGIN,
+      expectedOrigin: webauthnOrigins(),
       expectedRPID: env.WEBAUTHN_RP_ID,
       credential: {
         id: cred.credentialId,
