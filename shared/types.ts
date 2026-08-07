@@ -467,24 +467,45 @@ export interface WbsoDayData {
   entries: WbsoEntry[];
 }
 
-/** Work types accepted by the WBSO daily-logs API. */
-export type WbsoWorkType =
-  | "CODING"
-  | "ASSISTING"
-  | "DEV_MEETING"
-  | "DEV_MISCELLANEOUS"
-  | "MISCELLANEOUS"
-  | "HOLIDAY";
+export interface WbsoWorkType {
+  /** The Work Type option, verbatim as it reads in the WBSO form's dropdown. */
+  label: string;
+  /** Abbreviated for table display, where the full label doesn't fit. */
+  short: string;
+}
 
-/** Isaac category → WBSO work type. Code review maps to ASSISTING (helping colleagues). */
-export const WBSO_WORK_TYPE: Record<WbsoCategory, WbsoWorkType> = {
-  coding: "CODING",
-  code_review: "ASSISTING",
-  dev_meeting: "DEV_MEETING",
-  dev_misc: "DEV_MISCELLANEOUS",
-  non_dev: "MISCELLANEOUS",
-  leave: "HOLIDAY",
+const DEV_MISC: WbsoWorkType = {
+  label:
+    "Dev Miscellaneous (Code Reviews, Monitoring, Documentation, Maintenance, Troubleshooting)",
+  short: "Dev Miscellaneous",
 };
+
+// Isaac category → WBSO work type. Code review is a Dev Miscellaneous case: the
+// form has no option of its own for it.
+export const WBSO_WORK_TYPE: Record<WbsoCategory, WbsoWorkType> = {
+  coding: { label: "Coding / Commit", short: "Coding / Commit" },
+  code_review: DEV_MISC,
+  dev_meeting: { label: "Dev Meeting", short: "Dev Meeting" },
+  dev_misc: DEV_MISC,
+  non_dev: {
+    label: "Non-dev (Meeting / Miscellaneous / Training / Event / Travel)",
+    short: "Non-dev",
+  },
+  leave: {
+    label: "Leave / Holiday / Sickness",
+    short: "Leave / Holiday / Sickness",
+  },
+};
+
+/** Hours in the WBSO form's own notation, e.g. 2.25 → "2h 15m". */
+export function formatWbsoHours(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!minutes) return "0h";
+  if (!h) return `${m}m`;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
 
 /** Human-readable work description for a WBSO form row. */
 export function wbsoDescription(entry: WbsoEntry): string {

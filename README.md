@@ -103,14 +103,18 @@ blank, so those days are now surfaced empty for manual entry.
 anti-automation acknowledgement to every write, so filing is a manual act. What
 Isaac does is make honest transcription fast:
 
-- The **worksheet** (toggle on the WBSO view) renders the week in the WBSO
-  form's own column order — Work Type, Work Description, Jira Issue, Jira Epic,
-  WBSO/IDS Project, Hours — using the API's `work_type` enum values, with
-  click-to-copy cells. The epic → WBSO project mapping is typed once and kept
-  in localStorage.
-- The **overview** groups entries by epic per day for review, with a detail
-  panel showing the underlying MRs, commits and meetings behind each estimate,
-  plus ticket search for linking unlinked entries.
+- The **worksheet** is the default WBSO view. It mirrors the form a day at a
+  time — same heading, same `Xh out of 8h` meter, same column order (Work Type,
+  Work Description, Jira Issue, Jira Epic, WBSO/IDS Project, Hours) — so a row
+  can be transcribed straight across. Cells copy on click. Values are in the
+  form's own vocabulary: Work Type copies the dropdown option verbatim (code
+  review is a *Dev Miscellaneous* case; the form has no option of its own for
+  it) and hours read `2h 15m`, which is what the Hours field parses. Jira Epic
+  is reference only, since the form derives it from the issue. The epic → WBSO
+  project mapping is typed once and kept in localStorage.
+- The **overview** (toggle in the header) groups entries by epic per day for
+  review, with a detail panel showing the underlying MRs, commits and meetings
+  behind each estimate, plus ticket search for linking unlinked entries.
 
 The WBSO tool has its own sanctioned pre-fill (an AI suggestions feature). If
 automatic entry is the goal, that's the route to ask about — not a client of

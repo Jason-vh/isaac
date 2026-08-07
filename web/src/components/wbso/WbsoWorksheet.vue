@@ -1,63 +1,86 @@
 <template>
-  <div class="rounded-xl border border-border bg-surface-0">
-    <div class="flex items-center justify-between border-b border-border px-4 py-3">
-      <div>
-        <h2 class="font-semibold text-ink">Transcription worksheet</h2>
-        <p class="text-sm text-ink-faint">
-          Columns match the WBSO form. Click any cell to copy it.
-        </p>
-      </div>
+  <div class="space-y-6">
+    <div class="flex items-baseline justify-between">
+      <p class="text-sm text-ink-faint">
+        Laid out like the WBSO form. Click any cell to copy it.
+      </p>
       <span v-if="copied" class="text-sm text-emerald-500">Copied “{{ copied }}”</span>
     </div>
 
-    <div v-for="day in days" :key="day.date" class="border-b border-border last:border-0">
-      <div class="flex items-baseline justify-between bg-surface-1 px-4 py-2">
-        <span class="text-sm font-medium text-ink">{{ day.dayLabel }} {{ formatDate(day.date) }}</span>
-        <span class="text-sm" :class="day.needsInput ? 'text-amber-500' : 'text-ink-faint'">
-          {{ formatHours(day.totalHours) }} of {{ formatHours(HOURS_PER_DAY) }}
-        </span>
+    <section v-for="day in days" :key="day.date">
+      <!-- Day header, mirroring the form's own -->
+      <div class="flex items-center justify-between pb-2">
+        <span class="text-sm text-ink">{{ formatDay(day.date) }}</span>
+        <div class="flex items-center gap-3">
+          <span class="text-sm" :class="day.needsInput ? 'text-amber-500' : 'text-ink-muted'">
+            {{ formatWbsoHours(day.totalHours) }} out of {{ formatWbsoHours(HOURS_PER_DAY) }}
+          </span>
+          <div class="h-2 w-40 overflow-hidden rounded-full border border-border">
+            <div
+              class="h-full rounded-full bg-accent transition-all"
+              :style="{ width: `${Math.min(100, (day.totalHours / HOURS_PER_DAY) * 100)}%` }"
+            />
+          </div>
+        </div>
       </div>
 
-      <p v-if="day.needsInput" class="px-4 py-3 text-sm text-amber-500">
-        No commits, reviews or meetings found for this day. Fill it in from memory —
-        or leave it if you weren't working.
-      </p>
+      <div class="overflow-hidden rounded-xl border border-border bg-surface-0">
+        <p v-if="day.needsInput" class="px-4 py-3 text-sm text-amber-500">
+          No commits, reviews or meetings found for this day. Fill it in from memory —
+          or leave it if you weren't working.
+        </p>
 
-      <table v-if="day.entries.length" class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-xs uppercase tracking-wide text-ink-faint">
-            <th class="px-4 py-2 font-medium">Work Type</th>
-            <th class="px-4 py-2 font-medium">Work Description</th>
-            <th class="px-4 py-2 font-medium">Jira Issue</th>
-            <th class="px-4 py-2 font-medium">Jira Epic</th>
-            <th class="px-4 py-2 font-medium">WBSO / IDS Project</th>
-            <th class="px-4 py-2 text-right font-medium">Hours</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(row, i) in rowsFor(day)" :key="i" class="border-t border-border/50">
-            <td class="px-4 py-2"><Cell :value="row.workType" mono @copy="copy" /></td>
-            <td class="max-w-md px-4 py-2"><Cell :value="row.description" @copy="copy" /></td>
-            <td class="px-4 py-2"><Cell :value="row.jiraIssue" mono @copy="copy" /></td>
-            <td class="px-4 py-2"><Cell :value="row.jiraEpic" mono @copy="copy" /></td>
-            <td class="px-4 py-2">
-              <input
-                v-model="projectByEpic[row.jiraEpic || '_none']"
-                placeholder="—"
-                class="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-ink placeholder:text-ink-faint hover:border-border focus:border-accent focus:outline-none"
-              />
-            </td>
-            <td class="px-4 py-2 text-right"><Cell :value="formatHours(row.hours)" mono @copy="copy" /></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <table v-else class="w-full table-fixed text-sm">
+          <colgroup>
+            <col style="width: 14%" />
+            <col style="width: 23%" />
+            <col style="width: 19%" />
+            <col style="width: 16%" />
+            <col style="width: 17%" />
+            <col style="width: 11%" />
+          </colgroup>
+          <thead>
+            <tr class="border-b border-border bg-surface-1 text-left text-xs uppercase tracking-wide text-ink-muted">
+              <th class="px-3 py-2 font-medium">Work Type</th>
+              <th class="px-3 py-2 font-medium">Work Description</th>
+              <th class="px-3 py-2 font-medium">Jira Issue</th>
+              <th class="px-3 py-2 font-medium">Jira Epic</th>
+              <th class="px-3 py-2 font-medium">WBSO / IDS Project</th>
+              <th class="px-3 py-2 font-medium">Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in rowsFor(day)" :key="i">
+              <td class="px-3 py-2">
+                <Cell :value="row.workType.short" :copy-value="row.workType.label" @copy="copy" />
+              </td>
+              <td class="px-3 py-2"><Cell :value="row.description" @copy="copy" /></td>
+              <td class="px-3 py-2"><Cell :value="row.jiraIssue" mono @copy="copy" /></td>
+              <!-- The form derives the epic from the issue, so it's reference only -->
+              <td class="truncate px-3 py-2 font-mono text-xs text-ink-faint" :title="row.jiraEpic">
+                {{ row.jiraEpic || "—" }}
+              </td>
+              <td class="px-3 py-2">
+                <input
+                  v-model="projectByEpic[row.jiraEpic || '_none']"
+                  placeholder="Select project"
+                  class="w-full rounded-md border border-border bg-surface-0 px-2 py-1 text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                />
+              </td>
+              <td class="px-3 py-2">
+                <Cell :value="formatWbsoHours(row.hours)" mono @copy="copy" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { WBSO_WORK_TYPE, wbsoDescription } from "@isaac/shared";
+import { WBSO_WORK_TYPE, formatWbsoHours, wbsoDescription } from "@isaac/shared";
 import type { WbsoDayData } from "@isaac/shared";
 import Cell from "./WbsoWorksheetCell.vue";
 
@@ -94,15 +117,15 @@ function rowsFor(day: WbsoDayData) {
   }));
 }
 
-function formatHours(h: number): string {
-  return `${h % 1 === 0 ? h : h.toFixed(2).replace(/0$/, "")}h`;
-}
-
-function formatDate(date: string): string {
-  return new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
+function formatDay(date: string): string {
+  const d = new Date(date + "T00:00:00");
+  const weekday = d.toLocaleDateString("en-GB", { weekday: "long" });
+  const rest = d.toLocaleDateString("en-GB", {
     day: "numeric",
-    month: "short",
+    month: "long",
+    year: "numeric",
   });
+  return `${weekday}, ${rest}`;
 }
 
 let timer: ReturnType<typeof setTimeout>;

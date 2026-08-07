@@ -3,18 +3,19 @@
     v-if="value"
     type="button"
     :class="[
-      'w-full rounded px-1 py-0.5 text-left transition-colors hover:bg-surface-2',
+      'w-full truncate rounded-md border border-border bg-surface-0 px-2 py-1 text-left transition-colors hover:border-accent hover:bg-surface-2',
       mono ? 'font-mono text-xs text-ink-muted' : 'text-ink',
     ]"
-    :title="value"
-    @click="$emit('copy', value)"
+    :title="copyValue ?? value"
+    @click="$emit('copy', copyValue ?? value)"
   >
     {{ value }}
   </button>
-  <span v-else class="px-1 text-ink-faint">—</span>
+  <span v-else class="px-2 text-ink-faint">—</span>
 </template>
 
 <script setup lang="ts">
-defineProps<{ value: string; mono?: boolean }>();
+/** copyValue lets a cell show a short label but copy the form's full one. */
+defineProps<{ value: string; copyValue?: string; mono?: boolean }>();
 defineEmits<{ copy: [value: string] }>();
 </script>

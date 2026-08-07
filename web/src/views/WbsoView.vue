@@ -92,7 +92,7 @@ import WbsoUnlinkedPanel from "../components/wbso/WbsoUnlinkedPanel.vue";
 import WbsoEntryDetail from "../components/wbso/WbsoEntryDetail.vue";
 import WbsoWorksheet from "../components/wbso/WbsoWorksheet.vue";
 
-const worksheet = ref(false);
+const worksheet = ref(true);
 
 const { data, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday, updateMeetingCategory, updateMrTicket } =
   useWbso();
