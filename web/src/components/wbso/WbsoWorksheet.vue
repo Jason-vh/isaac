@@ -5,9 +5,6 @@
       <div class="text-sm">
         <span v-if="linkError" class="text-red-500">{{ linkError }}</span>
         <span v-else-if="copied" class="text-emerald-500">Copied “{{ copied }}”</span>
-        <span v-else class="text-ink-faint">
-          Laid out like the WBSO form. Click any cell to copy it.
-        </span>
       </div>
       <div class="flex items-center gap-3">
         <span class="text-sm" :class="day.needsInput ? 'text-amber-500' : 'text-ink-muted'">
