@@ -111,10 +111,13 @@ Isaac does is make honest transcription fast:
   review is a *Dev Miscellaneous* case; the form has no option of its own for
   it) and hours read `2h 15m`, which is what the Hours field parses. Jira Epic
   is reference only, since the form derives it from the issue. The epic → WBSO
-  project mapping is typed once and kept in localStorage.
+  project mapping is typed once and kept in localStorage. A row whose ticket
+  couldn't be inferred renders a ticket search in the Jira Issue cell, so it can
+  be linked in place rather than from a separate panel — the link writes through
+  to the underlying MR or meeting, and sticks.
 - The **overview** (toggle in the header) groups entries by epic per day for
   review, with a detail panel showing the underlying MRs, commits and meetings
-  behind each estimate, plus ticket search for linking unlinked entries.
+  behind each estimate.
 
 The WBSO tool has its own sanctioned pre-fill (an AI suggestions feature). If
 automatic entry is the goal, that's the route to ask about — not a client of

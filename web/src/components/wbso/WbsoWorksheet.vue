@@ -4,7 +4,8 @@
       <p class="text-sm text-ink-faint">
         Laid out like the WBSO form. Click any cell to copy it.
       </p>
-      <span v-if="copied" class="text-sm text-emerald-500">Copied “{{ copied }}”</span>
+      <span v-if="linkError" class="text-sm text-red-500">{{ linkError }}</span>
+      <span v-else-if="copied" class="text-sm text-emerald-500">Copied “{{ copied }}”</span>
     </div>
 
     <section v-for="day in days" :key="day.date">
@@ -24,7 +25,8 @@
         </div>
       </div>
 
-      <div class="overflow-hidden rounded-xl border border-border bg-surface-0">
+      <!-- No overflow-hidden: the ticket search drops out of the table -->
+      <div class="rounded-xl border border-border bg-surface-0">
         <p v-if="day.needsInput" class="px-4 py-3 text-sm text-amber-500">
           No commits, reviews or meetings found for this day. Fill it in from memory —
           or leave it if you weren't working.
@@ -40,13 +42,13 @@
             <col style="width: 11%" />
           </colgroup>
           <thead>
-            <tr class="border-b border-border bg-surface-1 text-left text-xs uppercase tracking-wide text-ink-muted">
-              <th class="px-3 py-2 font-medium">Work Type</th>
-              <th class="px-3 py-2 font-medium">Work Description</th>
-              <th class="px-3 py-2 font-medium">Jira Issue</th>
-              <th class="px-3 py-2 font-medium">Jira Epic</th>
-              <th class="px-3 py-2 font-medium">WBSO / IDS Project</th>
-              <th class="px-3 py-2 font-medium">Hours</th>
+            <tr class="text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:border-b [&>th]:border-border [&>th]:bg-surface-1 [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
+              <th class="rounded-tl-xl">Work Type</th>
+              <th>Work Description</th>
+              <th>Jira Issue</th>
+              <th>Jira Epic</th>
+              <th>WBSO / IDS Project</th>
+              <th class="rounded-tr-xl">Hours</th>
             </tr>
           </thead>
           <tbody>
@@ -55,7 +57,14 @@
                 <Cell :value="row.workType.short" :copy-value="row.workType.label" @copy="copy" />
               </td>
               <td class="px-3 py-2"><Cell :value="row.description" @copy="copy" /></td>
-              <td class="px-3 py-2"><Cell :value="row.jiraIssue" mono @copy="copy" /></td>
+              <td class="px-3 py-2">
+                <Cell v-if="row.jiraIssue" :value="row.jiraIssue" mono @copy="copy" />
+                <TicketSearch
+                  v-else-if="row.link"
+                  @select="$emit('link', row.link, $event.key)"
+                />
+                <span v-else class="px-2 text-ink-faint">—</span>
+              </td>
               <!-- The form derives the epic from the issue, so it's reference only -->
               <td class="truncate px-3 py-2 font-mono text-xs text-ink-faint" :title="row.jiraEpic">
                 {{ row.jiraEpic || "—" }}
@@ -82,9 +91,14 @@
 import { ref, watch } from "vue";
 import { WBSO_WORK_TYPE, formatWbsoHours, wbsoDescription } from "@isaac/shared";
 import type { WbsoDayData } from "@isaac/shared";
+import type { WbsoLinkTarget } from "./linkTarget";
+import { linkTargetFor } from "./linkTarget";
 import Cell from "./WbsoWorksheetCell.vue";
+import TicketSearch from "./TicketSearch.vue";
 
-defineProps<{ days: WbsoDayData[] }>();
+defineProps<{ days: WbsoDayData[]; linkError?: string }>();
+
+defineEmits<{ link: [target: WbsoLinkTarget, ticketKey: string] }>();
 
 const HOURS_PER_DAY = 8;
 const STORAGE_KEY = "isaac-wbso-projects";
@@ -114,6 +128,7 @@ function rowsFor(day: WbsoDayData) {
     jiraIssue: entry.ticketKey ?? "",
     jiraEpic: entry.epicKey ?? "",
     hours: entry.hours,
+    link: linkTargetFor(entry),
   }));
 }
 

@@ -520,6 +520,15 @@ export function wbsoDescription(entry: WbsoEntry): string {
   return "";
 }
 
+/** A hit from the WBSO ticket search, used to link an entry by hand. */
+export interface WbsoTicketSearchResult {
+  key: string;
+  title: string;
+  issueType: string;
+  epicKey: string | null;
+  epicTitle: string | null;
+}
+
 export interface WbsoCategoryTotals {
   coding: number;
   codeReview: number;

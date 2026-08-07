@@ -35,7 +35,7 @@
 
       <!-- Worksheet -->
       <div v-if="worksheet" class="mt-6">
-        <WbsoWorksheet :days="data.days" />
+        <WbsoWorksheet :days="data.days" :link-error="linkError" @link="onLink" />
       </div>
 
       <template v-else>
@@ -91,8 +91,10 @@ import WbsoEpicSummary from "../components/wbso/WbsoEpicSummary.vue";
 import WbsoUnlinkedPanel from "../components/wbso/WbsoUnlinkedPanel.vue";
 import WbsoEntryDetail from "../components/wbso/WbsoEntryDetail.vue";
 import WbsoWorksheet from "../components/wbso/WbsoWorksheet.vue";
+import type { WbsoLinkTarget } from "../components/wbso/linkTarget";
 
 const worksheet = ref(true);
+const linkError = ref("");
 
 const { data, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday, updateMeetingCategory, updateMrTicket } =
   useWbso();
@@ -159,6 +161,19 @@ async function onUpdateMr(mrId: number, payload: { ticketKey: string }) {
 
 async function onLinkMr(mrId: number, ticketKey: string) {
   await updateMrTicket(mrId, ticketKey);
+}
+
+async function onLink(target: WbsoLinkTarget, ticketKey: string) {
+  linkError.value = "";
+  try {
+    if (target.type === "meeting") {
+      await updateMeetingCategory(target.id, undefined, undefined, ticketKey);
+    } else {
+      await updateMrTicket(target.id, ticketKey);
+    }
+  } catch (e: any) {
+    linkError.value = `Could not link ${ticketKey}: ${e.message}`;
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {

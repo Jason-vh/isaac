@@ -115,47 +115,12 @@
               </div>
 
               <!-- Ticket search + link -->
-              <div v-if="showLinkEditor && !linkSubmitted" class="relative mt-2">
-                <input
-                  v-model="searchQuery"
-                  type="text"
-                  placeholder="Search tickets..."
-                  class="w-full rounded border border-border bg-surface-1 px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
-                  @input="onSearchInput"
-                  @keydown.down.prevent="highlightNext"
-                  @keydown.up.prevent="highlightPrev"
-                  @keydown.enter.prevent="selectHighlighted"
-                  @keydown.escape="searchResults = []"
-                />
-                <div v-if="searchLoading" class="absolute right-2 top-2">
-                  <div class="h-4 w-4 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-                </div>
-                <!-- Results dropdown -->
-                <div
-                  v-if="searchResults.length > 0"
-                  class="absolute left-0 right-0 top-full z-10 mt-1 max-h-[240px] overflow-y-auto rounded border border-border bg-surface-0 shadow-lg"
-                >
-                  <button
-                    v-for="(result, i) in searchResults"
-                    :key="result.key"
-                    class="flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors"
-                    :class="i === highlightIndex ? 'bg-sky-50 text-ink' : 'text-ink-muted hover:bg-surface-1'"
-                    @click="selectResult(result)"
-                    @mouseenter="highlightIndex = i"
-                  >
-                    <span class="flex-shrink-0 text-ink-faint">{{ result.key }}</span>
-                    <span
-                      v-if="result.epicTitle"
-                      class="max-w-[120px] flex-shrink-0 truncate rounded bg-fuchsia-100 px-1 py-0.5 text-xs font-medium text-fuchsia-700"
-                    >{{ result.epicTitle }}</span>
-                    <span v-if="result.issueType !== 'epic'" class="truncate">{{ result.title }}</span>
-                    <span v-else class="truncate rounded bg-fuchsia-100 px-1 py-0.5 text-xs font-medium text-fuchsia-700">{{ result.title }}</span>
-                  </button>
-                </div>
-                <p v-if="linkError" class="mt-1 text-xs text-red-500">
-                  {{ linkError }}
-                </p>
-              </div>
+              <TicketSearch
+                v-if="showLinkEditor && !linkSubmitted"
+                class="mt-2"
+                placeholder="Search tickets..."
+                @select="selectResult"
+              />
             </div>
 
             <!-- Merge Requests -->
@@ -263,7 +228,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import type { WbsoEntry } from "@isaac/shared";
-import { api } from "../../api/client";
+import type { WbsoTicketSearchResult } from "@isaac/shared";
+import TicketSearch from "./TicketSearch.vue";
+import { linkTargetFor } from "./linkTarget";
 import {
   Dialog,
   DialogPanel,
@@ -347,75 +314,18 @@ const showLinkEditor = computed(() => {
   return false;
 });
 
-// Ticket search + link
-const searchQuery = ref("");
-const searchResults = ref<{ key: string; title: string; issueType: string; epicKey: string | null; epicTitle: string | null }[]>([]);
-const searchLoading = ref(false);
-const highlightIndex = ref(-1);
-const linkError = ref("");
 const linkSubmitted = ref(false);
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => props.entry, () => (linkSubmitted.value = false));
 
-// Reset state when entry changes
-watch(() => props.entry, () => {
-  searchQuery.value = "";
-  searchResults.value = [];
-  searchLoading.value = false;
-  highlightIndex.value = -1;
-  linkError.value = "";
-  linkSubmitted.value = false;
-});
+function selectResult(result: WbsoTicketSearchResult) {
+  const target = props.entry && linkTargetFor(props.entry);
+  if (!target) return;
 
-function onSearchInput() {
-  if (searchTimer) clearTimeout(searchTimer);
-  const q = searchQuery.value.trim();
-  if (q.length < 2) {
-    searchResults.value = [];
-    return;
-  }
-  searchLoading.value = true;
-  searchTimer = setTimeout(() => doSearch(q), 200);
-}
-
-async function doSearch(q: string) {
-  try {
-    searchResults.value = await api.get(`/wbso/tickets/search?q=${encodeURIComponent(q)}`);
-    highlightIndex.value = searchResults.value.length > 0 ? 0 : -1;
-  } catch {
-    searchResults.value = [];
-  } finally {
-    searchLoading.value = false;
-  }
-}
-
-function highlightNext() {
-  if (searchResults.value.length === 0) return;
-  highlightIndex.value = (highlightIndex.value + 1) % searchResults.value.length;
-}
-
-function highlightPrev() {
-  if (searchResults.value.length === 0) return;
-  highlightIndex.value = (highlightIndex.value - 1 + searchResults.value.length) % searchResults.value.length;
-}
-
-function selectHighlighted() {
-  if (highlightIndex.value >= 0 && highlightIndex.value < searchResults.value.length) {
-    selectResult(searchResults.value[highlightIndex.value]);
-  }
-}
-
-function selectResult(result: { key: string }) {
-  searchResults.value = [];
-  searchQuery.value = "";
-  linkError.value = "";
-
-  if (!props.entry) return;
-
-  if (entryType.value === "meeting" && props.entry.meetingId) {
-    emit("update-meeting", props.entry.meetingId, { ticketKey: result.key });
-  } else if ((entryType.value === "coding" || entryType.value === "review") && props.entry.reasoning.mergeRequests?.[0]) {
-    emit("update-mr", props.entry.reasoning.mergeRequests[0].id, { ticketKey: result.key });
+  if (target.type === "meeting") {
+    emit("update-meeting", target.id, { ticketKey: result.key });
+  } else {
+    emit("update-mr", target.id, { ticketKey: result.key });
   }
   linkSubmitted.value = true;
 }
