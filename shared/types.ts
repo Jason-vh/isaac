@@ -421,6 +421,12 @@ export interface WbsoEntry {
   hours: number;
   meetingId?: number;
   reasoning: WbsoReasoning;
+  /** Identifies this row within its day across re-estimates. */
+  rowKey: string;
+  /** Transcribed into the WBSO form. */
+  marked: boolean;
+  /** Hours as filed, which may since have drifted from `hours`. */
+  markedHours: number | null;
 }
 
 export interface WbsoMrDetail {
@@ -518,6 +524,23 @@ export function wbsoDescription(entry: WbsoEntry): string {
   if (r.mrTitles?.length) return r.mrTitles.join("; ");
   if (entry.ticketTitle) return entry.ticketTitle;
   return "";
+}
+
+/**
+ * Stable identity for a worksheet row within its day. Rows are derived, so they
+ * key off what produced them. Deliberately not the category: a meeting's
+ * category changes when it's linked to a ticket, which would orphan the mark,
+ * and one MR can't be both coding and review (review excludes MRs I authored).
+ */
+export function wbsoRowKey(entry: {
+  meetingId?: number;
+  ticketKey: string | null;
+  reasoning: WbsoReasoning;
+}): string {
+  const mrId = entry.reasoning.mergeRequests?.[0]?.id;
+  if (entry.meetingId) return `meeting:${entry.meetingId}`;
+  if (mrId) return `mr:${mrId}`;
+  return `ticket:${entry.ticketKey ?? "none"}`;
 }
 
 /** A hit from the WBSO ticket search, used to link an entry by hand. */

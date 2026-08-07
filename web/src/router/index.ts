@@ -27,7 +27,7 @@ export const router = createRouter({
       component: DashboardView,
     },
     {
-      path: "/wbso/:week?",
+      path: "/wbso/:date?",
       name: "wbso",
       component: () => import("../views/WbsoView.vue"),
     },

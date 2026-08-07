@@ -56,6 +56,8 @@ columns and indexes. The concepts:
   window and its rework rounds.
 - **Document** — Confluence page, linked to epics.
 - **Meeting** — calendar event, categorised dev / non-dev / leave / ignore.
+  Inferred links are epic-grain, but a meeting can be pinned to a ticket by
+  hand, since the WBSO form wants a Jira Issue per row.
   Leave is detected by keyword on the title. Working-location events are
   ignored. All-day and multi-day events land on every weekday they span, using
   Amsterdam timezone boundaries.
@@ -105,16 +107,20 @@ Isaac does is make honest transcription fast:
 
 - The **worksheet** is the default WBSO view. It mirrors the form a day at a
   time — same heading, same `Xh out of 8h` meter, same column order (Work Type,
-  Work Description, Jira Issue, Jira Epic, WBSO/IDS Project, Hours) — so a row
-  can be transcribed straight across. Cells copy on click. Values are in the
+  Work Description, Jira Issue, Jira Epic, Hours) — so a row can be transcribed
+  straight across. Cells copy on click. Values are in the
   form's own vocabulary: Work Type copies the dropdown option verbatim (code
   review is a *Dev Miscellaneous* case; the form has no option of its own for
   it) and hours read `2h 15m`, which is what the Hours field parses. Jira Epic
-  is reference only, since the form derives it from the issue. The epic → WBSO
-  project mapping is typed once and kept in localStorage. A row whose ticket
-  couldn't be inferred renders a ticket search in the Jira Issue cell, so it can
-  be linked in place rather than from a separate panel — the link writes through
-  to the underlying MR or meeting, and sticks.
+  is reference only, since the form derives it from the issue. A row whose
+  ticket couldn't be inferred renders a ticket search in the Jira Issue cell, so
+  it can be linked in place rather than from a separate panel — the link writes
+  through to the underlying MR or meeting, and sticks.
+- **Filed rows are checked off.** The leading checkbox marks a row as
+  transcribed, persisted in `wbso_entry_marks` and keyed by day plus a `rowKey`
+  derived from what produced the row, so a mark survives re-estimation. The
+  hours are stored as filed: if a later sync moves the estimate, the row flags
+  the divergence rather than quietly disagreeing with what was submitted.
 - The **overview** (toggle in the header) groups entries by epic per day for
   review, with a detail panel showing the underlying MRs, commits and meetings
   behind each estimate.
@@ -215,7 +221,7 @@ Railway project `isaac`, environment `production`, auto-deploys on push to
   `confluence_document_events`, `meetings`, `pipelines`, `pipeline_jobs`,
   `sync_log`, `activity_items`
 - **Preserved tables** (manually entered): `wins`, `entity_links`,
-  `passkey_credentials`
+  `passkey_credentials`, `wbso_entry_marks`
 
 ### Sync architecture
 

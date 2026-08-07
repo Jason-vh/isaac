@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
-import { eq, or, ilike, inArray } from "drizzle-orm";
+import { and, eq, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { meetings, mergeRequests, tickets } from "../db/schema";
+import { meetings, mergeRequests, tickets, wbsoEntryMarks } from "../db/schema";
 import { estimateWeek } from "../wbso/estimator";
 
 function getMonday(dateStr: string): Date {
@@ -53,6 +53,54 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
     const monday = getMonday(params.date);
     return estimateWeek(monday);
   })
+  // Mark a worksheet row as transcribed into the WBSO form, or clear the mark.
+  .put("/marks", async ({ body, store }) => {
+    if (!(store as any).isOwner) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const { date, rowKey, hours, marked } = (body ?? {}) as {
+      date?: string;
+      rowKey?: string;
+      hours?: number;
+      marked?: boolean;
+    };
+
+    if (!date || !rowKey) {
+      return new Response(
+        JSON.stringify({ error: "date and rowKey are required" }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+
+    if (!marked) {
+      await db
+        .delete(wbsoEntryMarks)
+        .where(
+          and(eq(wbsoEntryMarks.date, date), eq(wbsoEntryMarks.rowKey, rowKey))
+        );
+      return { date, rowKey, marked: false };
+    }
+
+    // Record the hours as filed, so a later re-estimate can't silently diverge.
+    await db
+      .insert(wbsoEntryMarks)
+      .values({
+        date,
+        rowKey,
+        hours: String(hours ?? 0),
+        markedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [wbsoEntryMarks.date, wbsoEntryMarks.rowKey],
+        set: { hours: String(hours ?? 0), markedAt: new Date() },
+      });
+
+    return { date, rowKey, marked: true };
+  })
   .patch("/meetings/:id", async ({ params, body, store }) => {
     if (!(store as any).isOwner) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
@@ -90,8 +138,10 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
       update.category = category;
     }
 
+    // Clearing the epic clears the ticket with it — a ticket implies its epic.
     if (epicKey !== undefined) {
       update.epicKey = epicKey || null;
+      if (!epicKey) update.ticketKey = null;
     }
 
     // Resolve ticketKey to epicKey
@@ -107,6 +157,8 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
           headers: { "content-type": "application/json" },
         });
       }
+
+      update.ticketKey = ticket.key;
 
       if (ticket.epicKey) {
         update.epicKey = ticket.epicKey;

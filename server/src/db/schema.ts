@@ -243,6 +243,9 @@ export const meetings = pgTable("meetings", {
   calendarEventId: text("calendar_event_id").notNull().unique(),
   title: text("title").notNull(),
   category: text("category"),
+  // Meetings link at epic grain by inference, but can be pinned to a ticket by
+  // hand — the WBSO form wants a Jira Issue per row.
+  ticketKey: text("ticket_key").references(() => tickets.key),
   epicKey: text("epic_key").references(() => tickets.key),
   epicKeyInferred: boolean("epic_key_inferred").notNull().default(true),
   responseStatus: text("response_status"),
@@ -378,6 +381,24 @@ export const activityItems = pgTable("activity_items", {
   index("activity_items_occurred_at_idx").on(t.occurredAt),
   index("activity_items_source_type_idx").on(t.sourceType),
 ]);
+
+// --- wbso_entry_marks ---
+
+// A worksheet row that's been transcribed into the WBSO form. Rows are derived,
+// so they're keyed by day + rowKey (see wbsoRowKey) rather than by an id.
+// hours records what was actually filed, so a later re-estimate can't silently
+// diverge from the submitted number.
+export const wbsoEntryMarks = pgTable(
+  "wbso_entry_marks",
+  {
+    id: serial("id").primaryKey(),
+    date: text("date").notNull(),
+    rowKey: text("row_key").notNull(),
+    hours: decimal("hours").notNull(),
+    markedAt: timestamp("marked_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("wbso_entry_marks_date_row_idx").on(t.date, t.rowKey)]
+);
 
 // --- sync_log ---
 

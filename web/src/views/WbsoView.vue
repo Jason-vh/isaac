@@ -9,11 +9,11 @@
     <template v-else-if="data">
       <!-- Header -->
       <div class="flex items-center justify-between">
-        <WeekPicker
-          :week-start="data.weekStart"
-          :disable-next="isCurrentWeek"
-          @prev="prevWeek"
-          @next="nextWeek"
+        <DayPicker
+          :date="date"
+          :disable-next="isToday"
+          @prev="prevDay"
+          @next="nextDay"
         />
         <div class="flex items-center gap-3">
           <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
@@ -24,18 +24,27 @@
             {{ worksheet ? "Overview" : "Worksheet" }}
           </button>
           <button
-            v-if="!isCurrentWeek"
+            v-if="!isToday"
             @click="goToday"
             class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
-            This week
+            Today
           </button>
         </div>
       </div>
 
       <!-- Worksheet -->
       <div v-if="worksheet" class="mt-6">
-        <WbsoWorksheet :days="data.days" :link-error="linkError" @link="onLink" />
+        <WbsoWorksheet
+          v-if="selectedDay"
+          :day="selectedDay"
+          :link-error="linkError"
+          @link="onLink"
+          @mark="onMark"
+        />
+        <p v-else class="py-20 text-center text-ink-faint">
+          Nothing recorded for this day.
+        </p>
       </div>
 
       <template v-else>
@@ -84,7 +93,7 @@
 import { ref, onMounted, onUnmounted, watch } from "vue";
 import type { WbsoEntry } from "@isaac/shared";
 import { useWbso } from "../composables/useWbso";
-import WeekPicker from "../components/dashboard/WeekPicker.vue";
+import DayPicker from "../components/wbso/DayPicker.vue";
 import WbsoCategoryCards from "../components/wbso/WbsoCategoryCards.vue";
 import WbsoWeekGrid from "../components/wbso/WbsoWeekGrid.vue";
 import WbsoEpicSummary from "../components/wbso/WbsoEpicSummary.vue";
@@ -96,8 +105,20 @@ import type { WbsoLinkTarget } from "../components/wbso/linkTarget";
 const worksheet = ref(true);
 const linkError = ref("");
 
-const { data, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday, updateMeetingCategory, updateMrTicket } =
-  useWbso();
+const {
+  date,
+  data,
+  selectedDay,
+  loading,
+  error,
+  isToday,
+  prevDay,
+  nextDay,
+  goToday,
+  updateMeetingCategory,
+  updateMrTicket,
+  setMark,
+} = useWbso();
 
 // Detail panel state
 const selectedEntry = ref<WbsoEntry | null>(null);
@@ -163,6 +184,15 @@ async function onLinkMr(mrId: number, ticketKey: string) {
   await updateMrTicket(mrId, ticketKey);
 }
 
+async function onMark(date: string, rowKey: string, marked: boolean) {
+  linkError.value = "";
+  try {
+    await setMark(date, rowKey, marked);
+  } catch (e: any) {
+    linkError.value = `Could not save: ${e.message}`;
+  }
+}
+
 async function onLink(target: WbsoLinkTarget, ticketKey: string) {
   linkError.value = "";
   try {
@@ -181,8 +211,8 @@ function onKeydown(e: KeyboardEvent) {
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   // Don't navigate weeks while panel is open
   if (selectedEntry.value) return;
-  if (e.key === "ArrowLeft") prevWeek();
-  else if (e.key === "ArrowRight" && !isCurrentWeek.value) nextWeek();
+  if (e.key === "ArrowLeft") prevDay();
+  else if (e.key === "ArrowRight") nextDay();
 }
 
 onMounted(() => window.addEventListener("keydown", onKeydown));

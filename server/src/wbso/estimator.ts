@@ -5,6 +5,7 @@ import {
   mergeRequestEvents,
   commits,
   tickets,
+  wbsoEntryMarks,
 } from "../db/schema";
 import { and, eq, gte, lt, inArray, isNull } from "drizzle-orm";
 import { env } from "../env";
@@ -18,6 +19,7 @@ import type {
   WbsoCategory,
   WbsoReasoning,
 } from "@isaac/shared";
+import { wbsoRowKey } from "@isaac/shared";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const HOURS_PER_DAY = 8;
@@ -65,6 +67,9 @@ function roundToQuartersPreservingTotal(
   }
 }
 
+/** An entry before its mark state is resolved, which happens once at assembly. */
+type DraftEntry = Omit<WbsoEntry, "rowKey" | "marked" | "markedHours">;
+
 type WeightedEntry = {
   category: WbsoCategory;
   ticketKey: string | null;
@@ -92,7 +97,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   }
 
   // Per-day buckets
-  const dayMeetings = new Map<string, WbsoEntry[]>();
+  const dayMeetings = new Map<string, DraftEntry[]>();
   const dayCodingWeights = new Map<string, WeightedEntry[]>();
   const dayReviewWeights = new Map<string, WeightedEntry[]>();
   for (const d of dayDates) {
@@ -115,15 +120,15 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       )
     );
 
-  const meetingEpicKeys = meetingRows
-    .map((m) => m.epicKey)
+  const meetingKeys = meetingRows
+    .flatMap((m) => [m.epicKey, m.ticketKey])
     .filter((k): k is string => k !== null);
   const epicTitleMap = new Map<string, string>();
-  if (meetingEpicKeys.length > 0) {
+  if (meetingKeys.length > 0) {
     const epicRows = await db
       .select({ key: tickets.key, title: tickets.title })
       .from(tickets)
-      .where(inArray(tickets.key, [...new Set(meetingEpicKeys)]));
+      .where(inArray(tickets.key, [...new Set(meetingKeys)]));
     for (const e of epicRows) epicTitleMap.set(e.key, e.title);
   }
 
@@ -162,8 +167,10 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
           if (category === "leave") leaveDays.add(dayStr);
           entries.push({
             category,
-            ticketKey: null,
-            ticketTitle: null,
+            ticketKey: m.ticketKey,
+            ticketTitle: m.ticketKey
+              ? (epicTitleMap.get(m.ticketKey) ?? null)
+              : null,
             epicKey: m.epicKey,
             epicTitle: m.epicKey ? (epicTitleMap.get(m.epicKey) ?? null) : null,
             hours: HOURS_PER_DAY,
@@ -192,8 +199,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
 
       entries.push({
         category,
-        ticketKey: null,
-        ticketTitle: null,
+        ticketKey: m.ticketKey,
+        ticketTitle: m.ticketKey ? (epicTitleMap.get(m.ticketKey) ?? null) : null,
         epicKey: m.epicKey,
         epicTitle: m.epicKey ? (epicTitleMap.get(m.epicKey) ?? null) : null,
         hours: durationMin / 60,
@@ -473,13 +480,13 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   // -----------------------------------------------------------------------
   // Phase 4: Fill every day to exactly 8h
   // -----------------------------------------------------------------------
-  const dayEntries = new Map<string, WbsoEntry[]>();
+  const dayEntries = new Map<string, DraftEntry[]>();
   const needsInputDays = new Set<string>();
 
   for (let i = 0; i < dayDates.length; i++) {
     const dayStr = dayDates[i];
     const meetingEntries = dayMeetings.get(dayStr) ?? [];
-    const entries: WbsoEntry[] = [...meetingEntries];
+    const entries: DraftEntry[] = [...meetingEntries];
 
     // Leave day — just show the leave entry at 8h, skip everything else
     if (leaveDays.has(dayStr)) {
@@ -525,7 +532,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     const totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
 
     // Convert weights → proportional hours
-    const activityEntries: WbsoEntry[] = weighted.map((w) => ({
+    const activityEntries: DraftEntry[] = weighted.map((w) => ({
       category: w.category,
       ticketKey: w.ticketKey,
       ticketTitle: w.ticketTitle,
@@ -539,7 +546,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     }));
 
     // Enforce minimum per entry (10 min for reviews, 15 min for others)
-    const minForEntry = (e: WbsoEntry) =>
+    const minForEntry = (e: DraftEntry) =>
       e.category === "code_review" ? MIN_REVIEW_HOURS : MIN_ENTRY_HOURS;
     const minTotal = activityEntries.reduce((s, e) => s + minForEntry(e), 0);
     if (minTotal >= available) {
@@ -602,8 +609,29 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     }
   }
 
+  // Mark state, keyed by day + rowKey
+  const markRows = dayDates.length
+    ? await db
+        .select()
+        .from(wbsoEntryMarks)
+        .where(inArray(wbsoEntryMarks.date, dayDates))
+    : [];
+  const markMap = new Map(
+    markRows.map((m) => [`${m.date}|${m.rowKey}`, Number(m.hours)])
+  );
+
   const days: WbsoDayData[] = dayDates.map((date, i) => {
-    const entries = dayEntries.get(date) ?? [];
+    const drafts = dayEntries.get(date) ?? [];
+    const entries: WbsoEntry[] = drafts.map((draft) => {
+      const rowKey = wbsoRowKey(draft);
+      const markedHours = markMap.get(`${date}|${rowKey}`);
+      return {
+        ...draft,
+        rowKey,
+        marked: markedHours !== undefined,
+        markedHours: markedHours ?? null,
+      };
+    });
     return {
       date,
       dayLabel: DAY_LABELS[i],
