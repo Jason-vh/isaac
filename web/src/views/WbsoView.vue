@@ -8,25 +8,25 @@
     </div>
     <template v-else-if="data">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <DayPicker
           :date="date"
           :disable-next="isToday"
           @prev="prevDay"
           @next="nextDay"
         />
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3">
           <div v-if="loading" class="text-sm text-ink-faint">Updating...</div>
           <button
             @click="worksheet = !worksheet"
-            class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             {{ worksheet ? "Overview" : "Worksheet" }}
           </button>
           <button
             v-if="!isToday"
             @click="goToday"
-            class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             Today
           </button>

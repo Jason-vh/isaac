@@ -1,6 +1,6 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gray-50">
-    <div class="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
+  <div class="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-8">
+    <div class="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
       <!-- Setup mode -->
       <template v-if="needsSetup">
         <h1 class="text-xl font-semibold text-gray-900">Welcome to Isaac</h1>

@@ -1,11 +1,11 @@
 <template>
   <div>
-    <div class="flex items-center gap-3">
-      <router-link to="/pipelines?tab=mr" class="text-ink-faint hover:text-ink transition-colors">
+    <div class="flex flex-wrap items-start gap-3">
+      <router-link to="/pipelines?tab=mr" class="mt-1.5 text-ink-faint hover:text-ink transition-colors">
         <ArrowLeftIcon class="h-4 w-4" />
       </router-link>
-      <div class="flex-1">
-        <h1 class="text-2xl font-bold text-ink">
+      <div class="min-w-0 flex-1">
+        <h1 class="break-words text-xl font-bold text-ink sm:text-2xl">
           {{ mrTitle }}
         </h1>
         <div v-if="mrMeta" class="mt-1 flex items-center gap-3 text-sm">
@@ -22,7 +22,7 @@
         :href="gitlabUrl"
         target="_blank"
         rel="noopener"
-        class="flex items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+        class="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
       >
         View on GitLab
         <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />
@@ -35,7 +35,7 @@
     <div v-else-if="error" class="py-20 text-center text-red-500">{{ error }}</div>
     <template v-else>
       <!-- Summary stats -->
-      <div class="mt-6 flex items-center gap-4 text-sm text-ink-muted">
+      <div class="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-muted">
         <span>{{ pipelines.length }} pipelines</span>
         <span v-if="firstSuccessIndex >= 0" class="text-ink-faint">&middot;</span>
         <span v-if="firstSuccessIndex >= 0" class="text-emerald-600">

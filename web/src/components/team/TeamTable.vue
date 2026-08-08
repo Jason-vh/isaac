@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center justify-between border-b border-border px-5 py-4">
+    <div class="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div>
         <h2 class="text-lg font-semibold text-ink">Per engineer</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
@@ -8,7 +8,7 @@
           full diff, so reviewed lines exceed merged lines.
         </p>
       </div>
-      <div class="flex items-center gap-3 text-xs text-ink-muted">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
         <span v-for="c in legend" :key="c.label" class="flex items-center gap-1.5">
           <span class="h-2 w-2 rounded-full" :class="c.color" />
           {{ c.label }}
@@ -23,51 +23,53 @@
       No activity in this period.
     </div>
 
-    <table v-else class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
-          <th class="px-5 py-2.5 font-medium">Engineer</th>
-          <th
-            v-for="col in columns"
-            :key="col.key"
-            class="cursor-pointer px-3 py-2.5 text-right font-medium transition-colors hover:text-ink"
-            :class="sortKey === col.key ? 'text-ink' : ''"
-            @click="setSort(col.key)"
-          >
-            {{ col.label }}
-            <span v-if="sortKey === col.key">↓</span>
-          </th>
-          <th class="px-5 py-2.5 font-medium">Split</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="m in sortedMembers"
-          :key="m.person.id"
-          class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
-        >
-          <td class="px-5 py-3">
-            <span class="font-medium text-ink">{{ m.person.displayName }}</span>
-            <span
-              v-if="m.person.isMe"
-              class="ml-2 rounded bg-accent-light px-1.5 py-0.5 text-xs font-medium text-accent"
+    <div v-else class="table-scroll">
+      <table class="w-full min-w-[720px] text-sm">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
+            <th class="px-4 py-2.5 font-medium sm:px-5">Engineer</th>
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              class="cursor-pointer px-3 py-2.5 text-right font-medium transition-colors hover:text-ink"
+              :class="sortKey === col.key ? 'text-ink' : ''"
+              @click="setSort(col.key)"
             >
-              you
-            </span>
-          </td>
-          <td
-            v-for="col in columns"
-            :key="col.key"
-            class="px-3 py-3 text-right font-mono tabular-nums text-ink"
+              {{ col.label }}
+              <span v-if="sortKey === col.key">↓</span>
+            </th>
+            <th class="px-4 py-2.5 font-medium sm:px-5">Split</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="m in sortedMembers"
+            :key="m.person.id"
+            class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
           >
-            {{ col.format(col.value(m)) }}
-          </td>
-          <td class="w-40 px-5 py-3">
-            <CategoryBar :by-category="m.merged.byCategory" />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td class="whitespace-nowrap px-4 py-3 sm:px-5">
+              <span class="font-medium text-ink">{{ m.person.displayName }}</span>
+              <span
+                v-if="m.person.isMe"
+                class="ml-2 rounded bg-accent-light px-1.5 py-0.5 text-xs font-medium text-accent"
+              >
+                you
+              </span>
+            </td>
+            <td
+              v-for="col in columns"
+              :key="col.key"
+              class="px-3 py-3 text-right font-mono tabular-nums text-ink"
+            >
+              {{ col.format(col.value(m)) }}
+            </td>
+            <td class="w-40 px-4 py-3 sm:px-5">
+              <CategoryBar :by-category="m.merged.byCategory" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 

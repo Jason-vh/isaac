@@ -8,7 +8,7 @@
     </div>
     <template v-else-if="data">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <WeekPicker
           :week-start="data.weekStart"
           @prev="prevWeek"
@@ -19,7 +19,7 @@
           <button
             v-if="!isCurrentWeek"
             @click="goToday"
-            class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            class="rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             This week
           </button>

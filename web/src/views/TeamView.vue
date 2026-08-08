@@ -1,18 +1,18 @@
 <template>
   <div>
     <!-- Header -->
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-ink">Team</h1>
+        <h1 class="text-xl font-bold text-ink sm:text-2xl">Team</h1>
         <p class="mt-1 text-sm text-ink-muted">
           Code merged, code reviewed and tickets closed per engineer.
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           v-for="days in presetDays"
           :key="days"
-          class="rounded-lg border px-2.5 py-1 text-sm transition-colors"
+          class="rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
           :class="isActivePreset(days)
             ? 'border-accent bg-accent-light text-accent'
             : 'border-border bg-surface-0 text-ink-muted hover:bg-surface-2 hover:text-ink'"
@@ -23,13 +23,13 @@
         <input
           v-model="since"
           type="date"
-          class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm text-ink"
+          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
         />
         <span class="text-sm text-ink-faint">to</span>
         <input
           v-model="until"
           type="date"
-          class="rounded-lg border border-border bg-surface-0 px-3 py-1 text-sm text-ink"
+          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
         />
       </div>
     </div>

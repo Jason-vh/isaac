@@ -14,7 +14,7 @@
       />
 
       <!-- Panel -->
-      <div class="fixed inset-y-0 right-0 w-[480px]">
+      <div class="fixed inset-y-0 right-0 w-full max-w-[480px]">
         <TransitionChild
           as="div"
           class="h-full"
@@ -28,7 +28,7 @@
           <DialogPanel
             class="h-full overflow-y-auto border-l border-border bg-surface-0 shadow-xl"
           >
-          <div v-if="entry" class="p-6">
+          <div v-if="entry" class="p-4 sm:p-6">
             <!-- Header -->
             <div class="flex items-start justify-between">
               <div class="flex items-center gap-2">

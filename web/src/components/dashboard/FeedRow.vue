@@ -1,5 +1,5 @@
 <template>
-  <li class="flex items-start gap-3 border-b border-border/50 px-5 py-2.5 last:border-b-0">
+  <li class="flex items-start gap-3 border-b border-border/50 px-4 py-2.5 last:border-b-0 sm:px-5">
     <div
       class="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
       :class="iconBg(item.type)"

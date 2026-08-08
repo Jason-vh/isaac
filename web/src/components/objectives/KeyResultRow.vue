@@ -16,7 +16,7 @@
         </div>
 
         <!-- Evidence summary chips -->
-        <div v-if="summary && summary.total > 0" class="ml-6 mt-1.5 flex items-center gap-2">
+        <div v-if="summary && summary.total > 0" class="ml-6 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span v-if="summary.epics" class="inline-flex items-center gap-1 text-xs text-ink-faint">
             <span class="inline-block h-1.5 w-1.5 rounded-full bg-activity-ticket" />
             {{ summary.epics }} epic{{ summary.epics !== 1 ? 's' : '' }}

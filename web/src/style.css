@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -23,5 +27,22 @@
 
   .card-interactive {
     @apply card transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  /* Wraps a wide table so it scrolls inside its card instead of widening
+     the page. Momentum scrolling keeps it usable on touch devices. */
+  .table-scroll {
+    @apply overflow-x-auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* iOS Safari zooms the viewport when a focused control renders below 16px.
+   Sits after @tailwind utilities so it beats the text-sm/text-xs on inputs. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
   }
 }

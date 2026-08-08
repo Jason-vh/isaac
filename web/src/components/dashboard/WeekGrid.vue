@@ -1,6 +1,8 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="grid grid-cols-7 divide-x divide-border">
+    <!-- Seven columns need more room than a phone has, so the week becomes a
+         vertical list of days below md. -->
+    <div class="grid grid-cols-1 divide-y divide-border md:grid-cols-7 md:divide-x md:divide-y-0">
       <div
         v-for="day in days"
         :key="day.date"
@@ -11,12 +13,12 @@
         }"
       >
         <!-- Day header -->
-        <div class="border-b border-border px-2 py-2.5 text-center">
+        <div class="flex items-center gap-2 border-border px-3 py-2 md:block md:border-b md:px-2 md:py-2.5 md:text-center">
           <p class="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
             {{ dayLabel(day.date) }}
           </p>
           <p
-            class="mt-0.5 text-lg font-semibold tabular-nums"
+            class="text-lg font-semibold tabular-nums md:mt-0.5"
             :class="isToday(day.date) ? 'text-accent' : 'text-ink'"
           >
             {{ dayNum(day.date) }}
@@ -24,7 +26,7 @@
           <!-- Mini activity bar -->
           <div
             v-if="hasActivity(day)"
-            class="mx-auto mt-1.5 flex h-1 max-w-[48px] gap-px overflow-hidden rounded-full"
+            class="ml-auto flex h-1 w-12 gap-px overflow-hidden rounded-full md:mx-auto md:mt-1.5 md:max-w-[48px]"
           >
             <div
               v-if="day.ticketsClosed + day.ticketEvents > 0"
@@ -50,7 +52,7 @@
         </div>
 
         <!-- Compact activity summary -->
-        <div class="flex-1 p-2">
+        <div class="flex-1 px-3 pb-2.5 md:p-2">
           <DayTimeline
             :items="feedByDay[day.date] || []"
             :date="day.date"

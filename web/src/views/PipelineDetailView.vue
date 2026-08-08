@@ -1,14 +1,14 @@
 <template>
   <div>
-    <div class="flex items-center gap-3">
-      <router-link to="/pipelines" class="text-ink-faint hover:text-ink transition-colors">
+    <div class="flex flex-wrap items-start gap-3">
+      <router-link to="/pipelines" class="mt-1.5 text-ink-faint hover:text-ink transition-colors">
         <ArrowLeftIcon class="h-4 w-4" />
       </router-link>
-      <div class="flex-1">
-        <h1 class="text-2xl font-bold text-ink">
+      <div class="min-w-0 flex-1">
+        <h1 class="text-xl font-bold text-ink sm:text-2xl">
           Pipeline #{{ pipelineId }}
         </h1>
-        <div v-if="detail" class="mt-1 flex items-center gap-3 text-sm">
+        <div v-if="detail" class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <span
             class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
             :class="statusBadgeColor(detail.status)"
@@ -35,7 +35,7 @@
         :href="detail.webUrl"
         target="_blank"
         rel="noopener"
-        class="flex items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+        class="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
       >
         View on GitLab
         <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />
@@ -50,13 +50,13 @@
 
       <!-- Waterfall chart -->
       <div class="mt-6 card overflow-hidden">
-        <div class="flex items-center gap-3 border-b border-border px-4 py-3">
+        <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
           <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
             Job Timeline
           </h3>
-          <div class="ml-auto flex items-center gap-3">
+          <div class="ml-auto flex flex-1 items-center gap-3 sm:flex-none">
             <button
-              class="rounded border px-2 py-1 text-xs transition-colors"
+              class="shrink-0 rounded border px-2 py-1 text-xs transition-colors"
               :class="showCriticalPath
                 ? 'border-amber-400 bg-amber-50 text-amber-700'
                 : 'border-border bg-surface text-ink-faint hover:text-ink'"
@@ -68,11 +68,13 @@
               v-model="jobSearch"
               type="text"
               placeholder="Filter jobs..."
-              class="w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+              class="w-full min-w-0 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none sm:w-48"
             />
           </div>
         </div>
-        <WaterfallChart :pipeline="detail" :search="jobSearch" :show-critical-path="showCriticalPath" />
+        <div class="table-scroll">
+          <WaterfallChart :pipeline="detail" :search="jobSearch" :show-critical-path="showCriticalPath" />
+        </div>
       </div>
 
     </template>

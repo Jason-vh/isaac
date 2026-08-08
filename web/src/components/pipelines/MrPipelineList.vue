@@ -48,50 +48,55 @@
           v-for="mr in mrs"
           :key="mr.id"
           :to="{ name: 'mr-pipelines', params: { id: mr.id }, state: { mrTitle: mr.title, mrStatus: mr.status, mrGitlabIid: mr.gitlabIid, mrProjectPath: mr.projectPath } }"
-          class="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-surface-1 transition-colors text-left"
+          class="flex w-full flex-col gap-1.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-1 sm:flex-row sm:items-center sm:gap-3"
         >
-          <!-- Status badge -->
-          <span
-            class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-            :class="mrBadgeColor(mr)"
-          >
-            {{ mrBadgeLabel(mr) }}
+          <!-- Title line — the stats drop below it on phones -->
+          <span class="flex min-w-0 items-center gap-3 sm:flex-1">
+            <!-- Status badge -->
+            <span
+              class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+              :class="mrBadgeColor(mr)"
+            >
+              {{ mrBadgeLabel(mr) }}
+            </span>
+
+            <!-- MR title + iid -->
+            <span class="min-w-0 flex-1 truncate text-sm text-ink">
+              {{ mr.title }}
+              <span class="ml-1 text-ink-faint">!{{ mr.gitlabIid }}</span>
+            </span>
           </span>
 
-          <!-- MR title + iid -->
-          <span class="min-w-0 flex-1 truncate text-sm text-ink">
-            {{ mr.title }}
-            <span class="ml-1 text-ink-faint">!{{ mr.gitlabIid }}</span>
-          </span>
+          <span class="flex items-center gap-3 sm:contents">
+            <!-- Pipeline count -->
+            <span class="shrink-0 text-xs tabular-nums text-ink-muted">
+              {{ mr.pipelineCount }} runs
+            </span>
 
-          <!-- Pipeline count -->
-          <span class="shrink-0 text-xs tabular-nums text-ink-muted">
-            {{ mr.pipelineCount }} runs
-          </span>
+            <!-- Failed count -->
+            <span
+              v-if="mr.failedCount > 0"
+              class="shrink-0 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 tabular-nums"
+            >
+              {{ mr.failedCount }} failed
+            </span>
 
-          <!-- Failed count -->
-          <span
-            v-if="mr.failedCount > 0"
-            class="shrink-0 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 tabular-nums"
-          >
-            {{ mr.failedCount }} failed
-          </span>
+            <!-- Total CI time -->
+            <span class="shrink-0 font-mono text-sm tabular-nums text-ink">
+              {{ mr.totalDurationSeconds != null ? fmtCiTime(mr.totalDurationSeconds) : '--' }}
+            </span>
 
-          <!-- Total CI time -->
-          <span class="shrink-0 font-mono text-sm tabular-nums text-ink">
-            {{ mr.totalDurationSeconds != null ? fmtCiTime(mr.totalDurationSeconds) : '--' }}
+            <!-- GitLab link -->
+            <a
+              :href="gitlabUrl(mr)"
+              target="_blank"
+              rel="noopener"
+              class="ml-auto shrink-0 text-ink-faint transition-colors hover:text-ink sm:ml-0"
+              @click.stop
+            >
+              <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />
+            </a>
           </span>
-
-          <!-- GitLab link -->
-          <a
-            :href="gitlabUrl(mr)"
-            target="_blank"
-            rel="noopener"
-            class="shrink-0 text-ink-faint hover:text-ink transition-colors"
-            @click.stop
-          >
-            <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />
-          </a>
         </router-link>
       </div>
     </template>

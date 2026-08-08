@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center justify-between border-b border-border px-5 py-3">
+    <div class="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
       <h3 class="text-sm font-semibold text-ink">Activity</h3>
       <div class="flex gap-1">
         <button
@@ -28,7 +28,7 @@
       <div v-for="group in feedByDay" :key="group.date">
         <button
           @click="toggleDay(group.date)"
-          class="flex w-full items-center gap-2 border-b border-border bg-surface-1 px-5 py-2 text-left hover:bg-surface-2"
+          class="flex w-full items-center gap-2 border-b border-border bg-surface-1 px-4 py-2 text-left hover:bg-surface-2 sm:px-5"
         >
           <ChevronRightIcon
             class="h-3.5 w-3.5 text-ink-faint transition-transform"

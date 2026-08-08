@@ -5,8 +5,8 @@
     >
       Hours by Epic (WBSO)
     </h3>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+    <div class="table-scroll">
+      <table class="w-full min-w-[640px] text-sm">
         <thead>
           <tr class="border-b border-border bg-surface-1 text-xs text-ink-faint">
             <th class="px-4 py-2 text-left font-medium">Epic</th>

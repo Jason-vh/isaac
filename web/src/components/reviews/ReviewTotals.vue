@@ -1,11 +1,11 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-    <div v-for="card in cards" :key="card.label" class="card p-4">
+  <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+    <div v-for="card in cards" :key="card.label" class="card p-3 sm:p-4">
       <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
         {{ card.label }}
       </p>
       <template v-if="card.duration">
-        <div class="mt-3 grid grid-cols-2 gap-3">
+        <div class="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
           <div
             v-for="stat in [
               { label: 'p50', value: card.dist?.p50 },
@@ -16,14 +16,14 @@
             <p class="text-xs font-medium uppercase tracking-wider text-ink-muted">
               {{ stat.label }}
             </p>
-            <p class="font-mono text-2xl font-medium tabular-nums text-ink">
+            <p class="font-mono text-xl font-medium tabular-nums text-ink sm:text-2xl">
               {{ formatHours(stat.value) }}
             </p>
           </div>
         </div>
       </template>
       <template v-else>
-        <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">
+        <p class="mt-1 font-mono text-2xl font-medium tabular-nums text-ink sm:text-3xl">
           {{ card.value }}
         </p>
         <p class="mt-1 text-sm text-ink-muted">{{ card.detail }}</p>

@@ -1,6 +1,6 @@
 <template>
-  <div class="card p-5">
-    <div class="flex items-center justify-between">
+  <div class="card p-4 sm:p-5">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 class="text-lg font-semibold text-ink">Size vs. time to merge</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
@@ -8,7 +8,7 @@
           GitLab.
         </p>
       </div>
-      <p v-if="correlation !== null" class="text-sm text-ink-muted">
+      <p v-if="correlation !== null" class="shrink-0 text-sm text-ink-muted">
         correlation
         <span class="font-mono text-ink">{{ correlation.toFixed(2) }}</span>
       </p>

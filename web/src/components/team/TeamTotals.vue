@@ -1,10 +1,10 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-    <div v-for="card in cards" :key="card.label" class="card p-4">
+  <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+    <div v-for="card in cards" :key="card.label" class="card p-3 sm:p-4">
       <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
         {{ card.label }}
       </p>
-      <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">
+      <p class="mt-1 font-mono text-2xl font-medium tabular-nums text-ink sm:text-3xl">
         {{ card.value }}
       </p>
       <p v-if="card.detail" class="mt-1 text-sm text-ink-muted">

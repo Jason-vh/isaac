@@ -8,9 +8,9 @@
     </div>
     <template v-else-if="data">
       <!-- Header -->
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-ink">Activity</h1>
+          <h1 class="text-xl font-bold text-ink sm:text-2xl">Activity</h1>
           <p class="mt-1 text-sm text-ink-faint">
             {{ data.total }} notification{{ data.total === 1 ? "" : "s" }} in the last {{ days }} days
           </p>
@@ -23,7 +23,7 @@
               :key="preset"
               @click="setDays(preset)"
               :class="[
-                'px-3 py-1.5 text-sm font-medium transition-colors first:rounded-l-lg last:rounded-r-lg',
+                'px-3 py-2 text-sm font-medium transition-colors first:rounded-l-lg last:rounded-r-lg sm:py-1.5',
                 days === preset
                   ? 'bg-surface-2 text-ink'
                   : 'text-ink-muted hover:bg-surface-1 hover:text-ink',
@@ -52,7 +52,7 @@
           class="overflow-hidden rounded-xl border border-border bg-surface-0"
         >
           <!-- Day header -->
-          <div class="border-b border-border/50 bg-surface-1/50 px-5 py-2.5">
+          <div class="border-b border-border/50 bg-surface-1/50 px-4 py-2.5 sm:px-5">
             <div class="flex items-center justify-between">
               <h2 class="text-sm font-semibold text-ink">
                 {{ formatDayHeader(day.date) }}
@@ -68,7 +68,7 @@
             <li
               v-for="item in day.items"
               :key="item.id"
-              class="flex items-start gap-3 px-5 py-3"
+              class="flex items-start gap-3 px-4 py-3 sm:px-5"
             >
               <!-- Icon -->
               <div

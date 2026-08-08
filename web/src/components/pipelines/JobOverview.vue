@@ -1,10 +1,10 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center gap-2 border-b border-border px-4 py-3">
+    <div class="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Time per Job
       </h3>
-      <div class="ml-auto flex items-center gap-2">
+      <div class="ml-auto flex flex-wrap items-center gap-2">
         <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
           <button
             v-for="opt in scopeOptions"
@@ -32,169 +32,173 @@
           v-model="search"
           type="text"
           placeholder="Filter jobs..."
-          class="w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+          class="w-full min-w-0 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none sm:w-48"
         />
       </div>
     </div>
 
-    <!-- Column headers -->
-    <div
-      v-if="!loading && rows.length > 0"
-      class="grid items-center gap-x-2 border-b border-border px-4 py-1.5"
-      :class="gridClass"
-    >
-      <template v-for="(col, i) in columns" :key="col.key">
-        <div v-if="i === 4" class="w-2" />
-        <button
-          class="text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer select-none"
-          :class="[
-            col.align === 'right' ? 'text-right' : 'text-left',
-            sortKey === col.key ? 'text-ink' : 'text-ink-faint hover:text-ink',
-          ]"
-          @click="toggleSort(col.key)"
-        >
-          {{ col.label }}{{ sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}
-        </button>
-      </template>
-    </div>
-
-    <div v-if="loading" class="divide-y divide-border">
+    <!-- Seven stat columns don't fit a phone, so the whole grid scrolls as one
+         unit — header and rows stay aligned. -->
+    <div class="table-scroll">
+      <!-- Column headers -->
       <div
-        v-for="i in 6"
-        :key="i"
-        class="grid items-center gap-x-2 px-4 py-3"
+        v-if="!loading && rows.length > 0"
+        class="grid min-w-[46rem] items-center gap-x-2 border-b border-border px-4 py-1.5"
         :class="gridClass"
       >
-        <div>
-          <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
-          <div class="mt-1 h-3 w-16 animate-pulse rounded bg-surface-2" />
-        </div>
-        <div class="flex flex-col items-end gap-1">
-          <div class="h-5 w-full animate-pulse rounded bg-surface-2" />
-          <div class="h-3 w-12 animate-pulse rounded bg-surface-2" />
-        </div>
-        <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="h-3 w-8 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="w-2" />
-        <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
-        <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
-      </div>
-    </div>
-    <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
-      No job data in this period.
-    </div>
-    <div v-else class="divide-y divide-border">
-      <div v-for="row in rows" :key="row.name">
-        <div
-          class="grid items-center gap-x-2 px-4 py-2.5 cursor-pointer hover:bg-surface-1 transition-colors"
-          :class="gridClass"
-          @click="toggleExpand(row.name)"
-        >
-          <!-- Job name + runs -->
-          <div class="min-w-0">
-            <p class="truncate text-sm text-ink">{{ row.name }}</p>
-            <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
-          </div>
-
-          <!-- Distribution bar + p50 number -->
-          <div class="group/dist relative flex flex-col items-end gap-0.5">
-            <JobDistributionBar
-              :p10="row.p10Duration"
-              :p50="row.medianDuration"
-              :p90="row.p90Duration"
-              :domain-max="domainMax"
-            />
-            <p class="text-right font-mono text-xs tabular-nums">
-              <span class="text-ink">{{ fmtDuration(row.medianDuration) }}</span>
-              <span v-if="row.stddev != null" :class="row.unstable ? 'text-amber-500' : 'text-ink-faint'"> ± {{ fmtDuration(row.stddev) }}</span>
-            </p>
-            <div
-              v-if="row.p10Duration != null && row.p90Duration != null"
-              class="invisible group-hover/dist:visible absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg"
-            >
-              <div class="flex gap-3 font-mono tabular-nums text-ink-muted">
-                <span>p10 {{ fmtDuration(row.p10Duration) }}</span>
-                <span class="text-ink font-medium">p50 {{ fmtDuration(row.medianDuration) }}</span>
-                <span>p90 {{ fmtDuration(row.p90Duration) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Duration delta -->
-          <div class="text-right">
-            <template v-if="row.delta !== null">
-              <p class="text-xs" :class="row.deltaClass">{{ row.deltaLabel }}</p>
-              <p class="text-[10px] text-ink-faint">
-                from {{ fmtDuration(row.prevMedianDuration) }}
-              </p>
-            </template>
-            <p v-else class="text-[10px] text-ink-faint">new</p>
-          </div>
-
-          <!-- Critical path % -->
-          <p
-            class="text-right text-xs font-mono tabular-nums"
-            :class="row.criticalPercent != null && row.criticalPercent > 50
-              ? 'text-red-500 font-medium'
-              : row.criticalPercent != null && row.criticalPercent > 0
-                ? 'text-ink'
-                : 'text-ink-faint'"
+        <template v-for="(col, i) in columns" :key="col.key">
+          <div v-if="i === 4" class="w-2" />
+          <button
+            class="text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer select-none"
+            :class="[
+              col.align === 'right' ? 'text-right' : 'text-left',
+              sortKey === col.key ? 'text-ink' : 'text-ink-faint hover:text-ink',
+            ]"
+            @click="toggleSort(col.key)"
           >
-            {{ row.criticalPercent != null ? `${row.criticalPercent}%` : '--' }}
-          </p>
+            {{ col.label }}{{ sortKey === col.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '' }}
+          </button>
+        </template>
+      </div>
 
-          <!-- Divider -->
-          <div class="w-2" />
-
-          <!-- Retry rate -->
-          <p class="text-right text-xs tabular-nums" :class="row.retryRate > 0 ? 'text-ink' : 'text-ink-faint'">
-            {{ row.retryRateLabel }}
-          </p>
-
-          <!-- Retry delta -->
-          <div class="text-right">
-            <template v-if="row.retryRateDelta !== null && Math.abs(row.retryRateDelta) >= 1">
-              <p class="text-xs" :class="row.retryRateDelta > 0 ? 'text-red-500' : 'text-emerald-600'">
-                {{ row.retryRateDeltaLabel }}
-              </p>
-              <p class="text-[10px] text-ink-faint">
-                from {{ row.prevRetryRateLabel }}
-              </p>
-            </template>
-            <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
-            <p v-else class="text-[10px] text-ink-faint">new</p>
+      <div v-if="loading" class="divide-y divide-border">
+        <div
+          v-for="i in 6"
+          :key="i"
+          class="grid min-w-[46rem] items-center gap-x-2 px-4 py-3"
+          :class="gridClass"
+        >
+          <div>
+            <div class="h-4 w-40 animate-pulse rounded bg-surface-2" />
+            <div class="mt-1 h-3 w-16 animate-pulse rounded bg-surface-2" />
           </div>
-
+          <div class="flex flex-col items-end gap-1">
+            <div class="h-5 w-full animate-pulse rounded bg-surface-2" />
+            <div class="h-3 w-12 animate-pulse rounded bg-surface-2" />
+          </div>
+          <div class="h-3 w-12 ml-auto animate-pulse rounded bg-surface-2" />
+          <div class="h-3 w-8 ml-auto animate-pulse rounded bg-surface-2" />
+          <div class="w-2" />
+          <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
+          <div class="h-3 w-10 ml-auto animate-pulse rounded bg-surface-2" />
         </div>
+      </div>
+      <div v-else-if="rows.length === 0" class="p-4 text-sm text-ink-faint">
+        No job data in this period.
+      </div>
+      <div v-else class="divide-y divide-border">
+        <div v-for="row in rows" :key="row.name">
+          <div
+            class="grid min-w-[46rem] items-center gap-x-2 px-4 py-2.5 cursor-pointer hover:bg-surface-1 transition-colors"
+            :class="gridClass"
+            @click="toggleExpand(row.name)"
+          >
+            <!-- Job name + runs -->
+            <div class="min-w-0">
+              <p class="truncate text-sm text-ink">{{ row.name }}</p>
+              <p class="text-[10px] text-ink-faint">{{ row.runCount }} runs</p>
+            </div>
 
-        <!-- Expanded detail -->
-        <div v-if="expanded === row.name" class="border-t border-border bg-surface-1 px-4 py-3">
-          <JobTimelineChart :job-name="row.name" :since="since" :until="until" :scope="scope" />
-          <div v-if="row.exampleCritical.length > 0 || row.exampleNonCritical.length > 0" class="mt-3 flex gap-6">
-            <div v-if="row.exampleCritical.length > 0">
-              <span class="text-[10px] uppercase tracking-wider text-ink-faint">Critical in</span>
-              <div class="flex flex-wrap gap-1.5 mt-1">
-                <router-link
-                  v-for="pid in row.exampleCritical"
-                  :key="pid"
-                  :to="{ name: 'pipeline-detail', params: { id: pid }, query: { criticalPath: '1' } }"
-                  class="inline-flex items-center rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-mono text-red-600 hover:bg-red-500/20 transition-colors"
-                >
-                  #{{ pid }}
-                </router-link>
+            <!-- Distribution bar + p50 number -->
+            <div class="group/dist relative flex flex-col items-end gap-0.5">
+              <JobDistributionBar
+                :p10="row.p10Duration"
+                :p50="row.medianDuration"
+                :p90="row.p90Duration"
+                :domain-max="domainMax"
+              />
+              <p class="text-right font-mono text-xs tabular-nums">
+                <span class="text-ink">{{ fmtDuration(row.medianDuration) }}</span>
+                <span v-if="row.stddev != null" :class="row.unstable ? 'text-amber-500' : 'text-ink-faint'"> ± {{ fmtDuration(row.stddev) }}</span>
+              </p>
+              <div
+                v-if="row.p10Duration != null && row.p90Duration != null"
+                class="invisible group-hover/dist:visible absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded border border-border bg-surface-0 px-2.5 py-1.5 text-xs shadow-lg"
+              >
+                <div class="flex gap-3 font-mono tabular-nums text-ink-muted">
+                  <span>p10 {{ fmtDuration(row.p10Duration) }}</span>
+                  <span class="text-ink font-medium">p50 {{ fmtDuration(row.medianDuration) }}</span>
+                  <span>p90 {{ fmtDuration(row.p90Duration) }}</span>
+                </div>
               </div>
             </div>
-            <div v-if="row.exampleNonCritical.length > 0">
-              <span class="text-[10px] uppercase tracking-wider text-ink-faint">Not critical in</span>
-              <div class="flex flex-wrap gap-1.5 mt-1">
-                <router-link
-                  v-for="pid in row.exampleNonCritical"
-                  :key="pid"
-                  :to="{ name: 'pipeline-detail', params: { id: pid } }"
-                  class="inline-flex items-center rounded bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-ink-muted hover:bg-surface-3 transition-colors"
-                >
-                  #{{ pid }}
-                </router-link>
+
+            <!-- Duration delta -->
+            <div class="text-right">
+              <template v-if="row.delta !== null">
+                <p class="text-xs" :class="row.deltaClass">{{ row.deltaLabel }}</p>
+                <p class="text-[10px] text-ink-faint">
+                  from {{ fmtDuration(row.prevMedianDuration) }}
+                </p>
+              </template>
+              <p v-else class="text-[10px] text-ink-faint">new</p>
+            </div>
+
+            <!-- Critical path % -->
+            <p
+              class="text-right text-xs font-mono tabular-nums"
+              :class="row.criticalPercent != null && row.criticalPercent > 50
+                ? 'text-red-500 font-medium'
+                : row.criticalPercent != null && row.criticalPercent > 0
+                  ? 'text-ink'
+                  : 'text-ink-faint'"
+            >
+              {{ row.criticalPercent != null ? `${row.criticalPercent}%` : '--' }}
+            </p>
+
+            <!-- Divider -->
+            <div class="w-2" />
+
+            <!-- Retry rate -->
+            <p class="text-right text-xs tabular-nums" :class="row.retryRate > 0 ? 'text-ink' : 'text-ink-faint'">
+              {{ row.retryRateLabel }}
+            </p>
+
+            <!-- Retry delta -->
+            <div class="text-right">
+              <template v-if="row.retryRateDelta !== null && Math.abs(row.retryRateDelta) >= 1">
+                <p class="text-xs" :class="row.retryRateDelta > 0 ? 'text-red-500' : 'text-emerald-600'">
+                  {{ row.retryRateDeltaLabel }}
+                </p>
+                <p class="text-[10px] text-ink-faint">
+                  from {{ row.prevRetryRateLabel }}
+                </p>
+              </template>
+              <p v-else-if="row.retryRateDelta !== null" class="text-[10px] text-ink-faint">--</p>
+              <p v-else class="text-[10px] text-ink-faint">new</p>
+            </div>
+
+          </div>
+
+          <!-- Expanded detail -->
+          <div v-if="expanded === row.name" class="min-w-[46rem] border-t border-border bg-surface-1 px-4 py-3">
+            <JobTimelineChart :job-name="row.name" :since="since" :until="until" :scope="scope" />
+            <div v-if="row.exampleCritical.length > 0 || row.exampleNonCritical.length > 0" class="mt-3 flex flex-wrap gap-6">
+              <div v-if="row.exampleCritical.length > 0">
+                <span class="text-[10px] uppercase tracking-wider text-ink-faint">Critical in</span>
+                <div class="flex flex-wrap gap-1.5 mt-1">
+                  <router-link
+                    v-for="pid in row.exampleCritical"
+                    :key="pid"
+                    :to="{ name: 'pipeline-detail', params: { id: pid }, query: { criticalPath: '1' } }"
+                    class="inline-flex items-center rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-mono text-red-600 hover:bg-red-500/20 transition-colors"
+                  >
+                    #{{ pid }}
+                  </router-link>
+                </div>
+              </div>
+              <div v-if="row.exampleNonCritical.length > 0">
+                <span class="text-[10px] uppercase tracking-wider text-ink-faint">Not critical in</span>
+                <div class="flex flex-wrap gap-1.5 mt-1">
+                  <router-link
+                    v-for="pid in row.exampleNonCritical"
+                    :key="pid"
+                    :to="{ name: 'pipeline-detail', params: { id: pid } }"
+                    class="inline-flex items-center rounded bg-surface-2 px-1.5 py-0.5 text-xs font-mono text-ink-muted hover:bg-surface-3 transition-colors"
+                  >
+                    #{{ pid }}
+                  </router-link>
+                </div>
               </div>
             </div>
           </div>

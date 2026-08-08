@@ -1,9 +1,10 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="grid grid-cols-5 divide-x divide-border">
+    <!-- Five columns of chips don't fit a phone; stack the week instead. -->
+    <div class="grid grid-cols-1 divide-y divide-border md:grid-cols-5 md:divide-x md:divide-y-0">
       <div v-for="day in days" :key="day.date" class="min-w-0">
         <!-- Day header -->
-        <div class="border-b border-border px-3 py-2.5">
+        <div class="border-border px-3 py-2.5 md:border-b">
           <div class="flex items-center justify-between">
             <span class="text-xs font-semibold uppercase text-ink-muted">
               {{ day.dayLabel }}
@@ -24,7 +25,7 @@
           </div>
         </div>
         <!-- Entries grouped by epic -->
-        <div class="p-2" :class="{ 'min-h-[120px]': day.entries.length === 0 }">
+        <div class="p-2" :class="{ 'md:min-h-[120px]': day.entries.length === 0 }">
           <div
             v-for="group in groupByEpic(day.entries)"
             :key="group.key"

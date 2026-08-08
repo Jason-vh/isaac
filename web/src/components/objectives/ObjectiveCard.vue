@@ -2,7 +2,7 @@
   <div class="card overflow-hidden">
     <button
       @click="$emit('toggle')"
-      class="flex w-full items-start justify-between gap-4 p-5 text-left transition-colors hover:bg-surface-1"
+      class="flex w-full items-start justify-between gap-4 p-4 text-left transition-colors hover:bg-surface-1 sm:p-5"
     >
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-3">
@@ -15,7 +15,7 @@
         <p v-if="objective.description" class="mt-1 ml-8 text-sm text-ink-muted line-clamp-2">
           {{ objective.description }}
         </p>
-        <div class="mt-2 ml-8 flex items-center gap-4 text-xs text-ink-faint">
+        <div class="mt-2 ml-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-faint">
           <span>
             {{ objective.keyResults.length }} key result{{ objective.keyResults.length !== 1 ? 's' : '' }}
           </span>
@@ -27,7 +27,7 @@
     </button>
 
     <!-- Expanded: KR list -->
-    <div v-if="expanded" class="border-t border-border px-5 pb-4">
+    <div v-if="expanded" class="border-t border-border px-4 pb-4 sm:px-5">
       <KeyResultRow
         v-for="kr in keyResultsData"
         :key="kr.slug"

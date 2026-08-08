@@ -1,20 +1,20 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-5">
+  <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
     <div
       v-for="stat in cards"
       :key="stat.label"
-      class="card group relative overflow-hidden p-4"
+      class="card group relative overflow-hidden p-3 sm:p-4"
     >
       <div
-        class="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg"
+        class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg sm:right-3 sm:top-3 sm:h-8 sm:w-8"
         :class="stat.iconBg"
       >
         <component :is="stat.icon" class="h-4 w-4" :class="stat.iconColor" />
       </div>
-      <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
+      <p class="pr-8 text-xs font-medium uppercase tracking-wider text-ink-faint">
         {{ stat.label }}
       </p>
-      <p class="mt-1 font-mono text-3xl font-medium tabular-nums text-ink">
+      <p class="mt-1 font-mono text-2xl font-medium tabular-nums text-ink sm:text-3xl">
         {{ stat.value }}
       </p>
       <p v-if="stat.detail" class="mt-1 text-sm text-ink-muted">

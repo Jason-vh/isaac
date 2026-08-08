@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+    <div class="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5">
       <div>
         <h2 class="text-lg font-semibold text-ink">Merge requests</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
@@ -12,7 +12,7 @@
           v-model="query"
           type="search"
           placeholder="Search title, !iid or author"
-          class="w-64 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-full min-w-0 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent sm:w-64"
         />
         <p class="whitespace-nowrap text-sm text-ink-muted">{{ sorted.length }} MRs</p>
       </div>
@@ -22,48 +22,50 @@
       {{ query ? `No MRs match "${query}".` : "Nothing to show." }}
     </div>
 
-    <table v-else class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
-          <th class="px-5 py-2.5 font-medium">MR</th>
-          <th
-            v-for="col in columns"
-            :key="col.key"
-            class="cursor-pointer select-none py-2.5 text-right font-medium transition-colors hover:text-ink"
-            :class="[col.key === 'hoursToMerge' ? 'px-5' : 'px-3', sortKey === col.key && 'text-ink']"
-            @click="toggleSort(col.key)"
+    <div v-else class="table-scroll">
+      <table class="w-full min-w-[720px] text-sm">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
+            <th class="px-4 py-2.5 font-medium sm:px-5">MR</th>
+            <th
+              v-for="col in columns"
+              :key="col.key"
+              class="cursor-pointer select-none py-2.5 text-right font-medium transition-colors hover:text-ink"
+              :class="[col.key === 'hoursToMerge' ? 'px-4 sm:px-5' : 'px-3', sortKey === col.key && 'text-ink']"
+              @click="toggleSort(col.key)"
+            >
+              {{ col.label }}
+              <span v-if="sortKey === col.key">{{ descending ? "↓" : "↑" }}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="mr in visible"
+            :key="mr.id"
+            class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
           >
-            {{ col.label }}
-            <span v-if="sortKey === col.key">{{ descending ? "↓" : "↑" }}</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="mr in visible"
-          :key="mr.id"
-          class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
-        >
-          <td class="max-w-md truncate px-5 py-3">
-            <a :href="mr.webUrl" target="_blank" class="text-ink hover:text-accent">
-              <span class="font-mono text-ink-faint">!{{ mr.iid }}</span>
-              {{ mr.title }}
-            </a>
-            <span v-if="authorName(mr.authorId)" class="ml-2 text-ink-muted">
-              {{ authorName(mr.authorId) }}
-            </span>
-          </td>
-          <td
-            v-for="col in columns"
-            :key="col.key"
-            class="py-3 text-right font-mono tabular-nums text-ink"
-            :class="col.key === 'hoursToMerge' ? 'px-5' : 'px-3'"
-          >
-            {{ col.format(mr[col.key]) }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td class="max-w-[18rem] truncate px-4 py-3 sm:max-w-md sm:px-5">
+              <a :href="mr.webUrl" target="_blank" class="text-ink hover:text-accent">
+                <span class="font-mono text-ink-faint">!{{ mr.iid }}</span>
+                {{ mr.title }}
+              </a>
+              <span v-if="authorName(mr.authorId)" class="ml-2 text-ink-muted">
+                {{ authorName(mr.authorId) }}
+              </span>
+            </td>
+            <td
+              v-for="col in columns"
+              :key="col.key"
+              class="py-3 text-right font-mono tabular-nums text-ink"
+              :class="col.key === 'hoursToMerge' ? 'px-4 sm:px-5' : 'px-3'"
+            >
+              {{ col.format(mr[col.key]) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <button
       v-if="sorted.length > visible.length"

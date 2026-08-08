@@ -3,7 +3,7 @@
     <!-- Tabs -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-ink">Objectives</h1>
+        <h1 class="text-xl font-bold text-ink sm:text-2xl">Objectives</h1>
         <p class="mt-1 text-sm text-ink-muted">2026 objectives and key results.</p>
       </div>
     </div>

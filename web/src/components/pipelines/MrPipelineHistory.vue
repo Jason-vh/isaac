@@ -16,7 +16,7 @@
         v-for="(p, idx) in chronological"
         :key="p.id"
         :to="{ name: 'pipeline-detail', params: { id: p.id } }"
-        class="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-surface-1 transition-colors text-left"
+        class="flex w-full items-stretch gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-1"
         :class="idx === firstSuccessIndex ? 'ring-1 ring-inset ring-emerald-300 bg-emerald-50/40' : ''"
       >
         <!-- Left border color strip -->
@@ -25,49 +25,52 @@
           :class="statusBarColor(p.status)"
         />
 
-        <!-- Run number -->
-        <span class="shrink-0 text-xs font-semibold text-ink-muted tabular-nums w-8">
-          #{{ idx + 1 }}
-        </span>
+        <!-- The run's details wrap onto a second line on phones -->
+        <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <!-- Run number -->
+          <span class="shrink-0 text-xs font-semibold text-ink-muted tabular-nums w-8">
+            #{{ idx + 1 }}
+          </span>
 
-        <!-- Status badge -->
-        <span
-          class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-          :class="statusBadgeColor(p.status)"
-        >
-          {{ p.status }}
-        </span>
+          <!-- Status badge -->
+          <span
+            class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+            :class="statusBadgeColor(p.status)"
+          >
+            {{ p.status }}
+          </span>
 
-        <!-- Type badge -->
-        <span
-          class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-          :class="typeBadgeColor(p)"
-        >
-          {{ pipelineType(p) }}
-        </span>
+          <!-- Type badge -->
+          <span
+            class="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
+            :class="typeBadgeColor(p)"
+          >
+            {{ pipelineType(p) }}
+          </span>
 
-        <!-- Duration -->
-        <span class="shrink-0 font-mono text-sm tabular-nums text-ink">
-          {{ p.durationSeconds != null ? fmtDuration(p.durationSeconds) : '--' }}
-        </span>
+          <!-- Duration -->
+          <span class="shrink-0 font-mono text-sm tabular-nums text-ink">
+            {{ p.durationSeconds != null ? fmtDuration(p.durationSeconds) : '--' }}
+          </span>
 
-        <!-- Spacer -->
-        <span class="flex-1" />
+          <!-- Spacer -->
+          <span class="hidden flex-1 sm:block" />
 
-        <!-- Job counts -->
-        <span class="shrink-0 text-xs text-ink-faint tabular-nums">
-          {{ p.jobCount }} jobs
-        </span>
-        <span
-          v-if="p.retriedJobCount > 0"
-          class="shrink-0 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 tabular-nums"
-        >
-          {{ p.retriedJobCount }} retried
-        </span>
+          <!-- Job counts -->
+          <span class="shrink-0 text-xs text-ink-faint tabular-nums">
+            {{ p.jobCount }} jobs
+          </span>
+          <span
+            v-if="p.retriedJobCount > 0"
+            class="shrink-0 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 tabular-nums"
+          >
+            {{ p.retriedJobCount }} retried
+          </span>
 
-        <!-- Date -->
-        <span class="shrink-0 font-mono text-xs text-ink-muted tabular-nums">
-          {{ fmtDate(p.gitlabCreatedAt) }}
+          <!-- Date -->
+          <span class="shrink-0 font-mono text-xs text-ink-muted tabular-nums">
+            {{ fmtDate(p.gitlabCreatedAt) }}
+          </span>
         </span>
 
         <!-- GitLab link -->
@@ -75,7 +78,7 @@
           :href="p.webUrl"
           target="_blank"
           rel="noopener"
-          class="shrink-0 text-ink-faint hover:text-ink transition-colors"
+          class="flex shrink-0 items-center text-ink-faint transition-colors hover:text-ink"
           @click.stop
         >
           <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5" />

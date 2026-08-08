@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-ink">Admin</h1>
+    <h1 class="text-xl font-bold text-ink sm:text-2xl">Admin</h1>
     <p class="mt-1 text-sm text-ink-muted">Trigger syncs and view sync history.</p>
 
     <p v-if="error" class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -8,8 +8,8 @@
     </p>
 
     <!-- Sync trigger -->
-    <div class="mt-6 rounded-lg border border-border bg-surface p-5">
-      <div class="flex items-center justify-between">
+    <div class="mt-6 rounded-lg border border-border bg-surface p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-ink">Trigger Sync</h2>
         <div class="flex gap-2">
           <button
@@ -61,7 +61,7 @@
       </div>
 
       <!-- Options row -->
-      <div class="mt-4 flex items-center gap-4">
+      <div class="mt-4 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
           <label class="text-xs text-ink-muted">Since</label>
           <input
@@ -123,7 +123,7 @@
 
     <!-- Sync log -->
     <div class="mt-6">
-      <div class="flex items-center justify-between">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-ink">Sync Log</h2>
         <button
           v-if="hasStaleRunning"
@@ -140,8 +140,8 @@
 
       <div v-else-if="!logEntries.length" class="mt-4 text-sm text-ink-faint">No sync log entries.</div>
 
-      <div v-else class="mt-3 overflow-x-auto">
-        <table class="w-full text-left text-sm">
+      <div v-else class="mt-3 table-scroll">
+        <table class="w-full min-w-[680px] text-left text-sm">
           <thead>
             <tr class="border-b border-border text-ink-muted">
               <th class="pb-2 pr-4 font-medium">Source</th>

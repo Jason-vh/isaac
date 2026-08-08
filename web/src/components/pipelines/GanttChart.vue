@@ -1,7 +1,9 @@
 <template>
-  <div class="flex">
+  <!-- Below the min-width the bars have no room left to mean anything, so the
+       parent scroll container takes over. -->
+  <div class="flex min-w-[36rem]">
     <!-- Labels column -->
-    <div class="w-48 shrink-0 border-r border-border">
+    <div class="w-32 shrink-0 border-r border-border sm:w-48">
       <div class="h-6" />
       <template v-for="item in flatItems" :key="item.key">
         <div

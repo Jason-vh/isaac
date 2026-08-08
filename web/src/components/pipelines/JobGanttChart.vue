@@ -1,18 +1,18 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center gap-3 border-b border-border px-4 py-3">
+    <div class="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Pipeline Structure
       </h3>
-      <div class="ml-auto flex items-center gap-3">
+      <div class="ml-auto flex flex-1 items-center gap-3 sm:flex-none">
         <input
           v-model="search"
           type="text"
           placeholder="Filter jobs..."
-          class="w-48 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none"
+          class="w-full min-w-0 rounded border border-border bg-surface px-2 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-ink focus:outline-none sm:w-48"
         />
       </div>
-      <div class="flex items-center gap-3 text-[10px] text-ink-faint">
+      <div class="flex flex-wrap items-center gap-3 text-[10px] text-ink-faint">
         <span class="flex items-center gap-1">
           <span class="inline-block h-2.5 w-5 rounded-sm" style="background: #93C5FD" />
           &lt; 5%
@@ -41,7 +41,7 @@
     <div v-else-if="scheduling.stages.length === 0" class="p-4 text-sm text-ink-faint">
       No job data.
     </div>
-    <div v-else class="relative">
+    <div v-else class="relative table-scroll">
       <GanttChart
         :stages="stages"
         :ticks="ticks"

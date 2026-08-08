@@ -1,10 +1,10 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="flex items-center justify-between border-b border-border px-4 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
       <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-faint">
         Duration Trend
       </h3>
-      <div class="flex items-center gap-3">
+      <div class="flex flex-wrap items-center gap-3">
         <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
           <button
             v-for="opt in splitOptions"
@@ -34,7 +34,7 @@
       </div>
     </div>
     <div v-if="loading" class="p-4">
-      <div class="flex items-center justify-center" style="height: 420px">
+      <div class="flex h-64 items-center justify-center sm:h-[420px]">
         <span class="text-sm text-ink-faint animate-pulse">Loading chart...</span>
       </div>
     </div>
@@ -42,7 +42,7 @@
       No data yet.
     </div>
     <div v-else class="p-4">
-      <v-chart :option="chartOption" autoresize style="height: 420px" @click="onChartClick" />
+      <v-chart :option="chartOption" autoresize class="h-64 sm:h-[420px]" @click="onChartClick" />
     </div>
   </div>
 </template>

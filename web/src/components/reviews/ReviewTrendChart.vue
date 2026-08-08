@@ -1,8 +1,8 @@
 <template>
-  <div class="card p-5">
-    <div class="flex items-center justify-between">
+  <div class="card p-4 sm:p-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-lg font-semibold text-ink">Weekly trend (p50)</h2>
-      <div class="flex items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+      <div class="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
         <button
           v-for="opt in metricOptions"
           :key="opt.value"

@@ -1,6 +1,6 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-6">
-    <div v-for="card in cards" :key="card.label" class="card p-4">
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+    <div v-for="card in cards" :key="card.label" class="card p-3 sm:p-4">
       <p class="text-xs font-medium uppercase tracking-wider text-ink-faint">
         {{ card.label }}
       </p>

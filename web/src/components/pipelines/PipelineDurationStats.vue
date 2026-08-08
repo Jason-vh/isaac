@@ -1,9 +1,9 @@
 <template>
-  <div class="grid grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     <template v-if="loading">
       <div v-for="i in 2" :key="i" class="card p-4">
         <div class="h-3 w-16 animate-pulse rounded bg-surface-2" />
-        <div class="mt-3 grid grid-cols-4 gap-4">
+        <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div v-for="j in 4" :key="j">
             <div class="h-2 w-8 animate-pulse rounded bg-surface-2" />
             <div class="mt-2 h-6 w-20 animate-pulse rounded bg-surface-2" />
@@ -16,7 +16,7 @@
         <p class="text-xs font-semibold uppercase tracking-wider" :class="group.labelClass">
           {{ group.label }}
         </p>
-        <div class="mt-3 grid grid-cols-4 gap-4">
+        <div class="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div v-for="stat in group.stats" :key="stat.label">
             <p class="text-[10px] font-medium uppercase tracking-wider text-ink-faint">
               {{ stat.label }}

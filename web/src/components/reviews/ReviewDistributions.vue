@@ -1,6 +1,6 @@
 <template>
   <div class="card overflow-hidden">
-    <div class="border-b border-border px-5 py-4">
+    <div class="border-b border-border px-4 py-4 sm:px-5">
       <h2 class="text-lg font-semibold text-ink">Distributions</h2>
       <p class="mt-0.5 text-sm text-ink-muted">
         Medians and tails per merged MR, timed from when it first went in front
@@ -12,36 +12,38 @@
       Loading…
     </div>
 
-    <table v-else class="w-full text-sm">
-      <thead>
-        <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
-          <th class="px-5 py-2.5 font-medium">Metric</th>
-          <th class="px-3 py-2.5 text-right font-medium">p50</th>
-          <th class="px-3 py-2.5 text-right font-medium">p90</th>
-          <th class="px-3 py-2.5 text-right font-medium">p99</th>
-          <th class="px-5 py-2.5 text-right font-medium">MRs</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="row in rows"
-          :key="row.label"
-          class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
-        >
-          <td class="px-5 py-3 text-ink">{{ row.label }}</td>
-          <td
-            v-for="(value, i) in [row.dist.p50, row.dist.p90, row.dist.p99]"
-            :key="i"
-            class="px-3 py-3 text-right font-mono tabular-nums text-ink"
+    <div v-else class="table-scroll">
+      <table class="w-full min-w-[440px] text-sm">
+        <thead>
+          <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-ink-faint">
+            <th class="px-4 py-2.5 font-medium sm:px-5">Metric</th>
+            <th class="px-3 py-2.5 text-right font-medium">p50</th>
+            <th class="px-3 py-2.5 text-right font-medium">p90</th>
+            <th class="px-3 py-2.5 text-right font-medium">p99</th>
+            <th class="px-4 py-2.5 text-right font-medium sm:px-5">MRs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in rows"
+            :key="row.label"
+            class="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-1"
           >
-            {{ row.format(value) }}
-          </td>
-          <td class="px-5 py-3 text-right font-mono tabular-nums text-ink-muted">
-            {{ row.dist.n }}
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            <td class="px-4 py-3 text-ink sm:px-5">{{ row.label }}</td>
+            <td
+              v-for="(value, i) in [row.dist.p50, row.dist.p90, row.dist.p99]"
+              :key="i"
+              class="px-3 py-3 text-right font-mono tabular-nums text-ink"
+            >
+              {{ row.format(value) }}
+            </td>
+            <td class="px-4 py-3 text-right font-mono tabular-nums text-ink-muted sm:px-5">
+              {{ row.dist.n }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 

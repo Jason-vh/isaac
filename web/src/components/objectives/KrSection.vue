@@ -1,12 +1,12 @@
 <template>
   <div class="card overflow-hidden">
     <!-- Header -->
-    <div class="flex items-start justify-between gap-4 p-5">
+    <div class="flex items-start justify-between gap-4 p-4 sm:p-5">
       <div class="flex-1 min-w-0">
         <h3 class="text-sm font-medium text-ink">{{ kr.title }}</h3>
 
         <!-- Evidence summary chips -->
-        <div v-if="summary && summary.total > 0" class="mt-1.5 flex items-center gap-2">
+        <div v-if="summary && summary.total > 0" class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span v-if="summary.epics" class="inline-flex items-center gap-1 text-xs text-ink-faint">
             <span class="inline-block h-1.5 w-1.5 rounded-full bg-activity-ticket" />
             {{ summary.epics }} epic{{ summary.epics !== 1 ? 's' : '' }}
@@ -41,7 +41,7 @@
     </div>
 
     <!-- Timeline -->
-    <div class="border-t border-border px-5 py-4">
+    <div class="border-t border-border px-4 py-4 sm:px-5">
       <KrTimeline :events="timeline" :loading="timelineLoading" />
     </div>
   </div>
