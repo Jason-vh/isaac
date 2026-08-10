@@ -400,6 +400,27 @@ export const wbsoEntryMarks = pgTable(
   (t) => [uniqueIndex("wbso_entry_marks_date_row_idx").on(t.date, t.rowKey)]
 );
 
+// --- sprints ---
+
+// Jira board sprints. Cadence is nominally two weeks but real sprints drift,
+// so ranges are read from here rather than computed from a fixed anchor.
+export const sprints = pgTable(
+  "sprints",
+  {
+    // Jira's own sprint id.
+    id: integer("id").primaryKey(),
+    boardId: integer("board_id").notNull(),
+    name: text("name").notNull(),
+    state: text("state").notNull(),
+    goal: text("goal"),
+    startDate: timestamp("start_date", { withTimezone: true }),
+    endDate: timestamp("end_date", { withTimezone: true }),
+    completeDate: timestamp("complete_date", { withTimezone: true }),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("sprints_start_date_idx").on(t.startDate)]
+);
+
 // --- sync_log ---
 
 export const syncLog = pgTable("sync_log", {

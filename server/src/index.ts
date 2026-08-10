@@ -14,6 +14,7 @@ import { wbsoRoutes } from "./routes/wbso";
 import { activityRoutes } from "./routes/activity";
 import { teamRoutes } from "./routes/team";
 import { reviewRoutes } from "./routes/reviews";
+import { sprintRoutes } from "./routes/sprints";
 import { digestRoutes } from "./routes/digest";
 import { verifyJwt, requireOwner } from "./auth/middleware";
 
@@ -38,6 +39,7 @@ const app = new Elysia()
       .use(activityRoutes)
       .use(teamRoutes)
       .use(reviewRoutes)
+      .use(sprintRoutes)
       .use(digestRoutes)
       .guard({ beforeHandle: requireOwner }, (app) =>
         app.use(syncRoutes).use(shareRoutes)

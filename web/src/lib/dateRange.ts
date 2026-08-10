@@ -1,5 +1,7 @@
 /** Shared helpers for the `since`/`until` date range used across report pages. */
 
+import type { Sprint } from "@isaac/shared";
+
 export interface DateRange {
   since: string;
   until: string;
@@ -11,10 +13,6 @@ export interface DateRangePreset {
   title: string;
   range: () => DateRange;
 }
-
-/** Sprints run for two weeks from this Monday onwards. */
-const SPRINT_ANCHOR = "2024-01-01";
-const SPRINT_LENGTH_DAYS = 14;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -59,13 +57,6 @@ export function formatDayCount(days: number): string {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-/** Start of the sprint containing `date`. */
-export function sprintStart(date = today()): string {
-  const elapsed = dayIndex(date) - dayIndex(SPRINT_ANCHOR);
-  const offset = ((elapsed % SPRINT_LENGTH_DAYS) + SPRINT_LENGTH_DAYS) % SPRINT_LENGTH_DAYS;
-  return addDays(date, -offset);
-}
-
 /** A range of `days` ending today, inclusive — "7d" really covers 7 days. */
 function lastDays(days: number): DateRange {
   return { since: daysAgo(days - 1), until: today() };
@@ -73,21 +64,57 @@ function lastDays(days: number): DateRange {
 
 export const DATE_PRESETS: DateRangePreset[] = [
   { id: "today", label: "Today", title: "Today", range: () => ({ since: today(), until: today() }) },
-  { id: "sprint", label: "Sprint", title: "This sprint so far", range: () => ({ since: sprintStart(), until: today() }) },
   { id: "7d", label: "7d", title: "Last 7 days", range: () => lastDays(7) },
   { id: "30d", label: "30d", title: "Last 30 days", range: () => lastDays(30) },
   { id: "90d", label: "90d", title: "Last 90 days", range: () => lastDays(90) },
 ];
 
+/** Looks up one of the fixed presets, for seeding a page's default range. */
 export function presetRange(id: string): DateRange {
   const preset = DATE_PRESETS.find((p) => p.id === id);
   if (!preset) throw new Error(`Unknown date preset: ${id}`);
   return preset.range();
 }
 
+/**
+ * A sprint as an inclusive range. Jira's end date is the next sprint's start,
+ * so the last day is one earlier; a running sprint stops at today.
+ */
+export function sprintRange(sprint: Sprint): DateRange {
+  const since = toDateString(new Date(sprint.startDate!));
+  const end = sprint.endDate
+    ? addDays(toDateString(new Date(sprint.endDate)), -1)
+    : today();
+  const now = today();
+  // A running sprint stops at today; one yet to start keeps its full span.
+  return { since, until: since <= now && end > now ? now : end };
+}
+
+/** The sprint covering today, else the most recent one to have started. */
+export function currentSprint(sprints: Sprint[]): Sprint | null {
+  const started = sprints
+    .filter((s) => s.startDate && s.startDate.slice(0, 10) <= today())
+    .sort((a, b) => b.startDate!.localeCompare(a.startDate!));
+  return started.find((s) => s.state === "active") ?? started[0] ?? null;
+}
+
+/** Presets for the picker; the sprint one appears once sprints have loaded. */
+export function buildPresets(sprints: Sprint[]): DateRangePreset[] {
+  const sprint = currentSprint(sprints);
+  if (!sprint) return DATE_PRESETS;
+
+  const preset: DateRangePreset = {
+    id: "sprint",
+    label: "Sprint",
+    title: `${sprint.name} so far`,
+    range: () => sprintRange(sprint),
+  };
+  return [DATE_PRESETS[0], preset, ...DATE_PRESETS.slice(1)];
+}
+
 /** The preset matching this range, if any, so hand-picked dates still light one up. */
-export function matchPreset(range: DateRange): string | null {
-  const match = DATE_PRESETS.find((p) => {
+export function matchPreset(range: DateRange, presets: DateRangePreset[]): string | null {
+  const match = presets.find((p) => {
     const r = p.range();
     return r.since === range.since && r.until === range.until;
   });

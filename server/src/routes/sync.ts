@@ -4,6 +4,7 @@ import { db } from "../db";
 import { syncLog } from "../db/schema";
 import { isSyncRunning } from "../sync/util";
 import { syncJira } from "../sync/jira";
+import { syncJiraSprints } from "../sync/jira-sprints";
 import { syncGitLab } from "../sync/gitlab";
 import { syncConfluence } from "../sync/confluence";
 import { syncCalendar } from "../sync/calendar";
@@ -12,6 +13,7 @@ import { runLinker } from "../sync/linker";
 
 const SYNC_FNS: Record<string, (since?: Date, opts?: { force?: boolean }) => Promise<void>> = {
   jira: syncJira,
+  "jira-sprints": syncJiraSprints,
   gitlab: syncGitLab,
   confluence: syncConfluence,
   calendar: syncCalendar,

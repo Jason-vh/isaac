@@ -924,3 +924,14 @@ export interface ReviewerReport {
   /** Share of reviews done by the two busiest reviewers. */
   top2Share: number;
 }
+
+/** A Jira board sprint. Dates are ISO strings; `startDate` is absent on some future sprints. */
+export interface Sprint {
+  id: number;
+  name: string;
+  state: "active" | "closed" | "future";
+  goal: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  completeDate: string | null;
+}

@@ -72,15 +72,16 @@
 import { computed } from "vue";
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/vue/20/solid";
 import {
-  DATE_PRESETS,
   addDays,
+  buildPresets,
   dayCount,
   formatDayCount,
   formatRange,
   matchPreset,
-  presetRange,
+  sprintRange,
   today,
 } from "../../lib/dateRange";
+import { useSprints } from "../../composables/useSprints";
 
 const props = defineProps<{ since: string; until: string }>();
 const emit = defineEmits<{
@@ -88,13 +89,29 @@ const emit = defineEmits<{
   "update:until": [string];
 }>();
 
-const presets = DATE_PRESETS;
+const { sprints } = useSprints();
 const maxDate = today();
 
+const presets = computed(() => buildPresets(sprints.value));
 const range = computed(() => ({ since: props.since, until: props.until }));
-const activePreset = computed(() => matchPreset(range.value));
+const activePreset = computed(() => matchPreset(range.value, presets.value));
 const durationLabel = computed(() => formatDayCount(dayCount(range.value)));
 const canShiftForward = computed(() => props.until < maxDate);
+
+/** Sprints oldest first, so the arrows can step between neighbours. */
+const byStart = computed(() =>
+  sprints.value
+    .filter((s) => s.startDate)
+    .sort((a, b) => a.startDate!.localeCompare(b.startDate!))
+);
+
+/** Index of the sprint the current range covers exactly, if any. */
+const selectedSprint = computed(() =>
+  byStart.value.findIndex((s) => {
+    const r = sprintRange(s);
+    return r.since === props.since && r.until === props.until;
+  })
+);
 
 function update(since: string, until: string) {
   if (since !== props.since) emit("update:since", since);
@@ -102,12 +119,26 @@ function update(since: string, until: string) {
 }
 
 function apply(id: string) {
-  const next = presetRange(id);
-  update(next.since, next.until);
+  const next = presets.value.find((p) => p.id === id)?.range();
+  if (next) update(next.since, next.until);
 }
 
-/** Move the window one full duration earlier or later, never past today. */
+/**
+ * Steps to the neighbouring sprint when a sprint is selected — sprint lengths
+ * vary, so a fixed offset would drift — and by the range's own length otherwise.
+ */
 function shift(direction: -1 | 1) {
+  const index = selectedSprint.value;
+  if (index !== -1) {
+    const neighbour = byStart.value[index + direction];
+    if (neighbour && neighbour.startDate!.slice(0, 10) <= maxDate) {
+      const next = sprintRange(neighbour);
+      update(next.since, next.until);
+      return;
+    }
+    if (direction === -1) return;
+  }
+
   const length = dayCount(range.value);
   const until = addDays(props.until, length * direction);
   const clamped = until > maxDate ? maxDate : until;

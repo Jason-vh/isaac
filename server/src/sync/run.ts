@@ -4,6 +4,7 @@
 import { validateSyncEnv } from "../env";
 import { isSyncRunning } from "./util";
 import { syncJira } from "./jira";
+import { syncJiraSprints } from "./jira-sprints";
 import { syncGitLab } from "./gitlab";
 import { syncConfluence } from "./confluence";
 import { syncCalendar } from "./calendar";
@@ -25,6 +26,7 @@ async function main() {
   // Step 3: Run syncs sequentially — failure doesn't abort subsequent syncs
   const syncs = [
     { name: "Jira", fn: syncJira },
+    { name: "Jira Sprints", fn: syncJiraSprints },
     { name: "GitLab", fn: syncGitLab },
     { name: "Confluence", fn: syncConfluence },
     { name: "Calendar", fn: syncCalendar },
