@@ -3,13 +3,15 @@ import { desc, isNotNull } from "drizzle-orm";
 import type { Sprint } from "@isaac/shared";
 import { db } from "../db";
 import { sprints } from "../db/schema";
+import { parseLimit } from "../lib/request";
 
 const DEFAULT_LIMIT = 24;
+const MAX_LIMIT = 100;
 
 export const sprintRoutes = new Elysia({ prefix: "/api/sprints" }).get(
   "/",
   async ({ query }): Promise<Sprint[]> => {
-    const limit = Math.min(Number(query.limit) || DEFAULT_LIMIT, 100);
+    const limit = parseLimit(query.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
     const rows = await db
       .select()

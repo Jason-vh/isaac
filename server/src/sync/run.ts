@@ -33,11 +33,14 @@ async function main() {
     { name: "GitLab Pipelines", fn: syncGitLabPipelines },
   ];
 
+  const failed: string[] = [];
+
   for (const { name, fn } of syncs) {
     try {
       await fn();
     } catch (err) {
       console.error(`[sync] ${name} sync failed:`, err);
+      failed.push(name);
       // Continue with next sync
     }
   }
@@ -47,9 +50,16 @@ async function main() {
     await runLinker();
   } catch (err) {
     console.error("[sync] Linker failed:", err);
+    failed.push("Linker");
   }
 
   console.log(`[sync] Sync run complete at ${new Date().toISOString()}`);
+
+  // Exit non-zero so the cron run is reported as failed rather than green.
+  if (failed.length > 0) {
+    console.error(`[sync] Failed sources: ${failed.join(", ")}`);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

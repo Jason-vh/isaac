@@ -7,6 +7,9 @@
     "dev:server": "bun run --filter server dev",
     "dev:web": "bun run --filter web dev",
     "build": "bun run --filter web build",
+    "test": "bun test",
+    "typecheck": "bun run --filter server typecheck && bun run --filter web typecheck",
+    "check": "bun run typecheck && bun run test",
     "start": "bun run server/src/index.ts"
   }
 }

@@ -3,14 +3,8 @@ import { and, eq, or, ilike, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { meetings, mergeRequests, tickets, wbsoEntryMarks } from "../db/schema";
 import { estimateWeek } from "../wbso/estimator";
-
-function getMonday(dateStr: string): Date {
-  const d = new Date(dateStr + "T00:00:00Z");
-  const day = d.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setUTCDate(d.getUTCDate() + diff);
-  return d;
-}
+import { isDateString, mondayOf } from "../lib/calendar";
+import { requireOwner } from "../auth/middleware";
 
 export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
   .get("/tickets/search", async ({ query }) => {
@@ -49,19 +43,17 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
       epicTitle: r.epicKey ? epicTitleMap.get(r.epicKey) ?? null : null,
     }));
   })
-  .get("/week/:date", async ({ params }) => {
-    const monday = getMonday(params.date);
-    return estimateWeek(monday);
-  })
-  // Mark a worksheet row as transcribed into the WBSO form, or clear the mark.
-  .put("/marks", async ({ body, store }) => {
-    if (!(store as any).isOwner) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      });
+  .get("/week/:date", async ({ params, set }) => {
+    if (!isDateString(params.date)) {
+      set.status = 400;
+      return { error: "Invalid date, expected YYYY-MM-DD" };
     }
-
+    return estimateWeek(mondayOf(params.date));
+  })
+  .guard({ beforeHandle: requireOwner }, (app) =>
+    app
+  // Mark a worksheet row as transcribed into the WBSO form, or clear the mark.
+  .put("/marks", async ({ body }) => {
     const { date, rowKey, hours, marked } = (body ?? {}) as {
       date?: string;
       rowKey?: string;
@@ -101,14 +93,7 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
 
     return { date, rowKey, marked: true };
   })
-  .patch("/meetings/:id", async ({ params, body, store }) => {
-    if (!(store as any).isOwner) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
+  .patch("/meetings/:id", async ({ params, body }) => {
     const { category, epicKey, ticketKey } = (body ?? {}) as {
       category?: "dev" | "non_dev";
       epicKey?: string;
@@ -186,14 +171,7 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
 
     return updated;
   })
-  .patch("/merge-requests/:id", async ({ params, body, store }) => {
-    if (!(store as any).isOwner) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
+  .patch("/merge-requests/:id", async ({ params, body }) => {
     const { ticketKey } = (body ?? {}) as { ticketKey?: string };
 
     if (!ticketKey) {
@@ -231,4 +209,5 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
     }
 
     return updated;
-  });
+  })
+  );

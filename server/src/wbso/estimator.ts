@@ -20,52 +20,25 @@ import type {
   WbsoReasoning,
 } from "@isaac/shared";
 import { wbsoRowKey } from "@isaac/shared";
+import { allocateDay, HOURS_PER_DAY } from "./allocate";
+import {
+  addDays,
+  amsterdamDayStart,
+  toAmsterdamDate,
+  todayInAmsterdam,
+  type DateString,
+} from "../lib/calendar";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-const HOURS_PER_DAY = 8;
+
+/** Reviewing a diff is faster than writing it. */
 const REVIEW_WEIGHT_FACTOR = 0.1;
-const CODING_MIN_WEIGHT = 60; // fallback when MR stats are 0
-const REVIEW_MIN_WEIGHT = 10; // fallback when MR stats are 0
-const MIN_ENTRY_HOURS = 0.25;
-const MIN_REVIEW_HOURS = 0.25; // 15 minutes (quarter hour, survives rounding)
 
-function formatDate(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-
-// Convert a timestamp to Amsterdam-local date string (YYYY-MM-DD)
-function toAmsterdamDate(ts: Date): string {
-  return ts.toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-}
-
-/**
- * Rounds hours to quarter-hour increments while preserving a target total.
- * Uses the largest-remainder method (Hamilton's method).
- */
-function roundToQuartersPreservingTotal(
-  entries: { hours: number }[],
-  target: number
-): void {
-  if (entries.length === 0) return;
-
-  const targetQuarters = Math.round(target * 4);
-  const floors = entries.map((e) => Math.floor(e.hours * 4));
-  const remainders = entries.map((e, i) => e.hours * 4 - floors[i]);
-  let deficit = targetQuarters - floors.reduce((a, b) => a + b, 0);
-
-  // Sort indices by remainder descending, distribute surplus quarter-hours
-  const indices = entries.map((_, i) => i);
-  indices.sort((a, b) => remainders[b] - remainders[a]);
-  for (const i of indices) {
-    if (deficit <= 0) break;
-    floors[i]++;
-    deficit--;
-  }
-
-  for (let i = 0; i < entries.length; i++) {
-    entries[i].hours = floors[i] / 4;
-  }
-}
+// Used only when an MR's file stats came back as 0, so a day with real activity
+// still carries weight. These are not floors: clamping every small MR up to
+// them would flatten the proportional split into a fixed 6:1 ratio.
+const CODING_FALLBACK_WEIGHT = 60;
+const REVIEW_FALLBACK_WEIGHT = 10;
 
 /** An entry before its mark state is resolved, which happens once at assembly. */
 type DraftEntry = Omit<WbsoEntry, "rowKey" | "marked" | "markedHours">;
@@ -80,21 +53,45 @@ type WeightedEntry = {
   reasoning: WbsoReasoning;
 };
 
-export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
-  const nextMonday = new Date(monday);
-  nextMonday.setUTCDate(monday.getUTCDate() + 7);
+/** An empty week, for a Monday that hasn't arrived yet. */
+function emptyWeek(monday: DateString): WbsoWeekData {
+  return {
+    weekStart: monday,
+    weekEnd: addDays(monday, 4),
+    jiraBrowseUrl: `${env.JIRA_BASE_URL}/browse`,
+    gitlabBaseUrl: env.GITLAB_BASE_URL,
+    epicDates: {},
+    days: [],
+    totals: {
+      coding: 0,
+      codeReview: 0,
+      devMeeting: 0,
+      devMisc: 0,
+      nonDev: 0,
+      leave: 0,
+      total: 0,
+    },
+    byEpic: [],
+    unlinkedMRs: [],
+  };
+}
 
+export async function estimateWeek(monday: DateString): Promise<WbsoWeekData> {
   // Only include days up to and including today (no future days)
-  const today = toAmsterdamDate(new Date());
+  const today = todayInAmsterdam();
 
-  const dayDates: string[] = [];
+  const dayDates: DateString[] = [];
   for (let i = 0; i < 5; i++) {
-    const d = new Date(monday);
-    d.setUTCDate(monday.getUTCDate() + i);
-    const dateStr = formatDate(d);
-    if (dateStr > today) break;
-    dayDates.push(dateStr);
+    const date = addDays(monday, i);
+    if (date > today) break;
+    dayDates.push(date);
   }
+
+  if (dayDates.length === 0) return emptyWeek(monday);
+
+  // Bucketing is Amsterdam-local, so the query window has to be too.
+  const windowStart = amsterdamDayStart(dayDates[0]);
+  const windowEnd = amsterdamDayStart(addDays(dayDates[dayDates.length - 1], 1));
 
   // Per-day buckets
   const dayMeetings = new Map<string, DraftEntry[]>();
@@ -114,8 +111,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     .from(meetings)
     .where(
       and(
-        gte(meetings.startsAt, monday),
-        lt(meetings.startsAt, nextMonday),
+        gte(meetings.startsAt, windowStart),
+        lt(meetings.startsAt, windowEnd),
         inArray(meetings.responseStatus, ["accepted", "tentative", "needsAction"])
       )
     );
@@ -243,8 +240,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     .innerJoin(mergeRequests, eq(commits.mergeRequestId, mergeRequests.id))
     .where(
       and(
-        gte(commits.authoredAt, monday),
-        lt(commits.authoredAt, nextMonday),
+        gte(commits.authoredAt, windowStart),
+        lt(commits.authoredAt, windowEnd),
         eq(mergeRequests.authoredByMe, true)
       )
     );
@@ -326,7 +323,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
     const dayProportion =
       group.totalCommits > 0 ? group.dayCommits / group.totalCommits : 1;
     const rawWeight = group.changesCount * dayProportion;
-    const weight = Math.max(rawWeight, CODING_MIN_WEIGHT);
+    const weight = rawWeight > 0 ? rawWeight : CODING_FALLBACK_WEIGHT;
 
     const ticketInfo = group.ticketKey
       ? ticketInfoMap.get(group.ticketKey)
@@ -383,8 +380,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       and(
         eq(mergeRequestEvents.eventType, "commented"),
         eq(mergeRequests.authoredByMe, false),
-        gte(mergeRequestEvents.occurredAt, monday),
-        lt(mergeRequestEvents.occurredAt, nextMonday)
+        gte(mergeRequestEvents.occurredAt, windowStart),
+        lt(mergeRequestEvents.occurredAt, windowEnd)
       )
     );
 
@@ -449,7 +446,7 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
 
   for (const group of reviewGroups.values()) {
     const rawWeight = group.changesCount * REVIEW_WEIGHT_FACTOR;
-    const weight = Math.max(rawWeight, REVIEW_MIN_WEIGHT);
+    const weight = rawWeight > 0 ? rawWeight : REVIEW_FALLBACK_WEIGHT;
     const ticketInfo = group.ticketKey
       ? ticketInfoMap.get(group.ticketKey)
       : null;
@@ -483,100 +480,50 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
   const dayEntries = new Map<string, DraftEntry[]>();
   const needsInputDays = new Set<string>();
 
-  for (let i = 0; i < dayDates.length; i++) {
-    const dayStr = dayDates[i];
-    const meetingEntries = dayMeetings.get(dayStr) ?? [];
-    const entries: DraftEntry[] = [...meetingEntries];
+  for (const dayStr of dayDates) {
+    const meetingEntries = [...(dayMeetings.get(dayStr) ?? [])];
 
-    // Leave day — just show the leave entry at 8h, skip everything else
+    // Leave fills the whole day — nothing else is placed on it.
     if (leaveDays.has(dayStr)) {
-      const leaveEntries = entries.filter((e) => e.category === "leave");
-      // Keep only the first leave entry at 8h
-      if (leaveEntries.length > 0) {
-        leaveEntries[0].hours = HOURS_PER_DAY;
-        dayEntries.set(dayStr, [leaveEntries[0]]);
+      const leave = meetingEntries.find((e) => e.category === "leave");
+      if (leave) {
+        leave.hours = HOURS_PER_DAY;
+        dayEntries.set(dayStr, [leave]);
       } else {
-        dayEntries.set(dayStr, entries);
+        dayEntries.set(dayStr, meetingEntries);
       }
       continue;
     }
 
-    const meetingHours = entries.reduce((sum, e) => sum + e.hours, 0);
-
-    if (meetingHours >= HOURS_PER_DAY) {
-      // Meetings alone fill or exceed the day — scale them to fit 8h
-      const scale = HOURS_PER_DAY / meetingHours;
-      for (const e of entries) e.hours *= scale;
-      roundToQuartersPreservingTotal(entries, HOURS_PER_DAY);
-      dayEntries.set(dayStr, entries);
-      continue;
-    }
-
-    const available = HOURS_PER_DAY - meetingHours;
-
-    // Gather weighted activity for this day
     const weighted: WeightedEntry[] = [
       ...(dayCodingWeights.get(dayStr) ?? []),
       ...(dayReviewWeights.get(dayStr) ?? []),
     ];
 
-    // No activity at all: leave the day for manual entry rather than inventing
-    // hours. Meetings (if any) stand on their own actual duration.
-    if (weighted.length === 0) {
-      needsInputDays.add(dayStr);
-      roundToQuartersPreservingTotal(entries, meetingHours);
-      dayEntries.set(dayStr, entries);
-      continue;
-    }
+    const allocation = allocateDay(
+      meetingEntries.map((e) => e.hours),
+      weighted.map((w) => w.weight)
+    );
 
-    const totalWeight = weighted.reduce((sum, w) => sum + w.weight, 0);
+    if (allocation.needsInput) needsInputDays.add(dayStr);
 
-    // Convert weights → proportional hours
-    const activityEntries: DraftEntry[] = weighted.map((w) => ({
-      category: w.category,
-      ticketKey: w.ticketKey,
-      ticketTitle: w.ticketTitle,
-      epicKey: w.epicKey,
-      epicTitle: w.epicTitle,
-      hours:
-        totalWeight > 0
-          ? (w.weight / totalWeight) * available
-          : available / weighted.length,
-      reasoning: w.reasoning,
+    meetingEntries.forEach((entry, i) => {
+      entry.hours = allocation.meetings[i];
+    });
+
+    // Driven by the allocation, not the weights: a day whose meetings already
+    // fill 8h gets no activity entries even though it has weighted activity.
+    const activityEntries: DraftEntry[] = allocation.activity.map((hours, i) => ({
+      category: weighted[i].category,
+      ticketKey: weighted[i].ticketKey,
+      ticketTitle: weighted[i].ticketTitle,
+      epicKey: weighted[i].epicKey,
+      epicTitle: weighted[i].epicTitle,
+      hours,
+      reasoning: weighted[i].reasoning,
     }));
 
-    // Enforce minimum per entry (10 min for reviews, 15 min for others)
-    const minForEntry = (e: DraftEntry) =>
-      e.category === "code_review" ? MIN_REVIEW_HOURS : MIN_ENTRY_HOURS;
-    const minTotal = activityEntries.reduce((s, e) => s + minForEntry(e), 0);
-    if (minTotal >= available) {
-      // Too many small entries for the available time — distribute evenly
-      for (const e of activityEntries) e.hours = available / activityEntries.length;
-    } else {
-      let deficit = 0;
-      let aboveMinTotal = 0;
-      for (const e of activityEntries) {
-        const min = minForEntry(e);
-        if (e.hours < min) {
-          deficit += min - e.hours;
-          e.hours = min;
-        } else {
-          aboveMinTotal += e.hours;
-        }
-      }
-      if (deficit > 0 && aboveMinTotal > 0) {
-        const scale = (aboveMinTotal - deficit) / aboveMinTotal;
-        for (const e of activityEntries) {
-          if (e.hours > minForEntry(e)) {
-            e.hours *= scale;
-          }
-        }
-      }
-    }
-
-    entries.push(...activityEntries);
-    roundToQuartersPreservingTotal(entries, HOURS_PER_DAY);
-    dayEntries.set(dayStr, entries);
+    dayEntries.set(dayStr, [...meetingEntries, ...activityEntries]);
   }
 
   // -----------------------------------------------------------------------
@@ -755,8 +702,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
       and(
         eq(mergeRequests.authoredByMe, true),
         isNull(mergeRequests.ticketKey),
-        gte(commits.authoredAt, monday),
-        lt(commits.authoredAt, nextMonday)
+        gte(commits.authoredAt, windowStart),
+        lt(commits.authoredAt, windowEnd)
       )
     );
 
@@ -777,8 +724,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
         eq(mergeRequests.authoredByMe, false),
         isNull(mergeRequests.ticketKey),
         eq(mergeRequestEvents.eventType, "commented"),
-        gte(mergeRequestEvents.occurredAt, monday),
-        lt(mergeRequestEvents.occurredAt, nextMonday)
+        gte(mergeRequestEvents.occurredAt, windowStart),
+        lt(mergeRequestEvents.occurredAt, windowEnd)
       )
     );
 
@@ -797,7 +744,8 @@ export async function estimateWeek(monday: Date): Promise<WbsoWeekData> {
 
   return {
     weekStart: dayDates[0],
-    weekEnd: dayDates[4],
+    // The week is truncated at today, so this is the last day estimated.
+    weekEnd: dayDates[dayDates.length - 1],
     jiraBrowseUrl: `${env.JIRA_BASE_URL}/browse`,
     gitlabBaseUrl: env.GITLAB_BASE_URL,
     epicDates: Object.fromEntries(epicCreatedMap),

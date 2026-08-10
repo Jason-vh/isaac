@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { eq, and, ilike, inArray, gte, lte, or } from "drizzle-orm";
 import { db } from "../db";
 import { requireOwner } from "../auth/middleware";
+import { parseOptionalDate } from "../lib/request";
 import {
   entityLinks,
   tickets,
@@ -364,8 +365,8 @@ export const objectiveRoutes = new Elysia({ prefix: "/api" })
     const docIds = [...new Set(evidence.filter((e) => e.type === "confluence_document").map((e) => e.id))];
 
     // Build date filters
-    const sinceDate = query?.since ? new Date(query.since as string) : undefined;
-    const untilDate = query?.until ? new Date(query.until as string) : undefined;
+    const sinceDate = parseOptionalDate(query?.since as string | undefined, "since");
+    const untilDate = parseOptionalDate(query?.until as string | undefined, "until");
 
     const jiraBaseUrl = env.JIRA_BASE_URL ? env.JIRA_BASE_URL.replace(/\/jira\/?$/, "") : "";
     const gitlabBaseUrl = env.GITLAB_BASE_URL || "";

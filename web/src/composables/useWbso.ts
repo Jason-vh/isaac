@@ -1,7 +1,8 @@
 import { ref, computed, watch } from "vue";
 import type { WbsoWeekData } from "@isaac/shared";
-import { api, UnauthorizedError } from "../api/client";
+import { api } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
+import { useResource } from "./useResource";
 
 // Local calendar date. toISOString() would render in UTC and, from a timezone
 // ahead of it, silently shift local midnight back to the previous day.
@@ -41,9 +42,17 @@ export function useWbso() {
 
   const today = toWeekday(iso(new Date()));
   const date = ref(toWeekday((route.params.date as string) || today));
-  const data = ref<WbsoWeekData | null>(null);
-  const loading = ref(false);
-  const error = ref("");
+
+  // Keyed by week: moving between days in the same week reuses the response.
+  const {
+    data,
+    loading,
+    error,
+    refresh: fetchWeek,
+  } = useResource(
+    () => api.get<WbsoWeekData>(`/wbso/week/${date.value}`),
+    () => weekStartOf(date.value)
+  );
 
   /** The day on screen. Undefined only if it falls outside the fetched week. */
   const selectedDay = computed(() =>
@@ -51,22 +60,6 @@ export function useWbso() {
   );
 
   const isToday = computed(() => date.value === today);
-
-  async function fetchWeek() {
-    loading.value = true;
-    error.value = "";
-    try {
-      data.value = await api.get<WbsoWeekData>(`/wbso/week/${date.value}`);
-    } catch (e: any) {
-      if (e instanceof UnauthorizedError) {
-        router.push("/login");
-        return;
-      }
-      error.value = e.message;
-    } finally {
-      loading.value = false;
-    }
-  }
 
   async function updateMeetingCategory(
     meetingId: number,
@@ -124,16 +117,6 @@ export function useWbso() {
       const day = toWeekday(param || today);
       if (date.value !== day) date.value = day;
     }
-  );
-
-  // Only refetch when the day moves into a different week
-  watch(
-    date,
-    (val, previous) => {
-      if (previous && weekStartOf(val) === weekStartOf(previous)) return;
-      fetchWeek();
-    },
-    { immediate: true }
   );
 
   function prevDay() {

@@ -32,7 +32,6 @@ Hosted at [isaac.vhtm.eu](https://isaac.vhtm.eu). Single user, passkey login.
 | **GitLab Pipelines** | Durations, per-job timing, retry/flaky rates, DAG dependencies | Hourly |
 | **Confluence** | Documents published and commented on | Hourly |
 | **Google Calendar** | Meetings attended, holidays/OOO | Hourly |
-| **Slack bot** | Wins logged manually (`/isaac win …`) | Real-time |
 | **GitLab emails** | MR comments, approvals, merges, review requests, mentions | Real-time via JMAP (isaac-notify) |
 
 Corporate email is the join key between GitLab and Jira accounts. API tokens are
@@ -64,7 +63,10 @@ columns and indexes. The concepts:
 - **Person** — engineer keyed by corporate email, with GitLab and Jira
   identities attached. Created during sync; bots are never recorded. Exactly one
   is flagged `isMe`.
-- **Win** — logged via Slack, enriched on the web app. Can link to anything.
+- **Win** — something worth remembering, counted on the dashboard and usable as
+  objective evidence. There is no ingestion path yet: rows are written to `wins`
+  by hand. A Slack slash command was the intended source, which is why the table
+  still keys on `slack_message_id`.
 - **Objective** — annual objective with Key Results, hardcoded in
   `shared/objectives.ts`. Evidenced by tickets, wins and activity via
   `entity_links`.
@@ -87,6 +89,16 @@ review, dev meeting, dev miscellaneous, non-dev, and leave.
 4. **Days with no activity at all** are flagged `needsInput` and left empty.
 5. **Minimum 0.25h** per entry, with redistribution from larger entries.
 6. **Quarter-hour rounding** uses Hamilton's method to preserve the 8h total.
+
+The weights in step 3 are used exactly as computed. Fallback weights exist for
+MRs whose file stats came back as zero, but they apply *only* in that case —
+used as a floor they would clamp nearly every MR to the same value and flatten
+the proportional split into a fixed ratio.
+
+Days are Amsterdam-local throughout, query windows included, so a commit at
+23:30 UTC on Sunday counts towards Monday. The arithmetic lives in
+`server/src/wbso/allocate.ts`, free of the database and covered by tests;
+`estimator.ts` is the part that talks to Postgres.
 
 Two things worth understanding about step 3. The weights measure *relative
 size*, never duration — nothing in Isaac observes how long anything took. So
@@ -167,12 +179,19 @@ a period.
 Bun · Elysia · PostgreSQL + Drizzle · Passkeys (WebAuthn) + JWT · Vite + Vue 3 +
 Tailwind · Railway.
 
-`server/` is the API and sync jobs, `web/` the Vue SPA, `shared/` the types and
-objectives used by both.
+`server/` is the API and sync jobs, `web/` the Vue SPA, `shared/` the types,
+objectives and pipeline critical-path analysis used by both. Anything both sides
+must agree on belongs in `shared/`, not copied into each.
+
+`server/src/app.ts` builds the Elysia app and `server/src/index.ts` starts it,
+so tests can exercise the app without binding a port.
 
 ## Development
 
 - **Install:** `bun install` from root
+- **Check everything:** `bun run check` (typecheck both workspaces, then tests)
+- **Test:** `bun test` from root
+- **Typecheck:** `bun run typecheck`
 - **Server:** `bun run dev:server` (Elysia on port 3000)
 - **Frontend:** `bun run dev:web` (Vite on 5173, proxies `/api` to the server)
 - **Generate a migration:** `bun run --filter server db:generate` after changing
@@ -247,7 +266,7 @@ without them.
 - **Sync:** `JIRA_BASE_URL`, `JIRA_API_TOKEN`, `JIRA_EMAIL`, `GITLAB_BASE_URL`,
   `GITLAB_API_TOKEN`, `GITLAB_PROJECT_ID`, `CONFLUENCE_BASE_URL`,
   `CONFLUENCE_API_TOKEN`, `CONFLUENCE_EMAIL`, `CALENDAR_SCRIPT_URL`,
-  `CALENDAR_SCRIPT_SECRET`, `SLACK_SIGNING_SECRET`, `SLACK_BOT_TOKEN`
+  `CALENDAR_SCRIPT_SECRET`
 - **Notify:** `FASTMAIL_TOKEN`, `FASTMAIL_FILTER_TO`, `SLACK_BOT_TOKEN`,
   `SLACK_CHANNEL_ID`, `GITLAB_*` and `JIRA_BASE_URL` as above
 
@@ -269,6 +288,14 @@ stored in `share_tokens`) gives read-only access, scoped to the page section it
 was created from: `https://isaac.vhtm.eu/<page>?s=<token>`. The router strips
 the param, stores the token, and renders in read-only mode. Write endpoints
 return 403 for share tokens.
+
+The section → API prefix map lives in `server/src/auth/middleware.ts` and
+**defaults to deny**: a share link made from a page that isn't in the map grants
+nothing. A new shareable page needs an entry there, or its links will 403.
+
+Auth is resolved once per request and read from the request context. It must
+never live in Elysia's `store`, which is a single object shared by every request
+in the process.
 
 ## Working rules
 

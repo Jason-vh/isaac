@@ -1,8 +1,8 @@
-import { ref, watch, computed } from "vue";
-import { useRouter } from "vue-router";
+import { computed } from "vue";
 import type { PipelineDurationPoint } from "@isaac/shared";
-import { api, UnauthorizedError } from "../api/client";
+import { api } from "../api/client";
 import { useDateRange } from "./useDateRange";
+import { useResource } from "./useResource";
 
 export interface TypeStats {
   p50: number | null;
@@ -53,14 +53,7 @@ function computeStats(points: PipelineDurationPoint[]) {
 }
 
 export function usePipelines() {
-  const router = useRouter();
   const { since, until, sinceDate, untilDate, queryParams } = useDateRange("7d");
-
-  const points = ref<PipelineDurationPoint[]>([]);
-  const previousPoints = ref<PipelineDurationPoint[]>([]);
-  const loading = ref(false);
-  const initialLoading = ref(true);
-  const error = ref("");
 
   // Previous period: same duration, ending where current starts
   const prevSinceDate = computed(() => {
@@ -75,34 +68,23 @@ export function usePipelines() {
     return params.toString();
   });
 
-  const comparison = computed<PeriodComparison>(() => ({
-    current: computeStats(points.value),
-    previous: computeStats(previousPoints.value),
-  }));
-
-  async function fetchAll() {
-    loading.value = true;
-    error.value = "";
-    try {
+  const { data, loading, initialLoading, error } = useResource(
+    async () => {
       const [current, previous] = await Promise.all([
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${queryParams.value}`),
         api.get<PipelineDurationPoint[]>(`/pipelines/duration-scatter?${prevQueryParams.value}`),
       ]);
-      points.value = current;
-      previousPoints.value = previous;
-    } catch (e: any) {
-      if (e instanceof UnauthorizedError) {
-        router.push("/login");
-        return;
-      }
-      error.value = e.message;
-    } finally {
-      loading.value = false;
-      initialLoading.value = false;
-    }
-  }
+      return { current, previous };
+    },
+    queryParams,
+  );
 
-  watch(queryParams, () => fetchAll(), { immediate: true });
+  const points = computed(() => data.value?.current ?? []);
+
+  const comparison = computed<PeriodComparison>(() => ({
+    current: computeStats(data.value?.current ?? []),
+    previous: computeStats(data.value?.previous ?? []),
+  }));
 
   return { since, until, points, comparison, loading, initialLoading, error };
 }

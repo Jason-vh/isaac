@@ -5,23 +5,16 @@ import type {
   EntityLink,
   TimelineEvent,
 } from "@isaac/shared";
-import { api, UnauthorizedError } from "../api/client";
-import { useRouter } from "vue-router";
+import { api } from "../api/client";
+import { useErrorHandler } from "./useResource";
 
 export function useObjectives() {
-  const router = useRouter();
   const objectives = ref<ObjectiveWithSummary[]>([]);
   const selectedObjective = ref<ObjectiveWithKeyResults | null>(null);
   const loading = ref(false);
   const error = ref("");
 
-  function handleError(e: unknown) {
-    if (e instanceof UnauthorizedError) {
-      router.push("/login");
-      return;
-    }
-    error.value = (e as Error).message;
-  }
+  const handleError = useErrorHandler(error);
 
   async function fetchObjectives() {
     loading.value = true;

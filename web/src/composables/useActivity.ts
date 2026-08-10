@@ -1,42 +1,28 @@
-import { ref, watch } from "vue";
+import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { api } from "../api/client";
-import { UnauthorizedError } from "../api/client";
+import { useResource } from "./useResource";
 import type { ActivityData } from "@isaac/shared";
+
+const DEFAULT_DAYS = 30;
 
 export function useActivity() {
   const router = useRouter();
   const route = useRoute();
 
-  const data = ref<ActivityData | null>(null);
-  const loading = ref(false);
-  const error = ref<string | null>(null);
-  const days = ref(Number(route.query.days) || 30);
+  const days = ref(Number(route.query.days) || DEFAULT_DAYS);
 
-  async function fetchActivity() {
-    loading.value = true;
-    error.value = null;
-    try {
-      data.value = await api.get<ActivityData>(
-        `/activity?days=${days.value}`,
-      );
-    } catch (e: any) {
-      if (e instanceof UnauthorizedError) {
-        router.push("/login");
-        return;
-      }
-      error.value = e.message;
-    } finally {
-      loading.value = false;
-    }
-  }
+  const { data, loading, error } = useResource(
+    () => api.get<ActivityData>(`/activity?days=${days.value}`),
+    days,
+  );
 
   function setDays(n: number) {
     days.value = n;
-    router.replace({ query: { ...route.query, days: n === 30 ? undefined : String(n) } });
+    router.replace({
+      query: { ...route.query, days: n === DEFAULT_DAYS ? undefined : String(n) },
+    });
   }
-
-  watch(days, () => fetchActivity(), { immediate: true });
 
   return { data, loading, error, days, setDays };
 }

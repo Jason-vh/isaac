@@ -21,9 +21,6 @@ const sync = [
   "CALENDAR_SCRIPT_SECRET",
 ] as const;
 
-// Slack vars — only needed by the web server for webhook handling
-const slack = ["SLACK_SIGNING_SECRET", "SLACK_BOT_TOKEN"] as const;
-
 // Notify vars — only needed by the isaac-notify service
 const notify = [
   "FASTMAIL_TOKEN",
@@ -36,7 +33,7 @@ const notify = [
   "JIRA_BASE_URL",
 ] as const;
 
-const all = [...core, ...sync, ...slack, ...notify] as const;
+const all = [...core, ...sync, ...notify] as const;
 
 type EnvKey = (typeof all)[number];
 type Env = Record<EnvKey, string>;

@@ -10,14 +10,15 @@ import {
   index,
   uniqueIndex,
   customType,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // Custom type for bytea columns
-const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+const bytea = customType<{ data: Uint8Array<ArrayBuffer>; driverData: Buffer }>({
   dataType() {
     return "bytea";
   },
-  fromDriver(value: Buffer) {
+  fromDriver(value: Buffer): Uint8Array<ArrayBuffer> {
     return new Uint8Array(value);
   },
   toDriver(value: Uint8Array) {
@@ -49,7 +50,8 @@ export const tickets = pgTable("tickets", {
   status: text("status").notNull(),
   storyPoints: decimal("story_points"),
   parentKey: text("parent_key"),
-  epicKey: text("epic_key").references(() => tickets.key),
+  // Self-reference needs an explicit column type to break the inference cycle.
+  epicKey: text("epic_key").references((): AnyPgColumn => tickets.key),
   createdByMe: boolean("created_by_me").notNull(),
   assigneeIsMe: boolean("assignee_is_me").notNull(),
   assigneePersonId: integer("assignee_person_id").references(() => people.id),

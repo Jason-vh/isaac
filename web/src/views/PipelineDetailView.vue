@@ -87,7 +87,8 @@ import { useRoute, useRouter } from "vue-router";
 import type { PipelineDetail } from "@isaac/shared";
 import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from "@heroicons/vue/20/solid";
 import WaterfallChart from "../components/pipelines/WaterfallChart.vue";
-import { api, UnauthorizedError } from "../api/client";
+import { api } from "../api/client";
+import { useErrorHandler } from "../composables/useResource";
 
 const route = useRoute();
 const router = useRouter();
@@ -116,15 +117,13 @@ const pipelineTypeColor = computed(() => {
   return "bg-blue-100 text-blue-700";
 });
 
+const handleError = useErrorHandler(error);
+
 onMounted(async () => {
   try {
     detail.value = await api.get<PipelineDetail>(`/pipelines/${pipelineId.value}/jobs`);
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      router.push("/login");
-      return;
-    }
-    error.value = (e as Error).message;
+    handleError(e);
   } finally {
     loading.value = false;
   }

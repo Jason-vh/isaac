@@ -5,8 +5,8 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
-import type { AuthenticatorTransportFuture } from "@simplewebauthn/types";
-import { eq } from "drizzle-orm";
+import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
+import { count, eq } from "drizzle-orm";
 import { db } from "../db";
 import { passkeyCredentials } from "../db/schema";
 import { env, webauthnOrigins } from "../env";
@@ -16,8 +16,8 @@ import { signToken, verifyToken } from "../auth/jwt";
 const USER_ID = "isaac-owner";
 
 async function credentialCount(): Promise<number> {
-  const rows = await db.select().from(passkeyCredentials);
-  return rows.length;
+  const [row] = await db.select({ n: count() }).from(passkeyCredentials);
+  return row?.n ?? 0;
 }
 
 async function requireAuth(request: Request): Promise<boolean> {

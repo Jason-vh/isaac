@@ -40,7 +40,8 @@ import type { SplitBy, TrendLine } from "../components/pipelines/DurationScatter
 import { useRouter } from "vue-router";
 import type { MrPipelineSummary } from "@isaac/shared";
 import { usePipelines } from "../composables/usePipelines";
-import { api, UnauthorizedError } from "../api/client";
+import { api } from "../api/client";
+import { useErrorHandler } from "../composables/useResource";
 import DurationScatterChart from "../components/pipelines/DurationScatterChart.vue";
 import PipelineDurationStats from "../components/pipelines/PipelineDurationStats.vue";
 import JobOverview from "../components/pipelines/JobOverview.vue";
@@ -61,6 +62,8 @@ const trendLine = ref<TrendLine>("p50");
 const mrList = ref<MrPipelineSummary[]>([]);
 const mrLoading = ref(false);
 const mrSearch = ref("");
+const mrError = ref("");
+const handleMrError = useErrorHandler(mrError);
 
 async function fetchMrList() {
   mrLoading.value = true;
@@ -75,10 +78,7 @@ async function fetchMrList() {
       `/pipelines/merge-requests?${params}`
     );
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      router.push("/login");
-      return;
-    }
+    handleMrError(e);
   } finally {
     mrLoading.value = false;
   }

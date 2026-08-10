@@ -4,6 +4,7 @@ import { db } from "../db";
 import { mergeRequests, mergeRequestReviews, people } from "../db/schema";
 import { env } from "../env";
 import { distribution, median, workHoursBetween } from "../lib/reviewMetrics";
+import { parseRange } from "../lib/request";
 import type {
   AuthorWait,
   Person,
@@ -15,16 +16,6 @@ import type {
   ReviewerPair,
   ReviewerReport,
 } from "@isaac/shared";
-
-const DEFAULT_DAYS = 30;
-
-function parseRange(query: Record<string, string | undefined>) {
-  const until = query.until ? new Date(query.until) : new Date();
-  const since = query.since
-    ? new Date(query.since)
-    : new Date(until.getTime() - DEFAULT_DAYS * 24 * 60 * 60 * 1000);
-  return { since, until };
-}
 
 /**
  * One row per merged MR, with the review signals gathered from the tables that

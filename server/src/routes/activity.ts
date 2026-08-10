@@ -3,6 +3,7 @@ import { desc, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { activityItems, tickets } from "../db/schema";
 import { env } from "../env";
+import { parseLimit } from "../lib/request";
 import type { ActivityItem, ActivityDay } from "@isaac/shared";
 
 function formatDate(d: Date): string {
@@ -12,7 +13,7 @@ function formatDate(d: Date): string {
 export const activityRoutes = new Elysia({ prefix: "/api/activity" }).get(
   "/",
   async ({ query }) => {
-    const days = Math.min(Number(query.days) || 30, 90);
+    const days = parseLimit(query.days, 30, 90);
     const since = new Date();
     since.setDate(since.getDate() - days);
 

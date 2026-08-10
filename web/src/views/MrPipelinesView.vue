@@ -61,12 +61,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import type { PipelineListItem, TrainDebugAttempt } from "@isaac/shared";
 import { ArrowLeftIcon, ArrowTopRightOnSquareIcon } from "@heroicons/vue/20/solid";
 import MrPipelineHistory from "../components/pipelines/MrPipelineHistory.vue";
 import TrainDebugCard from "../components/pipelines/TrainDebugCard.vue";
 import { api, UnauthorizedError } from "../api/client";
+import { useErrorHandler } from "../composables/useResource";
 
 interface MrMeta {
   title: string;
@@ -76,7 +77,6 @@ interface MrMeta {
 }
 
 const route = useRoute();
-const router = useRouter();
 
 const mrId = computed(() => Number(route.params.id));
 const pipelines = ref<PipelineListItem[]>([]);
@@ -84,6 +84,7 @@ const trainAttempts = ref<TrainDebugAttempt[]>([]);
 const loading = ref(true);
 const trainDebugLoading = ref(true);
 const error = ref("");
+const handleError = useErrorHandler(error);
 
 // Read MR metadata from history.state (passed by MrPipelineList)
 const mrMeta = ref<MrMeta | null>(null);
@@ -118,11 +119,7 @@ onMounted(async () => {
       trainDebugLoading.value = false;
     }
   } catch (e) {
-    if (e instanceof UnauthorizedError) {
-      router.push("/login");
-      return;
-    }
-    error.value = (e as Error).message;
+    handleError(e);
   } finally {
     trainDebugLoading.value = false;
     loading.value = false;

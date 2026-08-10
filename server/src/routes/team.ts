@@ -9,6 +9,7 @@ import {
   tickets,
 } from "../db/schema";
 import { CODE_CATEGORIES, type CodeCategory } from "../lib/codeCategory";
+import { parseRange } from "../lib/request";
 import { TEAM_METRICS } from "@isaac/shared";
 import type {
   CodeVolume,
@@ -20,16 +21,6 @@ import type {
   TeamTrend,
   TeamTrendPoint,
 } from "@isaac/shared";
-
-const DEFAULT_DAYS = 30;
-
-function parseRange(query: Record<string, string | undefined>) {
-  const until = query.until ? new Date(query.until) : new Date();
-  const since = query.since
-    ? new Date(query.since)
-    : new Date(until.getTime() - DEFAULT_DAYS * 24 * 60 * 60 * 1000);
-  return { since, until };
-}
 
 function emptyByCategory(): LinesByCategory {
   return Object.fromEntries(

@@ -1,50 +1,45 @@
-import { ref, computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { WeekData, VelocityWeek } from "@isaac/shared";
-import { api, UnauthorizedError } from "../api/client";
+import { api } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
+import { useResource } from "./useResource";
+
+const VELOCITY_WEEKS = 12;
+
+function todayStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function mondayOf(d: Date): string {
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return monday.toISOString().split("T")[0];
+}
 
 export function useDashboard() {
   const route = useRoute();
   const router = useRouter();
 
-  function todayStr(): string {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
-  }
+  const date = ref((route.params.week as string) || todayStr());
 
-  const initialWeek = (route.params.week as string) || todayStr();
-  const date = ref(initialWeek);
-  const data = ref<WeekData | null>(null);
-  const velocity = ref<VelocityWeek[]>([]);
-  const loading = ref(false);
-  const error = ref("");
-
-  async function fetchWeek() {
-    loading.value = true;
-    error.value = "";
-    try {
-      const [weekData, velocityData] = await Promise.all([
+  const { data: resource, loading, error } = useResource(
+    async () => {
+      const [week, velocity] = await Promise.all([
         api.get<WeekData>(`/dashboard/week/${date.value}`),
-        api.get<VelocityWeek[]>(`/dashboard/velocity?weeks=12`),
+        api.get<VelocityWeek[]>(`/dashboard/velocity?weeks=${VELOCITY_WEEKS}`),
       ]);
-      data.value = weekData;
-      velocity.value = velocityData;
-    } catch (e: any) {
-      if (e instanceof UnauthorizedError) {
-        router.push("/login");
-        return;
-      }
-      error.value = e.message;
-    } finally {
-      loading.value = false;
-    }
-  }
+      return { week, velocity };
+    },
+    date,
+  );
+
+  const data = computed(() => resource.value?.week ?? null);
+  const velocity = computed(() => resource.value?.velocity ?? []);
 
   // Sync date → URL
   watch(date, (val) => {
-    if (route.params.week !== val) {
-      router.replace({ params: { week: val } });
-    }
+    if (route.params.week !== val) router.replace({ params: { week: val } });
   });
 
   // Sync URL → date (browser back/forward)
@@ -52,38 +47,29 @@ export function useDashboard() {
     () => route.params.week as string | undefined,
     (paramWeek) => {
       const week = paramWeek || todayStr();
-      if (date.value !== week) {
-        date.value = week;
-      }
+      if (date.value !== week) date.value = week;
     }
   );
 
-  watch(date, () => fetchWeek(), { immediate: true });
-
-  function prevWeek() {
-    const d = new Date(date.value + "T00:00:00");
-    d.setDate(d.getDate() - 7);
+  function shiftWeek(days: number) {
+    const d = new Date(`${date.value}T00:00:00`);
+    d.setDate(d.getDate() + days);
     date.value = d.toISOString().split("T")[0];
   }
 
-  function nextWeek() {
-    const d = new Date(date.value + "T00:00:00");
-    d.setDate(d.getDate() + 7);
-    date.value = d.toISOString().split("T")[0];
-  }
+  const isCurrentWeek = computed(
+    () => data.value?.weekStart === mondayOf(new Date())
+  );
 
-  function goToday() {
-    date.value = todayStr();
-  }
-
-  const isCurrentWeek = computed(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diff);
-    return data.value?.weekStart === monday.toISOString().split("T")[0];
-  });
-
-  return { date, data, velocity, loading, error, isCurrentWeek, prevWeek, nextWeek, goToday };
+  return {
+    date,
+    data,
+    velocity,
+    loading,
+    error,
+    isCurrentWeek,
+    prevWeek: () => shiftWeek(-7),
+    nextWeek: () => shiftWeek(7),
+    goToday: () => { date.value = todayStr(); },
+  };
 }

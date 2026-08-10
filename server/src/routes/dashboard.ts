@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { and, between, eq, gte, lt, or, sql, inArray } from "drizzle-orm";
+import { and, eq, gte, lt, or, sql, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   tickets,
@@ -19,6 +19,8 @@ import type {
   WeekData,
   VelocityWeek,
 } from "@isaac/shared";
+import { parseLimit } from "../lib/request";
+import { isDateString } from "../lib/calendar";
 
 function getMonday(dateStr: string): Date {
   const d = new Date(dateStr + "T00:00:00Z");
@@ -39,7 +41,11 @@ function dayKey(ts: Date | string): string {
 
 export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
   "/week/:date",
-  async ({ params }) => {
+  async ({ params, set }) => {
+    if (!isDateString(params.date)) {
+      set.status = 400;
+      return { error: "Invalid date, expected YYYY-MM-DD" };
+    }
     const monday = getMonday(params.date);
     const sunday = new Date(monday);
     sunday.setUTCDate(monday.getUTCDate() + 6);
@@ -379,7 +385,7 @@ export const dashboardRoutes = new Elysia({ prefix: "/api/dashboard" }).get(
     return result;
   }
 ).get("/velocity", async ({ query }) => {
-  const weeks = Math.min(Number(query?.weeks) || 12, 26);
+  const weeks = parseLimit(query?.weeks, 12, 26);
   const now = new Date();
   const currentMonday = getMonday(formatDate(now));
 

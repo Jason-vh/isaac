@@ -1,4 +1,9 @@
 pre-commit:
+  parallel: true
   commands:
-    typecheck:
-      run: bun run --filter web build
+    typecheck-server:
+      run: bun run --filter server typecheck
+    typecheck-web:
+      run: bun run --filter web typecheck
+    test:
+      run: bun test
