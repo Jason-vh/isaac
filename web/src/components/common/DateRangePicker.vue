@@ -16,11 +16,11 @@
       </button>
     </div>
 
-    <!-- Shift the window by its own length; presets cover this on small screens -->
+    <!-- Step to the adjacent period; presets cover this on small screens -->
     <div class="hidden items-center gap-0.5 sm:flex">
       <button
         class="rounded-lg bg-surface-0 p-1 text-ink-faint transition-colors hover:bg-surface-2 hover:text-ink-muted"
-        :title="`Previous ${durationLabel}`"
+        :title="`Previous ${shiftLabel}`"
         @click="shift(-1)"
       >
         <ChevronLeftIcon class="h-4 w-4" />
@@ -31,7 +31,7 @@
           ? 'bg-surface-0 text-ink-faint hover:bg-surface-2 hover:text-ink-muted'
           : 'cursor-not-allowed bg-surface-0/50 text-ink-faint/30'"
         :disabled="!canShiftForward"
-        :title="`Next ${durationLabel}`"
+        :title="`Next ${shiftLabel}`"
         @click="shift(1)"
       >
         <ChevronRightIcon class="h-4 w-4" />
@@ -58,8 +58,9 @@
       />
     </div>
 
-    <!-- Selected duration -->
+    <!-- Duration of a custom range; the presets already state their own -->
     <span
+      v-if="!activePreset"
       class="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted tabular-nums"
       :title="formatRange({ since, until })"
     >
@@ -111,6 +112,11 @@ const selectedSprint = computed(() =>
     const r = sprintRange(s);
     return r.since === props.since && r.until === props.until;
   })
+);
+
+/** What the arrows step by, which is a whole sprint when one is selected. */
+const shiftLabel = computed(() =>
+  selectedSprint.value !== -1 ? "sprint" : durationLabel.value
 );
 
 function update(since: string, until: string) {
