@@ -6,30 +6,7 @@
         <h1 class="text-xl font-bold text-ink sm:text-2xl">Pipelines</h1>
         <p class="mt-1 text-sm text-ink-muted">CI/CD performance tracking.</p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          v-for="p in presets"
-          :key="p.days"
-          class="rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
-          :class="isActivePreset(p.days)
-            ? 'border-accent bg-accent-light text-accent'
-            : 'border-border bg-surface-0 text-ink-muted hover:text-ink hover:bg-surface-2'"
-          @click="applyPreset(p.days)"
-        >
-          {{ p.label }}
-        </button>
-        <input
-          v-model="since"
-          type="date"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
-        />
-        <span class="text-sm text-ink-faint">to</span>
-        <input
-          v-model="until"
-          type="date"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
-        />
-      </div>
+      <DateRangePicker v-model:since="since" v-model:until="until" />
     </div>
 
     <!-- Stats -->
@@ -68,6 +45,7 @@ import DurationScatterChart from "../components/pipelines/DurationScatterChart.v
 import PipelineDurationStats from "../components/pipelines/PipelineDurationStats.vue";
 import JobOverview from "../components/pipelines/JobOverview.vue";
 import MrPipelineList from "../components/pipelines/MrPipelineList.vue";
+import DateRangePicker from "../components/common/DateRangePicker.vue";
 
 const router = useRouter();
 
@@ -75,12 +53,7 @@ function onSelectPipeline(id: number) {
   router.push({ name: "pipeline-detail", params: { id } });
 }
 
-const presets = [
-  { label: "7d", days: 7 },
-  { label: "30d", days: 30 },
-];
-
-const { since, until, points, comparison, initialLoading, error, applyPreset, isActivePreset } = usePipelines();
+const { since, until, points, comparison, initialLoading, error } = usePipelines();
 const splitBy = ref<SplitBy>("type");
 const trendLine = ref<TrendLine>("p50");
 
@@ -96,7 +69,7 @@ async function fetchMrList() {
     if (mrSearch.value) {
       params.set("search", mrSearch.value);
     } else {
-      params.set("since", new Date(since.value).toISOString());
+      params.set("since", new Date(`${since.value}T00:00:00`).toISOString());
     }
     mrList.value = await api.get<MrPipelineSummary[]>(
       `/pipelines/merge-requests?${params}`

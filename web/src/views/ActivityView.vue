@@ -137,6 +137,7 @@
 
 <script setup lang="ts">
 import { useActivity } from "../composables/useActivity";
+import { daysAgo, today } from "../lib/dateRange";
 import type { ActivitySourceType } from "@isaac/shared";
 
 const { data, loading, error, days, setDays } = useActivity();
@@ -221,12 +222,9 @@ function verbNoActor(type: ActivitySourceType): string {
 
 function formatDayHeader(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00");
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
 
-  if (dateStr === today.toISOString().slice(0, 10)) return "Today";
-  if (dateStr === yesterday.toISOString().slice(0, 10)) return "Yesterday";
+  if (dateStr === today()) return "Today";
+  if (dateStr === daysAgo(1)) return "Yesterday";
 
   return d.toLocaleDateString("en-US", {
     weekday: "long",

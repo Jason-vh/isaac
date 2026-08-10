@@ -8,30 +8,7 @@
           Code merged, code reviewed and tickets closed per engineer.
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          v-for="days in presetDays"
-          :key="days"
-          class="rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
-          :class="isActivePreset(days)
-            ? 'border-accent bg-accent-light text-accent'
-            : 'border-border bg-surface-0 text-ink-muted hover:bg-surface-2 hover:text-ink'"
-          @click="applyPreset(days)"
-        >
-          {{ days }}d
-        </button>
-        <input
-          v-model="since"
-          type="date"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
-        />
-        <span class="text-sm text-ink-faint">to</span>
-        <input
-          v-model="until"
-          type="date"
-          class="min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink sm:flex-none"
-        />
-      </div>
+      <DateRangePicker v-model:since="since" v-model:until="until" />
     </div>
 
     <p v-if="error" class="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -65,16 +42,7 @@ import { useTeam } from "../composables/useTeam";
 import TeamTable from "../components/team/TeamTable.vue";
 import TeamTotals from "../components/team/TeamTotals.vue";
 import TeamTrendChart from "../components/team/TeamTrendChart.vue";
+import DateRangePicker from "../components/common/DateRangePicker.vue";
 
-const {
-  since,
-  until,
-  productivity,
-  trend,
-  initialLoading,
-  error,
-  presetDays,
-  applyPreset,
-  isActivePreset,
-} = useTeam();
+const { since, until, productivity, trend, initialLoading, error } = useTeam();
 </script>

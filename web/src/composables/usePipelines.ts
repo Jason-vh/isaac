@@ -1,15 +1,8 @@
 import { ref, watch, computed } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
 import type { PipelineDurationPoint } from "@isaac/shared";
 import { api, UnauthorizedError } from "../api/client";
-
-function toDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function daysAgo(days: number): string {
-  return toDateString(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
-}
+import { useDateRange } from "./useDateRange";
 
 export interface TypeStats {
   p50: number | null;
@@ -59,58 +52,20 @@ function computeStats(points: PipelineDurationPoint[]) {
   };
 }
 
-const DEFAULT_DAYS = 7;
-const PRESET_DAYS = [7, 30];
-
-function derivePreset(sinceVal: string, untilVal: string): number | null {
-  const today = toDateString(new Date());
-  if (untilVal !== today) return null;
-  for (const days of PRESET_DAYS) {
-    if (sinceVal === daysAgo(days)) return days;
-  }
-  return null;
-}
-
 export function usePipelines() {
   const router = useRouter();
-  const route = useRoute();
+  const { since, until, sinceDate, untilDate, queryParams } = useDateRange("7d");
 
-  // Initialize from URL query params, or default to 7d
-  const qSince = route.query.since as string | undefined;
-  const qUntil = route.query.until as string | undefined;
-  const since = ref(qSince || daysAgo(DEFAULT_DAYS));
-  const until = ref(qUntil || toDateString(new Date()));
-  const activePreset = ref<number | null>(derivePreset(since.value, until.value));
   const points = ref<PipelineDurationPoint[]>([]);
   const previousPoints = ref<PipelineDurationPoint[]>([]);
   const loading = ref(false);
   const initialLoading = ref(true);
   const error = ref("");
 
-  function applyPreset(days: number) {
-    activePreset.value = days;
-    since.value = daysAgo(days);
-    until.value = toDateString(new Date());
-  }
-
-  function isActivePreset(days: number): boolean {
-    return activePreset.value === days;
-  }
-
-  const sinceDate = computed(() => new Date(since.value));
-  const untilDate = computed(() => new Date(until.value + "T23:59:59"));
-
   // Previous period: same duration, ending where current starts
   const prevSinceDate = computed(() => {
     const rangeMs = untilDate.value.getTime() - sinceDate.value.getTime();
     return new Date(sinceDate.value.getTime() - rangeMs);
-  });
-
-  const queryParams = computed(() => {
-    const params = new URLSearchParams();
-    params.set("since", sinceDate.value.toISOString());
-    params.set("until", untilDate.value.toISOString());
-    return params.toString();
   });
 
   const prevQueryParams = computed(() => {
@@ -147,23 +102,7 @@ export function usePipelines() {
     }
   }
 
-  // Sync URL when dates change
-  watch([since, until], () => {
-    // Clear active preset if dates don't match
-    if (activePreset.value !== null) {
-      const expected = daysAgo(activePreset.value);
-      if (since.value !== expected || until.value !== toDateString(new Date())) {
-        activePreset.value = null;
-      }
-    }
-
-    // Update URL query params
-    router.replace({
-      query: { since: since.value, until: until.value },
-    });
-  });
-
   watch(queryParams, () => fetchAll(), { immediate: true });
 
-  return { since, until, points, comparison, loading, initialLoading, error, applyPreset, isActivePreset };
+  return { since, until, points, comparison, loading, initialLoading, error };
 }
