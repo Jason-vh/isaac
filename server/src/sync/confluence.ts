@@ -156,7 +156,7 @@ export async function syncConfluence(sinceOverride?: Date): Promise<void> {
           });
 
         for (const comment of commentsData.results) {
-          // Events are personal — only track my comments for the dashboard
+          // Events are personal — only my own comments are tracked
           if (comment.history.createdBy.accountId !== myAccountId) continue;
           const commentDate = new Date(comment.history.createdDate);
           if (commentDate < since) continue;

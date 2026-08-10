@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { isAuthenticated, isShareMode, shareSection, useAuth } from "../composables/useAuth";
-import DashboardView from "../views/DashboardView.vue";
 import LoginView from "../views/LoginView.vue";
 
 export const router = createRouter({
@@ -19,12 +18,7 @@ export const router = createRouter({
     },
     {
       path: "/",
-      redirect: "/dashboard",
-    },
-    {
-      path: "/dashboard/:week?",
-      name: "dashboard",
-      component: DashboardView,
+      redirect: "/wbso",
     },
     {
       path: "/wbso/:date?",
@@ -46,11 +40,6 @@ export const router = createRouter({
       ],
     },
 {
-      path: "/activity",
-      name: "activity",
-      component: () => import("../views/ActivityView.vue"),
-    },
-    {
       path: "/team",
       name: "team",
       component: () => import("../views/TeamView.vue"),

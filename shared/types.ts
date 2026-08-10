@@ -194,69 +194,6 @@ export interface PasskeyCredential {
   createdAt: string;
 }
 
-// Dashboard
-export interface DayActivity {
-  date: string;
-  ticketsClosed: number;
-  ticketEvents: number;
-  mrsMerged: number;
-  mrsOpened: number;
-  mrComments: number;
-  mrsReviewed: number;
-  confluencePublished: number;
-  meetingMinutes: number;
-  meetingCount: number;
-  winsLogged: number;
-}
-
-export interface WeekStats {
-  ticketsClosed: number;
-  storyPointsClosed: number;
-  mrsMerged: number;
-  mrsReviewed: number;
-  teamMrsMerged: number;
-  filesChanged: number;
-  meetingHours: number;
-  meetingCount: number;
-  confluenceDocuments: number;
-  winsLogged: number;
-}
-
-export type FeedItemType =
-  | "ticket_closed"
-  | "ticket_status_changed"
-  | "mr_merged"
-  | "mr_opened"
-  | "mr_commented"
-  | "confluence_published"
-  | "meeting"
-  | "win";
-
-export interface FeedItem {
-  id: string;
-  type: FeedItemType;
-  title: string;
-  subtitle: string | null;
-  occurredAt: string;
-  endsAt: string | null;
-  externalUrl: string | null;
-}
-
-export interface WeekData {
-  weekStart: string;
-  weekEnd: string;
-  days: DayActivity[];
-  stats: WeekStats;
-  feed: FeedItem[];
-}
-
-// Velocity
-export interface VelocityWeek {
-  weekStart: string;
-  storyPointsClosed: number;
-  ticketsClosed: number;
-}
-
 // Pipelines
 export type PipelineScope = "frontend" | "backend" | "fullstack" | "neither";
 
@@ -617,44 +554,6 @@ export interface JobRetryTrend {
   weeks: JobRetryTrendPoint[];  // always 4 entries, oldest first
   slope: number;        // last week rate minus first week rate (pp)
   severity: "healthy" | "improving" | "worsening" | "chronic";
-}
-
-// Activity Items
-export type ActivitySourceType =
-  | "gitlab_comment"
-  | "gitlab_approval"
-  | "gitlab_merge"
-  | "pipeline_success"
-  | "pipeline_failure"
-  | "review_request"
-  | "commits_pushed"
-  | "mentioned"
-  | "marked_ready";
-
-export interface ActivityItem {
-  id: number;
-  sourceType: ActivitySourceType;
-  sourceId: string;
-  ticketKey: string | null;
-  epicName: string | null;
-  actor: string | null;
-  title: string;
-  body: string | null;
-  externalUrl: string;
-  notifiedAt: string | null;
-  occurredAt: string;
-  createdAt: string;
-}
-
-export interface ActivityDay {
-  date: string;
-  items: ActivityItem[];
-}
-
-export interface ActivityData {
-  days: ActivityDay[];
-  total: number;
-  jiraBrowseUrl: string;
 }
 
 // Sync

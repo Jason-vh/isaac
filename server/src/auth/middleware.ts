@@ -9,10 +9,8 @@ import { shareTokens } from "../db/schema";
 // wider than the page it came from, and defaulting to allow would hand every
 // read endpoint to a link made from an unmapped page.
 const SECTION_API_PREFIXES: Record<string, string[]> = {
-  dashboard: ["/api/dashboard", "/api/sprints"],
   wbso: ["/api/wbso", "/api/sprints"],
   objectives: ["/api/objectives", "/api/key-results", "/api/sprints"],
-  activity: ["/api/activity", "/api/sprints"],
   team: ["/api/team", "/api/sprints"],
   reviews: ["/api/reviews", "/api/sprints"],
   pipelines: ["/api/pipelines", "/api/sprints"],

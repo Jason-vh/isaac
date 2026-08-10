@@ -63,13 +63,17 @@ columns and indexes. The concepts:
 - **Person** — engineer keyed by corporate email, with GitLab and Jira
   identities attached. Created during sync; bots are never recorded. Exactly one
   is flagged `isMe`.
-- **Win** — something worth remembering, counted on the dashboard and usable as
-  objective evidence. There is no ingestion path yet: rows are written to `wins`
-  by hand. A Slack slash command was the intended source, which is why the table
-  still keys on `slack_message_id`.
+- **Win** — something worth remembering, usable as objective evidence via
+  `entity_links`. Nothing reads or writes the `wins` table itself since the
+  dashboard was removed: rows were only ever written by hand, and a Slack slash
+  command was the intended source, which is why it still keys on
+  `slack_message_id`.
 - **Objective** — annual objective with Key Results, hardcoded in
   `shared/objectives.ts`. Evidenced by tickets, wins and activity via
   `entity_links`.
+- **Activity item** — a GitLab notification parsed out of email by
+  isaac-notify, which relays it to Slack. Written only, and kept for the record;
+  no page reads `activity_items` any more.
 
 ## WBSO estimation
 

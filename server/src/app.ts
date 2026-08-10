@@ -5,13 +5,11 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { resolve, sep } from "path";
 import { authRoutes } from "./routes/auth";
-import { dashboardRoutes } from "./routes/dashboard";
 import { syncRoutes } from "./routes/sync";
 import { objectiveRoutes } from "./routes/objectives";
 import { pipelineRoutes } from "./routes/pipelines";
 import { shareRoutes } from "./routes/share";
 import { wbsoRoutes } from "./routes/wbso";
-import { activityRoutes } from "./routes/activity";
 import { teamRoutes } from "./routes/team";
 import { reviewRoutes } from "./routes/reviews";
 import { sprintRoutes } from "./routes/sprints";
@@ -58,11 +56,9 @@ export const app = new Elysia()
   .use(authContext)
   .guard({ beforeHandle: requireAuth }, (app) =>
     app
-      .use(dashboardRoutes)
       .use(objectiveRoutes)
       .use(pipelineRoutes)
       .use(wbsoRoutes)
-      .use(activityRoutes)
       .use(teamRoutes)
       .use(reviewRoutes)
       .use(sprintRoutes)
