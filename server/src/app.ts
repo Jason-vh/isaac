@@ -54,11 +54,12 @@ export const app = new Elysia()
   // Resolves `auth` per request. Elysia's `store` is shared across requests, so
   // it can't hold anything caller-specific.
   .use(authContext)
+  // Guards its own routes: the week estimate is public, the rest is not.
+  .use(wbsoRoutes)
   .guard({ beforeHandle: requireAuth }, (app) =>
     app
       .use(objectiveRoutes)
       .use(pipelineRoutes)
-      .use(wbsoRoutes)
       .use(teamRoutes)
       .use(reviewRoutes)
       .use(sprintRoutes)

@@ -4,45 +4,10 @@ import { db } from "../db";
 import { meetings, mergeRequests, tickets, wbsoEntryMarks } from "../db/schema";
 import { estimateWeek } from "../wbso/estimator";
 import { isDateString, mondayOf } from "../lib/calendar";
-import { requireOwner } from "../auth/middleware";
+import { requireAuth, requireOwner } from "../auth/middleware";
 
 export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
-  .get("/tickets/search", async ({ query }) => {
-    const q = (query as { q?: string }).q?.trim();
-    if (!q || q.length < 2) return [];
-
-    const rows = await db
-      .select({
-        key: tickets.key,
-        title: tickets.title,
-        issueType: tickets.issueType,
-        epicKey: tickets.epicKey,
-      })
-      .from(tickets)
-      .where(
-        or(
-          ilike(tickets.key, `%${q}%`),
-          ilike(tickets.title, `%${q}%`)
-        )
-      )
-      .limit(10);
-
-    // Resolve epic titles
-    const epicKeys = [...new Set(rows.map((r) => r.epicKey).filter((k): k is string => k !== null))];
-    const epicTitleMap = new Map<string, string>();
-    if (epicKeys.length > 0) {
-      const epicRows = await db
-        .select({ key: tickets.key, title: tickets.title })
-        .from(tickets)
-        .where(inArray(tickets.key, epicKeys));
-      for (const e of epicRows) epicTitleMap.set(e.key, e.title);
-    }
-
-    return rows.map((r) => ({
-      ...r,
-      epicTitle: r.epicKey ? epicTitleMap.get(r.epicKey) ?? null : null,
-    }));
-  })
+  // Public: the week estimate is the one endpoint meant to be readable by anyone.
   .get("/week/:date", async ({ params, set }) => {
     if (!isDateString(params.date)) {
       set.status = 400;
@@ -50,6 +15,46 @@ export const wbsoRoutes = new Elysia({ prefix: "/api/wbso" })
     }
     return estimateWeek(mondayOf(params.date));
   })
+  // Search reaches every ticket, well past the week on screen, so it stays behind a token.
+  .guard({ beforeHandle: requireAuth }, (app) =>
+    app.get("/tickets/search", async ({ query }) => {
+      const q = (query as { q?: string }).q?.trim();
+      if (!q || q.length < 2) return [];
+
+      const rows = await db
+        .select({
+          key: tickets.key,
+          title: tickets.title,
+          issueType: tickets.issueType,
+          epicKey: tickets.epicKey,
+        })
+        .from(tickets)
+        .where(
+          or(ilike(tickets.key, `%${q}%`), ilike(tickets.title, `%${q}%`))
+        )
+        .limit(10);
+
+      // Resolve epic titles
+      const epicKeys = [
+        ...new Set(
+          rows.map((r) => r.epicKey).filter((k): k is string => k !== null)
+        ),
+      ];
+      const epicTitleMap = new Map<string, string>();
+      if (epicKeys.length > 0) {
+        const epicRows = await db
+          .select({ key: tickets.key, title: tickets.title })
+          .from(tickets)
+          .where(inArray(tickets.key, epicKeys));
+        for (const e of epicRows) epicTitleMap.set(e.key, e.title);
+      }
+
+      return rows.map((r) => ({
+        ...r,
+        epicTitle: r.epicKey ? epicTitleMap.get(r.epicKey) ?? null : null,
+      }));
+    })
+  )
   .guard({ beforeHandle: requireOwner }, (app) =>
     app
   // Mark a worksheet row as transcribed into the WBSO form, or clear the mark.

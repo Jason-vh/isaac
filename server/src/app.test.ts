@@ -5,7 +5,7 @@ process.env.JWT_SECRET ??= "test-secret";
 process.env.WEBAUTHN_RP_ID ??= "localhost";
 process.env.WEBAUTHN_ORIGIN ??= "http://localhost:5173";
 
-const { resolveStaticPath } = await import("./app");
+const { app, resolveStaticPath } = await import("./app");
 
 describe("resolveStaticPath", () => {
   test("resolves a normal asset", () => {
@@ -35,5 +35,23 @@ describe("resolveStaticPath", () => {
 
   test("rejects a null byte", () => {
     expect(resolveStaticPath("/index.html%00.js")).toBeNull();
+  });
+});
+
+describe("wbso week is public", () => {
+  // An invalid date is rejected before any query runs, so this reaches the
+  // handler without a database — a 401 here would mean the route got guarded.
+  test("an anonymous request reaches the handler", async () => {
+    const res = await app.handle(
+      new Request("https://isaac.test/api/wbso/week/not-a-date")
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("an anonymous ticket search is still rejected", async () => {
+    const res = await app.handle(
+      new Request("https://isaac.test/api/wbso/tickets/search?q=ab")
+    );
+    expect(res.status).toBe(401);
   });
 });
