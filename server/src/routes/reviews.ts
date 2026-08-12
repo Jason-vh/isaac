@@ -7,6 +7,10 @@ import { distribution, median, workHoursBetween } from "../lib/reviewMetrics";
 import { parseRange } from "../lib/request";
 import type {
   AuthorWait,
+  BugbotCohort,
+  BugbotReport,
+  BugbotRisk,
+  BugbotSizeBand,
   Person,
   ReviewMr,
   ReviewOverview,
@@ -35,7 +39,7 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
   const rows = (await db.execute(sql`
     SELECT
       mr.id, mr.gitlab_iid, mr.title, mr.project_path, mr.author_person_id,
-      mr.threads_opened, mr.threads_resolved,
+      mr.bugbot_risk, mr.threads_opened, mr.threads_resolved,
       mr.first_approved_at, mr.last_approved_at, mr.merged_at,
       LEAST(COALESCE(e.first_ready, mr.ready_at), e.first_request, r.first_comment)
         AS review_started_at,
@@ -100,6 +104,7 @@ async function loadMergedMrs(since: Date, until: Date): Promise<ReviewMr[]> {
       title: r.title,
       webUrl: `${env.GITLAB_BASE_URL}/${r.project_path}/-/merge_requests/${r.gitlab_iid}`,
       authorId: r.author_person_id ?? null,
+      bugbotRisk: r.bugbot_risk ?? null,
       additions: r.additions,
       deletions: r.deletions,
       comments: r.comments,
@@ -212,6 +217,77 @@ function authorWaits(mrs: ReviewMr[], people: Person[]): AuthorWait[] {
     .sort((a, b) => b.mrs - a.mrs);
 }
 
+const RISK_ORDER: Array<BugbotRisk | null> = [
+  "low",
+  "medium",
+  "high",
+  "critical",
+  null,
+];
+
+const SIZE_BANDS: Array<{ label: string; min: number; max: number }> = [
+  { label: "< 50 lines", min: 0, max: 50 },
+  { label: "50–200 lines", min: 50, max: 200 },
+  { label: "200–600 lines", min: 200, max: 600 },
+  { label: "600+ lines", min: 600, max: Infinity },
+];
+
+function cohort(risk: BugbotRisk | null, mrs: ReviewMr[]): BugbotCohort {
+  return {
+    risk,
+    mrs: mrs.length,
+    lines: distribution(mrs.map((m) => m.additions + m.deletions)),
+    comments: distribution(mrs.map((m) => m.comments)),
+    approvedWithoutComments: mrs.filter(
+      (m) => m.approvals > 0 && m.comments === 0
+    ).length,
+    withResetApproval: mrs.filter((m) => m.approvalResets > 0).length,
+  };
+}
+
+/** Cohorts that have MRs, in severity order, unscored last. */
+function cohorts(mrs: ReviewMr[]): BugbotCohort[] {
+  return RISK_ORDER.flatMap((risk) => {
+    const matching = mrs.filter((m) => m.bugbotRisk === risk);
+    return matching.length > 0 ? [cohort(risk, matching)] : [];
+  });
+}
+
+/**
+ * Risk against the review it actually got. Scored MRs are far bigger than
+ * unscored ones on median, so the bands are the part to read: they show what
+ * the label adds once size is held constant.
+ */
+function bugbotReport(mrs: ReviewMr[], people: Person[]): BugbotReport {
+  const scored = mrs.filter((m) => m.bugbotRisk !== null);
+
+  const bySize: BugbotSizeBand[] = SIZE_BANDS.map(({ label, min, max }) => ({
+    label,
+    cohorts: cohorts(
+      scored.filter((m) => {
+        const lines = m.additions + m.deletions;
+        return lines >= min && lines < max;
+      })
+    ),
+  })).filter((band) => band.cohorts.length > 0);
+
+  const coverage = people
+    .flatMap((person) => {
+      const authored = mrs.filter((m) => m.authorId === person.id);
+      if (authored.length === 0) return [];
+      return [
+        {
+          person,
+          mrs: authored.length,
+          scored: authored.filter((m) => m.bugbotRisk !== null).length,
+        },
+      ];
+    })
+    .sort((a, b) => b.mrs - a.mrs);
+
+  return { scored: scored.length, cohorts: cohorts(mrs), bySize, coverage };
+}
+
 async function loadPeople(): Promise<Person[]> {
   return db
     .select({
@@ -236,6 +312,7 @@ export const reviewRoutes = new Elysia({ prefix: "/api/reviews" })
       summary: summarise(mrs),
       trend: trend(mrs),
       authors: authorWaits(mrs, peopleList),
+      bugbot: bugbotReport(mrs, peopleList),
       mrs,
       people: peopleList,
     } satisfies ReviewOverview;

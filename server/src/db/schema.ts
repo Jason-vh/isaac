@@ -96,6 +96,9 @@ export const mergeRequests = pgTable("merge_requests", {
   additions: integer("additions").notNull().default(0),
   deletions: integer("deletions").notNull().default(0),
   commitCount: integer("commit_count").notNull(),
+  // Cursor Bugbot's risk label, parsed from the MR description. Null means
+  // Bugbot left no summary — it doesn't run on every author's MRs.
+  bugbotRisk: text("bugbot_risk"),
   // Resolvable discussions, and how many of them ended up resolved.
   threadsOpened: integer("threads_opened").notNull().default(0),
   threadsResolved: integer("threads_resolved").notNull().default(0),

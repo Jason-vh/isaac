@@ -12,6 +12,7 @@ import { and, eq, notInArray, sql } from "drizzle-orm";
 import { env } from "../env";
 import { apiFetch, paginateGitLab, runSyncWithLog, dedup } from "./util";
 import { classifyPath } from "../lib/codeCategory";
+import { parseBugbotRisk } from "./bugbot";
 import {
   GitLabIdentityResolver,
   isBotUser,
@@ -50,6 +51,7 @@ interface GitLabMR {
   id: number;
   iid: number;
   title: string;
+  description: string | null;
   state: string;
   draft: boolean;
   source_branch: string;
@@ -400,6 +402,7 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
           reviewedByMe,
           authorPersonId,
           branchName: mr.source_branch,
+          bugbotRisk: parseBugbotRisk(mr.description),
           threadsOpened: threads.opened,
           threadsResolved: threads.resolved,
           gitlabCreatedAt: new Date(mr.created_at),

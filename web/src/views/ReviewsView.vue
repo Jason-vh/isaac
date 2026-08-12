@@ -40,6 +40,13 @@
     </div>
 
     <div class="mt-6">
+      <BugbotRiskTable
+        :report="overview?.bugbot ?? null"
+        :total="overview?.summary.mrs ?? 0"
+      />
+    </div>
+
+    <div class="mt-6">
       <MrReviewTable
         :mrs="overview?.mrs ?? []"
         :people="overview?.people ?? []"
@@ -52,7 +59,9 @@
       review requested, or first comment — since a third of MRs have reviewers
       requested while still a draft. First comment is the first comment or
       approval by another person; bots such as Bugbot and the security scanner
-      don't count. Durations exclude weekends.
+      don't count. Durations exclude weekends. Bugbot's risk label is read from
+      the MR description, and tracks MR size closely — read it within a size
+      band, not across the whole period.
     </p>
   </div>
 </template>
@@ -60,6 +69,7 @@
 <script setup lang="ts">
 import { useReviews } from "../composables/useReviews";
 import AuthorWaitTable from "../components/reviews/AuthorWaitTable.vue";
+import BugbotRiskTable from "../components/reviews/BugbotRiskTable.vue";
 import ReviewDistributions from "../components/reviews/ReviewDistributions.vue";
 import ReviewQuality from "../components/reviews/ReviewQuality.vue";
 import ReviewSizeScatter from "../components/reviews/ReviewSizeScatter.vue";

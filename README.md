@@ -175,6 +175,17 @@ a period.
   the whole team at once. It measures responsiveness, not effort.
 - Weekends are excluded from durations.
 - Medians and tails, never averages. The p90 is where the pain lives.
+- **Bugbot risk** is reported against the review each MR actually got, and is
+  read from the MR description rather than inferred: Cursor fences its summary
+  in a `CURSOR_SUMMARY` block, and the `Low|Medium|High Risk` line inside it is
+  the label. A null means Bugbot left no summary, which is a fact worth keeping
+  — it doesn't run on every MR, and which ones it skips is decided by the
+  author's Cursor account, not by the change. That's why coverage is shown per
+  author next to the split.
+- The risk label tracks MR size closely (risk↔size correlates at 0.44, and the
+  median Low MR is 46 lines against 493 for Medium), so the headline split
+  mostly restates size. Cohorts are therefore also shown within size bands,
+  where the label adds almost nothing over the diff stat. Read the bands.
 - Comment counts are normalised by size, since a raw count mostly measures how
   big the MR was.
 

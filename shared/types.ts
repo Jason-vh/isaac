@@ -750,12 +750,47 @@ export interface ReviewSummary {
   };
 }
 
+/** Cursor Bugbot's risk label for an MR. */
+export type BugbotRisk = "low" | "medium" | "high" | "critical";
+
+/** MRs sharing a risk label; `risk: null` is "Bugbot left no score". */
+export interface BugbotCohort {
+  risk: BugbotRisk | null;
+  mrs: number;
+  lines: Distribution;
+  comments: Distribution;
+  /** Counts of MRs, out of `mrs`. */
+  approvedWithoutComments: number;
+  withResetApproval: number;
+}
+
+/**
+ * The same cohorts within one size band. Risk tracks MR size closely, so the
+ * headline split mostly restates size unless it is held constant.
+ */
+export interface BugbotSizeBand {
+  label: string;
+  cohorts: BugbotCohort[];
+}
+
+/**
+ * Bugbot doesn't run on every MR, and which ones it skips is decided by the
+ * author, not the change — so coverage is reported next to the cohorts.
+ */
+export interface BugbotReport {
+  scored: number;
+  cohorts: BugbotCohort[];
+  bySize: BugbotSizeBand[];
+  coverage: Array<{ person: Person; mrs: number; scored: number }>;
+}
+
 export interface ReviewMr {
   id: number;
   iid: number;
   title: string;
   webUrl: string;
   authorId: number | null;
+  bugbotRisk: BugbotRisk | null;
   additions: number;
   deletions: number;
   comments: number;
@@ -797,6 +832,7 @@ export interface ReviewOverview {
   summary: ReviewSummary;
   trend: ReviewTrendPoint[];
   authors: AuthorWait[];
+  bugbot: BugbotReport;
   mrs: ReviewMr[];
   people: Person[];
 }
