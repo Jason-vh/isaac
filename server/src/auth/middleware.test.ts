@@ -83,6 +83,17 @@ describe("sectionOf", () => {
     expect(sectionOf("/team")).toBe("team");
     expect(sectionOf("/")).toBe("");
   });
+
+  // Share links carry the page's own query, so this is the common case, not an
+  // edge one: every link made from a page with a date range came through here.
+  test("ignores the query string and hash", () => {
+    expect(sectionOf("/reviews?since=2026-08-03&until=2026-08-12")).toBe(
+      "reviews"
+    );
+    expect(sectionOf("/wbso/2026-01-05?view=overview")).toBe("wbso");
+    expect(sectionOf("/team#totals")).toBe("team");
+    expect(sectionOf("/?since=2026-08-03")).toBe("");
+  });
 });
 
 describe("per-request auth isolation", () => {

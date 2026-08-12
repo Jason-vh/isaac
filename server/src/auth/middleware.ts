@@ -27,9 +27,15 @@ export type AuthContext = { auth: Auth | null };
 // same as an absent token — a wiring mistake fails closed rather than open.
 type GuardContext = { request: Request; auth?: Auth | null };
 
-/** The page section a share path belongs to, e.g. "/wbso/2026-01-05" -> "wbso". */
+/**
+ * The page section a share path belongs to, e.g. "/wbso/2026-01-05" -> "wbso".
+ * Share paths are router full paths, so the query string has to come off first:
+ * a link made from a page with a date range would otherwise yield a section of
+ * "reviews?since=...", which matches nothing and silently grants nothing.
+ */
 export function sectionOf(path: string): string {
-  return path.split("/").filter(Boolean)[0] ?? "";
+  const withoutQuery = path.split(/[?#]/)[0] ?? "";
+  return withoutQuery.split("/").filter(Boolean)[0] ?? "";
 }
 
 function jsonError(status: number, error: string): Response {
