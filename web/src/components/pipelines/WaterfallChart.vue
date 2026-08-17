@@ -49,8 +49,6 @@ import GanttChart from "./GanttChart.vue";
 import type { GanttStage, GanttTick, GanttBar, GanttRow } from "./gantt-types";
 import { computeCriticalPath } from "../../composables/useCriticalPath";
 
-const HIDDEN_STAGES = new Set(["security"]);
-
 const props = defineProps<{
   pipeline: PipelineDetail;
   search?: string;
@@ -112,7 +110,7 @@ function onBarLeave() {
 // --- Timeline helpers ---
 
 const visibleJobs = computed(() =>
-  props.pipeline.jobs.filter((j) => !HIDDEN_STAGES.has(j.stage) && j.status !== "manual")
+  props.pipeline.jobs.filter((j) => j.status !== "manual")
 );
 
 const pipelineStart = computed(() => {

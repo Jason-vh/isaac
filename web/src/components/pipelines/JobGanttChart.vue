@@ -90,8 +90,6 @@ interface JobTooltipData {
   runCount: number;
 }
 
-const HIDDEN_STAGES = new Set(["security"]);
-
 const props = defineProps<{
   jobs: JobStats[];
   loading: boolean;
@@ -157,7 +155,7 @@ function fmtDuration(seconds: number | null): string {
 // --- Scheduling: compute stage order and simulated job positions ---
 
 const scheduling = computed(() => {
-  const jobs = props.jobs.filter((j) => !HIDDEN_STAGES.has(j.stage));
+  const jobs = props.jobs;
   if (jobs.length === 0) return { stages: [] as GanttStage[], maxTime: 0 };
 
   const jobMap = new Map(jobs.map((j) => [j.name, j]));

@@ -10,8 +10,8 @@ export const MERGE_OR_TRAIN = sql`
   AND (p.ref LIKE '%/merge' OR p.ref LIKE '%/train')
 `;
 
-/** Security scans and pages are excluded: they don't gate a merge. */
-export const RELEVANT_JOB = sql`j.stage != 'security' AND j.name != 'pages'`;
+/** The dashboard omits the GitLab Pages deployment job. */
+export const RELEVANT_JOB = sql`j.name != 'pages'`;
 
 /** Scope filter: requires the pipelines table to be aliased as `p`. */
 export function scopeFilterSql(scope: string | undefined): SQL {
@@ -104,7 +104,7 @@ export function toCriticalPathJob(r: JobRow): CriticalPathJob {
  * The window a pipeline's jobs actually span, queue time included.
  *
  * Derived from job timestamps rather than the pipeline's own, which also cover
- * the security and pages jobs this analysis filters out.
+ * the Pages job this analysis filters out.
  */
 export function pipelineWindow(
   jobs: CriticalPathJob[]
