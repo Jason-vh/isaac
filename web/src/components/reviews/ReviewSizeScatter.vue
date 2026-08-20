@@ -4,8 +4,8 @@
       <div>
         <h2 class="text-lg font-semibold text-ink">Size vs. review</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
-          Each dot is a merged MR, the dashed line is the least-squares fit.
-          {{ config.axes }}; click a dot to open it in GitLab.
+          Each dot is a merged MR. {{ config.axes }}; click a dot to open it in
+          GitLab.
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -73,7 +73,7 @@ const metric = ref<Metric>("hoursToMerge");
  * Both charts plot lines changed against a review signal. Time to merge spans
  * orders of magnitude and never hits zero, so it gets a log axis; comment
  * counts are small and often zero, so they stay linear. The trend line and the
- * correlation work on the same scale the axis is drawn at, so a straight line
+ * correlation work on the same scale the axes are drawn at, so a straight line
  * on screen is a straight fit.
  */
 const METRICS: Record<
@@ -90,7 +90,7 @@ const METRICS: Record<
   }
 > = {
   hoursToMerge: {
-    axes: "The time axis is logarithmic",
+    axes: "Both axes are logarithmic",
     empty: "No merged MRs with a review window in this period.",
     value: (mr) => (mr.hoursToMerge === null ? null : Math.max(mr.hoursToMerge, 0.1)),
     axisType: "log",
@@ -100,7 +100,7 @@ const METRICS: Record<
     color: "#E07A2F",
   },
   comments: {
-    axes: "Both axes are linear",
+    axes: "The size axis is logarithmic",
     empty: "No merged MRs with changed lines in this period.",
     value: (mr) => mr.comments,
     axisType: "value",
@@ -122,9 +122,9 @@ const series = computed(() =>
   })
 );
 
-/** The points as plotted, with y on the scale its axis is drawn at. */
+/** The points as plotted, with each value on the scale its axis is drawn at. */
 const fitPoints = computed(() =>
-  series.value.map((p) => [p.value[0], config.value.toAxis(p.value[1])])
+  series.value.map((p) => [Math.log(p.value[0]), config.value.toAxis(p.value[1])])
 );
 
 function mean(values: number[]): number {
@@ -146,7 +146,8 @@ const fit = computed(() => {
   const slope = cov / vx;
   return {
     correlation: cov / Math.sqrt(vx * vy),
-    at: (x: number) => config.value.fromAxis(my + slope * (x - mx)),
+    at: (lines: number) =>
+      config.value.fromAxis(my + slope * (Math.log(lines) - mx)),
   };
 });
 
@@ -155,7 +156,7 @@ const correlation = computed(() => fit.value?.correlation ?? null);
 /** Two endpoints are enough: the fit is a straight line in screen space. */
 const trendLine = computed(() => {
   if (!fit.value) return [];
-  const xs = fitPoints.value.map((p) => p[0]);
+  const xs = series.value.map((p) => p.value[0]);
   return [Math.min(...xs), Math.max(...xs)].map((x) => [x, fit.value!.at(x)]);
 });
 
@@ -174,7 +175,7 @@ const chartOption = computed(() => ({
   },
   grid: { left: 56, right: 16, top: 16, bottom: 40 },
   xAxis: {
-    type: "value",
+    type: "log",
     name: "lines changed",
     nameLocation: "middle",
     nameGap: 26,
