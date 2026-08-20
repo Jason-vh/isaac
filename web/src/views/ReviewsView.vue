@@ -35,9 +35,8 @@
       <AuthorWaitTable :authors="overview?.authors ?? []" />
     </div>
 
-    <div class="mt-6 grid gap-6 lg:grid-cols-2">
-      <ReviewSizeScatter :mrs="overview?.mrs ?? []" metric="hoursToMerge" />
-      <ReviewSizeScatter :mrs="overview?.mrs ?? []" metric="comments" />
+    <div class="mt-6">
+      <ReviewSizeScatter :mrs="overview?.mrs ?? []" />
     </div>
 
     <div class="mt-6">

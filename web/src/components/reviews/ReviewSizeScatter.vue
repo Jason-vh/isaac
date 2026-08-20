@@ -1,22 +1,37 @@
 <template>
   <div class="card p-4 sm:p-5">
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <h2 class="text-lg font-semibold text-ink">{{ config.title }}</h2>
+        <h2 class="text-lg font-semibold text-ink">Size vs. review</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
           Each dot is a merged MR. {{ config.axes }}; click to open it in
           GitLab.
         </p>
       </div>
-      <p v-if="correlation !== null" class="shrink-0 text-sm text-ink-muted">
-        correlation
-        <span class="font-mono text-ink">{{ correlation.toFixed(2) }}</span>
-      </p>
+      <div class="flex items-center gap-3">
+        <p v-if="correlation !== null" class="shrink-0 text-sm text-ink-muted">
+          correlation
+          <span class="font-mono text-ink">{{ correlation.toFixed(2) }}</span>
+        </p>
+        <div class="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface-0 p-0.5">
+          <button
+            v-for="opt in metricOptions"
+            :key="opt.value"
+            class="rounded-md px-2.5 py-1 text-xs transition-colors"
+            :class="metric === opt.value
+              ? 'bg-white text-ink font-medium shadow-sm'
+              : 'text-ink-muted hover:text-ink'"
+            @click="metric = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <div
       v-if="!series.length"
-      class="flex h-72 items-center justify-center text-sm text-ink-faint"
+      class="flex h-96 items-center justify-center text-sm text-ink-faint"
     >
       {{ config.empty }}
     </div>
@@ -24,7 +39,7 @@
       v-else
       :option="chartOption"
       autoresize
-      style="height: 288px"
+      style="height: 384px"
       class="mt-4"
       @click="onClick"
     />
@@ -32,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { ScatterChart } from "echarts/charts";
@@ -45,10 +60,14 @@ use([CanvasRenderer, ScatterChart, GridComponent, TooltipComponent]);
 
 type Metric = "hoursToMerge" | "comments";
 
-const props = withDefaults(
-  defineProps<{ mrs: ReviewMr[]; metric?: Metric }>(),
-  { metric: "hoursToMerge" }
-);
+const props = defineProps<{ mrs: ReviewMr[] }>();
+
+const metricOptions: { value: Metric; label: string }[] = [
+  { value: "hoursToMerge", label: "Time to merge" },
+  { value: "comments", label: "Comments" },
+];
+
+const metric = ref<Metric>("hoursToMerge");
 
 /**
  * Both charts plot lines changed against a review signal. Time to merge spans
@@ -59,7 +78,6 @@ const props = withDefaults(
 const METRICS: Record<
   Metric,
   {
-    title: string;
     axes: string;
     empty: string;
     value: (mr: ReviewMr) => number | null;
@@ -70,7 +88,6 @@ const METRICS: Record<
   }
 > = {
   hoursToMerge: {
-    title: "Size vs. time to merge",
     axes: "Both axes are logarithmic",
     empty: "No merged MRs with a review window in this period.",
     value: (mr) => (mr.hoursToMerge === null ? null : Math.max(mr.hoursToMerge, 0.1)),
@@ -80,7 +97,6 @@ const METRICS: Record<
     color: "#E07A2F",
   },
   comments: {
-    title: "Size vs. comments",
     axes: "The size axis is logarithmic",
     empty: "No merged MRs with changed lines in this period.",
     value: (mr) => mr.comments,
@@ -91,7 +107,7 @@ const METRICS: Record<
   },
 };
 
-const config = computed(() => METRICS[props.metric]);
+const config = computed(() => METRICS[metric.value]);
 
 const series = computed(() =>
   props.mrs.flatMap((mr) => {

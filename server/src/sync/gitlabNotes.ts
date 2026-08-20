@@ -4,6 +4,8 @@
 // requests) as system notes rather than as fields on the merge request, so
 // walking the notes is the only way to know when they happened.
 
+import { isBotUser } from "./people";
+
 export interface GitLabNoteAuthor {
   id: number;
   username: string;
@@ -136,13 +138,19 @@ export interface ThreadStats {
   resolved: number;
 }
 
-/** Resolvable discussions (review threads) and how many are resolved. */
+/**
+ * Resolvable discussions (review threads) and how many are resolved. Threads
+ * started by a bot — Cursor's Bugbot, the security scanner — are review noise
+ * rather than review, and are left out like their comments are.
+ */
 export function threadStats(discussions: GitLabDiscussion[]): ThreadStats {
   let opened = 0;
   let resolved = 0;
   for (const d of discussions) {
     const resolvable = d.notes.filter((n) => n.resolvable && !n.system);
     if (resolvable.length === 0) continue;
+    const author = resolvable[0].author;
+    if (isBotUser(author.username, author.public_email, author.name)) continue;
     opened++;
     if (resolvable.every((n) => n.resolved)) resolved++;
   }
