@@ -2,9 +2,9 @@
   <div class="card p-4 sm:p-5">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h2 class="text-lg font-semibold text-ink">Size vs. time to merge</h2>
+        <h2 class="text-lg font-semibold text-ink">{{ config.title }}</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
-          Each dot is a merged MR. Both axes are logarithmic; click to open it in
+          Each dot is a merged MR. {{ config.axes }}; click to open it in
           GitLab.
         </p>
       </div>
@@ -18,7 +18,7 @@
       v-if="!series.length"
       class="flex h-72 items-center justify-center text-sm text-ink-faint"
     >
-      No merged MRs with a review window in this period.
+      {{ config.empty }}
     </div>
     <v-chart
       v-else
@@ -43,31 +43,75 @@ import { formatHours } from "../../lib/duration";
 
 use([CanvasRenderer, ScatterChart, GridComponent, TooltipComponent]);
 
-const props = defineProps<{ mrs: ReviewMr[] }>();
+type Metric = "hoursToMerge" | "comments";
 
-const series = computed(() =>
-  props.mrs
-    .filter((m) => m.hoursToMerge !== null && m.additions + m.deletions > 0)
-    .map((m) => ({
-      value: [m.additions + m.deletions, Math.max(m.hoursToMerge!, 0.1)],
-      mr: m,
-    }))
+const props = withDefaults(
+  defineProps<{ mrs: ReviewMr[]; metric?: Metric }>(),
+  { metric: "hoursToMerge" }
 );
 
-/** Pearson correlation on log-scaled values, which is how the axes are drawn. */
+/**
+ * Both charts plot lines changed against a review signal. Time to merge spans
+ * orders of magnitude and never hits zero, so it is drawn and correlated on a
+ * log scale; comment counts are small and often zero, so they stay linear and
+ * use log1p for the correlation.
+ */
+const METRICS: Record<
+  Metric,
+  {
+    title: string;
+    axes: string;
+    empty: string;
+    value: (mr: ReviewMr) => number | null;
+    axisType: "log" | "value";
+    transform: (value: number) => number;
+    format: (value: number) => string;
+    color: string;
+  }
+> = {
+  hoursToMerge: {
+    title: "Size vs. time to merge",
+    axes: "Both axes are logarithmic",
+    empty: "No merged MRs with a review window in this period.",
+    value: (mr) => (mr.hoursToMerge === null ? null : Math.max(mr.hoursToMerge, 0.1)),
+    axisType: "log",
+    transform: Math.log,
+    format: formatHours,
+    color: "#E07A2F",
+  },
+  comments: {
+    title: "Size vs. comments",
+    axes: "The size axis is logarithmic",
+    empty: "No merged MRs with changed lines in this period.",
+    value: (mr) => mr.comments,
+    axisType: "value",
+    transform: Math.log1p,
+    format: (value) => `${value}`,
+    color: "#3F7F8C",
+  },
+};
+
+const config = computed(() => METRICS[props.metric]);
+
+const series = computed(() =>
+  props.mrs.flatMap((mr) => {
+    const lines = mr.additions + mr.deletions;
+    const value = config.value.value(mr);
+    if (lines <= 0 || value === null) return [];
+    return [{ value: [lines, value], mr }];
+  })
+);
+
+/** Pearson correlation on the scale each axis is drawn at. */
 const correlation = computed(() => {
-  const points = series.value.map((p) => [
-    Math.log(p.value[0]),
-    Math.log(p.value[1]),
-  ]);
-  if (points.length < 5) return null;
+  if (series.value.length < 5) return null;
+  const xs = series.value.map((p) => Math.log(p.value[0]));
+  const ys = series.value.map((p) => config.value.transform(p.value[1]));
   const mean = (values: number[]) =>
     values.reduce((a, b) => a + b, 0) / values.length;
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
   const mx = mean(xs);
   const my = mean(ys);
-  const cov = points.reduce((sum, [x, y]) => sum + (x - mx) * (y - my), 0);
+  const cov = xs.reduce((sum, x, i) => sum + (x - mx) * (ys[i] - my), 0);
   const sx = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
   const sy = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
   return sx && sy ? cov / (sx * sy) : null;
@@ -97,11 +141,11 @@ const chartOption = computed(() => ({
     splitLine: { lineStyle: { color: "#F5F5F0" } },
   },
   yAxis: {
-    type: "log",
+    type: config.value.axisType,
     axisLabel: {
       color: "#A3A3A0",
       fontSize: 11,
-      formatter: (v: number) => formatHours(v),
+      formatter: (v: number) => config.value.format(v),
     },
     splitLine: { lineStyle: { color: "#F5F5F0" } },
   },
@@ -109,7 +153,7 @@ const chartOption = computed(() => ({
     {
       type: "scatter" as const,
       symbolSize: 7,
-      itemStyle: { color: "#E07A2F", opacity: 0.6 },
+      itemStyle: { color: config.value.color, opacity: 0.6 },
       data: series.value,
     },
   ],
