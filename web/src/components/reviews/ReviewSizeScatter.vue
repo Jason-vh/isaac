@@ -83,6 +83,7 @@ const METRICS: Record<
     empty: string;
     value: (mr: ReviewMr) => number | null;
     axisType: "log" | "value";
+    axisMin?: number;
     toAxis: (value: number) => number;
     fromAxis: (value: number) => number;
     format: (value: number) => string;
@@ -104,6 +105,7 @@ const METRICS: Record<
     empty: "No merged MRs with changed lines in this period.",
     value: (mr) => mr.comments,
     axisType: "value",
+    axisMin: 0,
     toAxis: (value) => value,
     fromAxis: (value) => value,
     format: (value) => `${value}`,
@@ -153,11 +155,20 @@ const fit = computed(() => {
 
 const correlation = computed(() => fit.value?.correlation ?? null);
 
+/**
+ * The plotted size range, padded by 15%. A log axis otherwise rounds out to
+ * whole powers of ten, leaving most of a decade empty past the largest MR.
+ */
+const sizeRange = computed(() => {
+  const xs = series.value.map((p) => p.value[0]);
+  return xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : null;
+});
+
 /** Two endpoints are enough: the fit is a straight line in screen space. */
 const trendLine = computed(() => {
-  if (!fit.value) return [];
-  const xs = series.value.map((p) => p.value[0]);
-  return [Math.min(...xs), Math.max(...xs)].map((x) => [x, fit.value!.at(x)]);
+  const range = sizeRange.value;
+  if (!fit.value || !range) return [];
+  return [range.min, range.max].map((x) => [x, fit.value!.at(x)]);
 });
 
 const chartOption = computed(() => ({
@@ -176,6 +187,8 @@ const chartOption = computed(() => ({
   grid: { left: 56, right: 16, top: 16, bottom: 40 },
   xAxis: {
     type: "log",
+    min: (sizeRange.value?.min ?? 1) / 1.15,
+    max: (sizeRange.value?.max ?? 1) * 1.15,
     name: "lines changed",
     nameLocation: "middle",
     nameGap: 26,
@@ -186,6 +199,7 @@ const chartOption = computed(() => ({
   },
   yAxis: {
     type: config.value.axisType,
+    min: config.value.axisMin,
     axisLabel: {
       color: "#A3A3A0",
       fontSize: 11,
