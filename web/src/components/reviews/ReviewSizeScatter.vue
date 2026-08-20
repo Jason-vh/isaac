@@ -4,8 +4,8 @@
       <div>
         <h2 class="text-lg font-semibold text-ink">Size vs. review</h2>
         <p class="mt-0.5 text-sm text-ink-muted">
-          Each dot is a merged MR. {{ config.axes }}; click to open it in
-          GitLab.
+          Each dot is a merged MR, the dashed line is the least-squares fit.
+          {{ config.axes }}; click a dot to open it in GitLab.
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -50,13 +50,13 @@
 import { computed, ref } from "vue";
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { ScatterChart } from "echarts/charts";
+import { LineChart, ScatterChart } from "echarts/charts";
 import { GridComponent, TooltipComponent } from "echarts/components";
 import VChart from "vue-echarts";
 import type { ReviewMr } from "@isaac/shared";
 import { formatHours } from "../../lib/duration";
 
-use([CanvasRenderer, ScatterChart, GridComponent, TooltipComponent]);
+use([CanvasRenderer, ScatterChart, LineChart, GridComponent, TooltipComponent]);
 
 type Metric = "hoursToMerge" | "comments";
 
@@ -71,9 +71,10 @@ const metric = ref<Metric>("hoursToMerge");
 
 /**
  * Both charts plot lines changed against a review signal. Time to merge spans
- * orders of magnitude and never hits zero, so it is drawn and correlated on a
- * log scale; comment counts are small and often zero, so they stay linear and
- * use log1p for the correlation.
+ * orders of magnitude and never hits zero, so it gets a log axis; comment
+ * counts are small and often zero, so they stay linear. The trend line and the
+ * correlation work on the same scale the axis is drawn at, so a straight line
+ * on screen is a straight fit.
  */
 const METRICS: Record<
   Metric,
@@ -82,26 +83,29 @@ const METRICS: Record<
     empty: string;
     value: (mr: ReviewMr) => number | null;
     axisType: "log" | "value";
-    transform: (value: number) => number;
+    toAxis: (value: number) => number;
+    fromAxis: (value: number) => number;
     format: (value: number) => string;
     color: string;
   }
 > = {
   hoursToMerge: {
-    axes: "Both axes are logarithmic",
+    axes: "The time axis is logarithmic",
     empty: "No merged MRs with a review window in this period.",
     value: (mr) => (mr.hoursToMerge === null ? null : Math.max(mr.hoursToMerge, 0.1)),
     axisType: "log",
-    transform: Math.log,
+    toAxis: Math.log,
+    fromAxis: Math.exp,
     format: formatHours,
     color: "#E07A2F",
   },
   comments: {
-    axes: "The size axis is logarithmic",
+    axes: "Both axes are linear",
     empty: "No merged MRs with changed lines in this period.",
     value: (mr) => mr.comments,
     axisType: "value",
-    transform: Math.log1p,
+    toAxis: (value) => value,
+    fromAxis: (value) => value,
     format: (value) => `${value}`,
     color: "#3F7F8C",
   },
@@ -118,26 +122,49 @@ const series = computed(() =>
   })
 );
 
-/** Pearson correlation on the scale each axis is drawn at. */
-const correlation = computed(() => {
-  if (series.value.length < 5) return null;
-  const xs = series.value.map((p) => Math.log(p.value[0]));
-  const ys = series.value.map((p) => config.value.transform(p.value[1]));
-  const mean = (values: number[]) =>
-    values.reduce((a, b) => a + b, 0) / values.length;
+/** The points as plotted, with y on the scale its axis is drawn at. */
+const fitPoints = computed(() =>
+  series.value.map((p) => [p.value[0], config.value.toAxis(p.value[1])])
+);
+
+function mean(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/** Pearson correlation, least-squares slope and intercept in one pass. */
+const fit = computed(() => {
+  const points = fitPoints.value;
+  if (points.length < 5) return null;
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
   const mx = mean(xs);
   const my = mean(ys);
   const cov = xs.reduce((sum, x, i) => sum + (x - mx) * (ys[i] - my), 0);
-  const sx = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
-  const sy = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
-  return sx && sy ? cov / (sx * sy) : null;
+  const vx = xs.reduce((s, x) => s + (x - mx) ** 2, 0);
+  const vy = ys.reduce((s, y) => s + (y - my) ** 2, 0);
+  if (!vx || !vy) return null;
+  const slope = cov / vx;
+  return {
+    correlation: cov / Math.sqrt(vx * vy),
+    at: (x: number) => config.value.fromAxis(my + slope * (x - mx)),
+  };
+});
+
+const correlation = computed(() => fit.value?.correlation ?? null);
+
+/** Two endpoints are enough: the fit is a straight line in screen space. */
+const trendLine = computed(() => {
+  if (!fit.value) return [];
+  const xs = fitPoints.value.map((p) => p[0]);
+  return [Math.min(...xs), Math.max(...xs)].map((x) => [x, fit.value!.at(x)]);
 });
 
 const chartOption = computed(() => ({
   tooltip: {
     trigger: "item",
     formatter: (params: any) => {
-      const mr: ReviewMr = params.data.mr;
+      const mr: ReviewMr | undefined = params.data?.mr;
+      if (!mr) return "";
       return `!${mr.iid} ${mr.title}<br/>${(
         mr.additions + mr.deletions
       ).toLocaleString()} lines · ${formatHours(
@@ -147,7 +174,7 @@ const chartOption = computed(() => ({
   },
   grid: { left: 56, right: 16, top: 16, bottom: 40 },
   xAxis: {
-    type: "log",
+    type: "value",
     name: "lines changed",
     nameLocation: "middle",
     nameGap: 26,
@@ -171,6 +198,13 @@ const chartOption = computed(() => ({
       symbolSize: 7,
       itemStyle: { color: config.value.color, opacity: 0.6 },
       data: series.value,
+    },
+    {
+      type: "line" as const,
+      silent: true,
+      showSymbol: false,
+      lineStyle: { color: config.value.color, width: 2, type: "dashed" },
+      data: trendLine.value,
     },
   ],
 }));
