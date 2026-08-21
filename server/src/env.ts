@@ -21,19 +21,7 @@ const sync = [
   "CALENDAR_SCRIPT_SECRET",
 ] as const;
 
-// Notify vars — only needed by the isaac-notify service
-const notify = [
-  "FASTMAIL_TOKEN",
-  "FASTMAIL_FILTER_TO",
-  "SLACK_BOT_TOKEN",
-  "SLACK_CHANNEL_ID",
-  "GITLAB_BASE_URL",
-  "GITLAB_API_TOKEN",
-  "GITLAB_PROJECT_ID",
-  "JIRA_BASE_URL",
-] as const;
-
-const all = [...core, ...sync, ...notify] as const;
+const all = [...core, ...sync] as const;
 
 type EnvKey = (typeof all)[number];
 type Env = Record<EnvKey, string>;
@@ -74,9 +62,4 @@ export function webauthnOrigins(): string[] {
 /** Call before running sync jobs to ensure all sync vars are set. */
 export function validateSyncEnv(): void {
   validate(sync);
-}
-
-/** Call before running the notify service to ensure all notify vars are set. */
-export function validateNotifyEnv(): void {
-  validate(notify);
 }

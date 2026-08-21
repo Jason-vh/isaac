@@ -3,8 +3,8 @@
 Personal impact tracker for my work at FareHarbor. It aggregates activity from
 several sources into one system of record, serving two goals:
 
-1. **Impact tracking** — a living brag document that captures what I've done,
-   links it to objectives, and tells the story of my contributions.
+1. **Impact tracking** — a living brag document that captures what I've done
+   and tells the story of my contributions.
 2. **WBSO hour estimation** — a data source for weekly R&D hour submissions,
    categorised per ticket and grouped by epic.
 
@@ -32,7 +32,6 @@ Hosted at [isaac.vhtm.eu](https://isaac.vhtm.eu). Single user, passkey login.
 | **GitLab Pipelines** | Durations, per-job timing, retry/flaky rates, DAG dependencies | Hourly |
 | **Confluence** | Documents published and commented on | Hourly |
 | **Google Calendar** | Meetings attended, holidays/OOO | Hourly |
-| **GitLab emails** | MR comments, approvals, merges, review requests, mentions | Real-time via JMAP (isaac-notify) |
 
 Corporate email is the join key between GitLab and Jira accounts. API tokens are
 scoped to me, but the data they return covers the whole team.
@@ -63,17 +62,6 @@ columns and indexes. The concepts:
 - **Person** — engineer keyed by corporate email, with GitLab and Jira
   identities attached. Created during sync; bots are never recorded. Exactly one
   is flagged `isMe`.
-- **Win** — something worth remembering, usable as objective evidence via
-  `entity_links`. Nothing reads or writes the `wins` table itself since the
-  dashboard was removed: rows were only ever written by hand, and a Slack slash
-  command was the intended source, which is why it still keys on
-  `slack_message_id`.
-- **Objective** — annual objective with Key Results, hardcoded in
-  `shared/objectives.ts`. Evidenced by tickets, wins and activity via
-  `entity_links`.
-- **Activity item** — a GitLab notification parsed out of email by
-  isaac-notify, which relays it to Slack. Written only, and kept for the record;
-  no page reads `activity_items` any more.
 
 ## WBSO estimation
 
@@ -194,9 +182,9 @@ a period.
 Bun · Elysia · PostgreSQL + Drizzle · Passkeys (WebAuthn) + JWT · Vite + Vue 3 +
 Tailwind · Railway.
 
-`server/` is the API and sync jobs, `web/` the Vue SPA, `shared/` the types,
-objectives and pipeline critical-path analysis used by both. Anything both sides
-must agree on belongs in `shared/`, not copied into each.
+`server/` is the API and sync jobs, `web/` the Vue SPA, `shared/` the types and
+pipeline critical-path analysis used by both. Anything both sides must agree on
+belongs in `shared/`, not copied into each.
 
 `server/src/app.ts` builds the Elysia app and `server/src/index.ts` starts it,
 so tests can exercise the app without binding a port.
@@ -230,7 +218,6 @@ migrations. They run automatically on deploy via Railway's pre-deploy command.
   ```
 - **Inspect Jira:** `acli jira workitem view DESK-XXXX --fields '*all' --json`,
   or `acli jira workitem search --jql "project = DESK AND ..." --json`
-- **Dev notify:** `bun run server/src/notify/run.ts`
 
 ## Production
 
@@ -241,7 +228,6 @@ Railway project `isaac`, environment `production`, auto-deploys on push to
 |---|---|
 | **isaac-web** | Elysia API + Vue SPA static files, single process |
 | **isaac-cron** | Sync job (`server/src/sync/run.ts`) |
-| **isaac-notify** | GitLab email → Slack, persistent JMAP SSE process |
 | **isaac-db** | PostgreSQL |
 
 - **Connect to the prod DB:** the internal URL won't work outside Railway — get
@@ -250,12 +236,11 @@ Railway project `isaac`, environment `production`, auto-deploys on push to
 - **Trigger a prod sync:** same curl as above against
   `https://isaac.vhtm.eu/api/sync/trigger`
 - **Synced tables** (safe to truncate for a re-sync): `tickets`,
-  `ticket_events`, `merge_requests`, `merge_request_events`,
-  `merge_request_comments`, `commits`, `confluence_documents`,
-  `confluence_document_events`, `meetings`, `pipelines`, `pipeline_jobs`,
-  `sync_log`, `activity_items`
-- **Preserved tables** (manually entered): `wins`, `entity_links`,
-  `passkey_credentials`, `wbso_entry_marks`
+  `ticket_events`, `merge_requests`, `merge_request_events`, `commits`,
+  `confluence_documents`, `confluence_document_events`, `meetings`, `pipelines`,
+  `pipeline_jobs`, `sync_log`
+- **Preserved tables** (manually entered): `passkey_credentials`,
+  `wbso_entry_marks`
 
 ### Sync architecture
 
@@ -282,8 +267,6 @@ without them.
   `GITLAB_API_TOKEN`, `GITLAB_PROJECT_ID`, `CONFLUENCE_BASE_URL`,
   `CONFLUENCE_API_TOKEN`, `CONFLUENCE_EMAIL`, `CALENDAR_SCRIPT_URL`,
   `CALENDAR_SCRIPT_SECRET`
-- **Notify:** `FASTMAIL_TOKEN`, `FASTMAIL_FILTER_TO`, `SLACK_BOT_TOKEN`,
-  `SLACK_CHANNEL_ID`, `GITLAB_*` and `JIRA_BASE_URL` as above
 
 ## Auth
 

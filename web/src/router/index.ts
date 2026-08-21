@@ -26,20 +26,6 @@ export const router = createRouter({
       component: () => import("../views/WbsoView.vue"),
     },
     {
-      path: "/objectives",
-      children: [
-        {
-          path: "",
-          redirect: "/objectives/feature-adoption",
-        },
-        {
-          path: ":slug",
-          name: "objective-detail",
-          component: () => import("../views/ObjectiveDetailView.vue"),
-        },
-      ],
-    },
-{
       path: "/team",
       name: "team",
       component: () => import("../views/TeamView.vue"),

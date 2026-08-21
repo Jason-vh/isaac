@@ -103,7 +103,6 @@ provide("isShareMode", isShareMode);
 
 const allNavLinks = [
   { to: "/wbso", label: "WBSO", section: "wbso" },
-  { to: "/objectives", label: "Objectives", section: "objectives" },
   { to: "/team", label: "Team", section: "team" },
   { to: "/reviews", label: "Reviews", section: "reviews" },
   { to: "/pipelines", label: "Pipelines", section: "pipelines" },

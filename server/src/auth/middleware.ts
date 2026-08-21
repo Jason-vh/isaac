@@ -10,7 +10,6 @@ import { shareTokens } from "../db/schema";
 // read endpoint to a link made from an unmapped page.
 const SECTION_API_PREFIXES: Record<string, string[]> = {
   wbso: ["/api/wbso", "/api/sprints"],
-  objectives: ["/api/objectives", "/api/key-results", "/api/sprints"],
   team: ["/api/team", "/api/sprints"],
   reviews: ["/api/reviews", "/api/sprints"],
   pipelines: ["/api/pipelines", "/api/sprints"],

@@ -6,14 +6,12 @@ import { sql } from "drizzle-orm";
 import { resolve, sep } from "path";
 import { authRoutes } from "./routes/auth";
 import { syncRoutes } from "./routes/sync";
-import { objectiveRoutes } from "./routes/objectives";
 import { pipelineRoutes } from "./routes/pipelines";
 import { shareRoutes } from "./routes/share";
 import { wbsoRoutes } from "./routes/wbso";
 import { teamRoutes } from "./routes/team";
 import { reviewRoutes } from "./routes/reviews";
 import { sprintRoutes } from "./routes/sprints";
-import { digestRoutes } from "./routes/digest";
 import { authContext, requireAuth, requireOwner } from "./auth/middleware";
 import { BadRequest } from "./lib/request";
 
@@ -58,12 +56,10 @@ export const app = new Elysia()
   .use(wbsoRoutes)
   .guard({ beforeHandle: requireAuth }, (app) =>
     app
-      .use(objectiveRoutes)
       .use(pipelineRoutes)
       .use(teamRoutes)
       .use(reviewRoutes)
       .use(sprintRoutes)
-      .use(digestRoutes)
       .guard({ beforeHandle: requireOwner }, (app) =>
         app.use(syncRoutes).use(shareRoutes)
       )

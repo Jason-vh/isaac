@@ -2,7 +2,6 @@ import { db } from "../db";
 import {
   mergeRequests,
   mergeRequestEvents,
-  mergeRequestComments,
   mergeRequestFileStats,
   mergeRequestReviews,
   mergeRequestStateEvents,
@@ -614,30 +613,6 @@ export async function syncGitLab(sinceOverride?: Date): Promise<void> {
         if (newEvents.length > 0) {
           await db.insert(mergeRequestEvents).values(newEvents);
         }
-
-        // Upsert comment content (all non-system comments for digest)
-        if (allNotes.length > 0) {
-          const commentRows = allNotes.map((note) => ({
-            id: note.id,
-            mergeRequestId: mrId,
-            body: note.body,
-            externalUrl: `${mr.web_url}#note_${note.id}`,
-            createdAt: new Date(note.created_at),
-            updatedAt: new Date(note.updated_at),
-          }));
-
-          await db
-            .insert(mergeRequestComments)
-            .values(commentRows)
-            .onConflictDoUpdate({
-              target: mergeRequestComments.id,
-              set: {
-                body: sql`excluded.body`,
-                updatedAt: sql`excluded.updated_at`,
-              },
-            });
-        }
-
       }
     }
 
